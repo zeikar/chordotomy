@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+
+# Virtualenv / uv
+.venv/
+.python-version
+
+# Tooling
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.hyperclaude/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Audio: the inputs are usually commercial recordings, so they never go in the repo.
+# Test fixtures are synthesized in code instead.
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.ogg
+*.aac
