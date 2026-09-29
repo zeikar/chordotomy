@@ -1,6 +1,6 @@
 # Architecture
 
-Nothing is implemented yet. This records the design decided before the first line of code (2026-09-29) and the reasons behind it.
+The first slice is implemented: chords on the beat, with no Roman numerals yet. This records the design decided before the first line of code (2026-09-29) and the reasons behind it.
 
 ## Pipeline
 
@@ -17,9 +17,73 @@ viewer ←── Roman-numeral analysis ←────────── chord-
 - Analysis marks secondary dominants and borrowed chords. An LLM writes a short explanation for each one.
 - A Python CLI (uv, Typer) writes the JSON. A static HTML viewer plays the audio, highlights the current chord, and lets you correct chords.
 
+### Stages implemented
+
+Audio is decoded to mono at 22050 Hz. The harmonic part is taken with HPSS, so drums don't leak into the chroma.
+
+Beats come from `librosa.beat.beat_track` with `trim=False`, because the default trim dropped the last real beats of a synthesized clip. The tracker places no beats in leading or trailing silence. So the grid is extended at the median beat period in both directions. Without that, the final chord's last beat would swallow a silent tail, and leading silence would have no beats to label `N`. A tail beat is added only if at least half a period remains, to avoid a sliver interval. Beat tracking runs first, so a file with no beats fails before any chroma work.
+
+Chroma is a CQT chroma with `norm=None`, reduced to the median over each beat. The default per-frame normalisation scales near-silent ringing up to full scale and gives a silent beat a random chord. After the median, 1 % of the loudest value is added to every bin. A beat far below that floor ends up nearly flat and matches `N`. A quiet chord well above the floor keeps its shape.
+
+Templates are binary: 12 roots × {maj, min, 7}, plus a flat template for `N`. Each beat's chroma is scored against every template by cosine similarity.
+
+Smoothing is a Viterbi decode over the per-beat similarities. Likelihoods are `exp((sim - 1) / 0.02)` and a state stays put with probability 0.5, the rest spread evenly over the other states. The cosine gap between a chord and its maj / 7 sibling is only about 0.1, so without the sharpening the transition prior swamps the observations and everything collapses to `N`. The self-loop is weak enough that a real change lasting two beats survives, and strong enough that a single beat where a chord flickers to its sibling does not.
+
+Consecutive beats with the same state become one segment. Each segment carries three candidate labels: the smoothed chord first, then the labels with the highest mean similarity over the segment. Scores are not written out, per the confidence rule below.
+
 ## The chord-timeline JSON
 
-This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. The schema is still to be designed. Once it exists, document it here and keep it stable.
+This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 1.
+
+| field | type | meaning |
+| --- | --- | --- |
+| `schema_version` | int, `1` | bumped on any change to the documented schema, added fields included |
+| `generator.name` | `"chordotomy"` | |
+| `generator.version` | str | the chordotomy version that wrote the file |
+| `source.path` | str | the audio path as given on the command line |
+| `source.duration` | float, seconds, 3 decimals | |
+| `beats` | list of float seconds, 3 decimals, ascending | beat index = list position |
+| `segments[].start_beat` | int | inclusive |
+| `segments[].end_beat` | int | exclusive; may equal `len(beats)`, meaning the segment runs to the end of the audio |
+| `segments[].start_time` | float | `beats[start_beat]` |
+| `segments[].end_time` | float | `beats[end_beat]`, or `source.duration` when `end_beat == len(beats)` |
+| `segments[].chord` | str | Harte label or `N` |
+| `segments[].candidates` | list of 3 str | best first, `candidates[0] == chord`, no scores |
+
+A chord label is `<root>:<quality>` in Harte syntax. The root is one of `C C# D D# E F F# G G# A A# B`, spelled with sharps only, and the quality is `maj`, `min`, or `7`. `N` means no chord.
+
+Segments are contiguous: each `start_beat` equals the previous `end_beat`, and the first starts at beat 0. Leading and trailing silence is labeled `N`. The only unlabeled span is the sub-beat head between the start of the audio and `beats[0]`, which is shorter than one beat.
+
+Manual correction, a later slice, edits `segments[].chord`. `candidates` are suggestions and stay as generated.
+
+The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`.
+
+```json
+{
+  "schema_version": 1,
+  "generator": {"name": "chordotomy", "version": "0.0.0"},
+  "source": {"path": "song.mp3", "duration": 4.0},
+  "beats": [0.116, 0.604, 1.092, 1.58, 2.068, 2.556, 3.044, 3.532],
+  "segments": [
+    {
+      "start_beat": 0,
+      "end_beat": 4,
+      "start_time": 0.116,
+      "end_time": 2.068,
+      "chord": "C:maj",
+      "candidates": ["C:maj", "C:7", "A:min"]
+    },
+    {
+      "start_beat": 4,
+      "end_beat": 8,
+      "start_time": 2.068,
+      "end_time": 4.0,
+      "chord": "G:7",
+      "candidates": ["G:7", "G:maj", "B:min"]
+    }
+  ]
+}
+```
 
 ## Design decisions
 
