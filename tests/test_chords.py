@@ -1,6 +1,9 @@
+import json
+from itertools import pairwise
+
 import numpy as np
 
-from chordotomy.chords import LABELS, match, smooth
+from chordotomy.chords import LABELS, match, segment, smooth
 
 # Literal music-theory ground truth, deliberately not imported from the module.
 ROOT_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -80,3 +83,41 @@ def test_smooth_keeps_one_beat_distant_change() -> None:
     sims = _sims({2: {"C:maj": 0.65, "F:maj": 0.95}})
 
     assert _labels(sims) == ["C:maj", "C:maj", "F:maj", "C:maj", "C:maj", "C:maj"]
+
+
+def _states(*labels: str) -> np.ndarray:
+    # uint16, as librosa.sequence.viterbi returns it.
+    return np.array([LABELS.index(label) for label in labels], dtype=np.uint16)
+
+
+def test_segment_merges_runs_and_tiles_beats() -> None:
+    states = _states("C:maj", "C:maj", "C:min", "C:min", "C:min", "N")
+
+    segments = segment(states, _sims({}))
+
+    assert [(s["start_beat"], s["end_beat"], s["chord"]) for s in segments] == [
+        (0, 2, "C:maj"),
+        (2, 5, "C:min"),
+        (5, 6, "N"),
+    ]
+    assert segments[0]["start_beat"] == 0
+    for current, following in pairwise(segments):
+        assert current["end_beat"] == following["start_beat"]
+    assert segments[-1]["end_beat"] == len(states)
+
+
+def test_segment_candidates_lead_with_chosen_label_then_best_means() -> None:
+    # C:7 has the higher mean over the segment, but the smoothed state is C:maj.
+    sims = _sims({1: {"C:7": 0.99, "C:maj": 0.7}, 2: {"C:7": 0.99, "C:maj": 0.7}})
+    sims[LABELS.index("F:maj")] = 0.8  # clear third place, below both C chords
+    states = _states(*["C:maj"] * 6)
+
+    (only,) = segment(states, sims)
+
+    assert only["candidates"] == ["C:maj", "C:7", "F:maj"]
+    assert set(only) == {"start_beat", "end_beat", "chord", "candidates"}
+    json.dumps(only)
+    assert type(only["start_beat"]) is int
+    assert type(only["end_beat"]) is int
+    assert type(only["chord"]) is str
+    assert all(type(c) is str for c in only["candidates"])

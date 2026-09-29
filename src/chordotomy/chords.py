@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import librosa
 import numpy as np
 
@@ -43,3 +45,27 @@ def smooth(sims: np.ndarray) -> np.ndarray:
     likelihood = np.exp((sims - 1.0) / TEMPERATURE)
     transition = librosa.sequence.transition_loop(len(LABELS), SELF_LOOP)
     return librosa.sequence.viterbi(likelihood, transition)
+
+
+CANDIDATES = 3
+
+
+def segment(states: np.ndarray, sims: np.ndarray) -> list[dict]:
+    """Merge runs of equal state into segments, each with ranked candidate labels."""
+    boundaries = [0, *(np.flatnonzero(np.diff(states)) + 1), len(states)]
+    segments = []
+    for start, end in pairwise(boundaries):
+        chosen = int(states[start])
+        mean = sims[:, start:end].mean(axis=1)
+        # Rank by mean similarity, but the smoothed label leads: it is what the timeline shows.
+        ranked = [i for i in np.argsort(-mean, kind="stable") if i != chosen]
+        candidates = [LABELS[i] for i in [chosen, *ranked][:CANDIDATES]]
+        segments.append(
+            {
+                "start_beat": int(start),
+                "end_beat": int(end),
+                "chord": LABELS[chosen],
+                "candidates": candidates,
+            }
+        )
+    return segments
