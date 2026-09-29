@@ -285,6 +285,7 @@ source = { editable = "." }
 dependencies = [
     { name = "librosa", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "librosa", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "soundfile" },
     { name = "typer" },
 ]
 
@@ -299,6 +300,7 @@ requires-dist = [
     { name = "librosa", specifier = ">=0.11" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
+    { name = "soundfile", specifier = ">=0.12" },
     { name = "typer", specifier = ">=0.12" },
 ]
 provides-extras = ["dev"]
