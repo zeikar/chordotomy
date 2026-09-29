@@ -28,7 +28,7 @@ def beat_chroma(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     Beat i spans [beat i, beat i + 1); the last beat runs to the end of the audio.
     """
     # The default trim dropped the last two real beats of a synthesized clip.
-    _, beat_frames = librosa.beat.beat_track(y=y, sr=SR, hop_length=HOP, trim=False)
+    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=SR, hop_length=HOP, trim=False)
     # Checked before the chroma: otherwise sync returns a (12, 0) matrix and the floor's max()
     # raises a bare numpy error, after chroma_cqt has warned about tuning on an empty signal.
     if len(beat_frames) == 0:
@@ -39,14 +39,18 @@ def beat_chroma(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     # which gives a silent beat a random chord. Raw magnitudes keep silence small.
     chroma = librosa.feature.chroma_cqt(y=harmonic, sr=SR, hop_length=HOP, norm=None)
     n_frames = chroma.shape[1]
+    # The tracker places no beats in edge silence. Without extending the grid, the last beat
+    # would swallow seconds of silent tail, and leading silence would have no beats to label
+    # N. The half-period guard avoids a sliver interval at the end.
     if len(beat_frames) >= 2:
-        # The tracker places no beats in edge silence. Without extending the grid, the last beat
-        # would swallow seconds of silent tail, and leading silence would have no beats to label
-        # N. The half-period guard avoids a sliver interval at the end.
         period = int(round(np.median(np.diff(beat_frames))))
-        head = np.arange(beat_frames[0] % period, beat_frames[0], period)
-        tail = np.arange(beat_frames[-1] + period, n_frames - period // 2, period)
-        beat_frames = np.concatenate([head, beat_frames, tail])
+    else:
+        # A single beat has no spacing to measure, so fall back to the tracker's tempo (a
+        # positive 1-element array whenever any beat was found).
+        period = int(round(60 / float(np.ravel(tempo)[0]) * SR / HOP))
+    head = np.arange(beat_frames[0] % period, beat_frames[0], period)
+    tail = np.arange(beat_frames[-1] + period, n_frames - period // 2, period)
+    beat_frames = np.concatenate([head, beat_frames, tail])
 
     beat_sync = librosa.util.sync(
         chroma, list(beat_frames) + [n_frames], aggregate=np.median, pad=False

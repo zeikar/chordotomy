@@ -58,3 +58,18 @@ def test_grid_extends_through_edge_silence(synth) -> None:
 def test_all_silent_audio_has_no_beats() -> None:
     with pytest.raises(NoBeatsError):
         beat_chroma(np.zeros(4 * SR, dtype=np.float32))
+
+
+def test_a_single_beat_extends_the_grid_at_the_tempo_period(synth, monkeypatch) -> None:
+    y = synth([("C:maj", 16)])
+    frame = int(4 * SR / 512)
+    monkeypatch.setattr(
+        "chordotomy.features.librosa.beat.beat_track", lambda **_: (120.0, np.array([frame]))
+    )
+
+    beat_times, chroma = beat_chroma(y)
+
+    assert chroma.shape[1] == len(beat_times)
+    assert np.allclose(np.diff(beat_times), 0.5, atol=0.02)
+    assert beat_times[0] < 0.5
+    assert len(y) / SR - beat_times[-1] <= 1.0

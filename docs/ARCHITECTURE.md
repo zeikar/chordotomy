@@ -21,7 +21,7 @@ viewer ←── Roman-numeral analysis ←────────── chord-
 
 Audio is decoded to mono at 22050 Hz. The harmonic part is taken with HPSS, so drums don't leak into the chroma.
 
-Beats come from `librosa.beat.beat_track` with `trim=False`, because the default trim dropped the last real beats of a synthesized clip. The tracker places no beats in leading or trailing silence. So the grid is extended at the median beat period in both directions. Without that, the final chord's last beat would swallow a silent tail, and leading silence would have no beats to label `N`. A tail beat is added only if at least half a period remains, to avoid a sliver interval. Beat tracking runs first, so a file with no beats fails before any chroma work.
+Beats come from `librosa.beat.beat_track` with `trim=False`, because the default trim dropped the last real beats of a synthesized clip. The tracker places no beats in leading or trailing silence. So the grid is extended at the median beat period (the tracker's tempo when only one beat is found) in both directions. Without that, the final chord's last beat would swallow a silent tail, and leading silence would have no beats to label `N`. A tail beat is added only if at least half a period remains, to avoid a sliver interval. Beat tracking runs first, so a file with no beats fails before any chroma work.
 
 Chroma is a CQT chroma with `norm=None`, reduced to the median over each beat. The default per-frame normalisation scales near-silent ringing up to full scale and gives a silent beat a random chord. After the median, 1 % of the loudest value is added to every bin. A beat far below that floor ends up nearly flat and matches `N`. A quiet chord well above the floor keeps its shape.
 
@@ -37,7 +37,7 @@ This is the project's public seam. It carries beat positions, not just seconds, 
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schema_version` | int, `1` | bumped on any change to the documented schema, added fields included |
+| `schema_version` | int, `1` | schema version of this file |
 | `generator.name` | `"chordotomy"` | |
 | `generator.version` | str | the chordotomy version that wrote the file |
 | `source.path` | str | the audio path as given on the command line |
@@ -53,8 +53,6 @@ This is the project's public seam. It carries beat positions, not just seconds, 
 A chord label is `<root>:<quality>` in Harte syntax. The root is one of `C C# D D# E F F# G G# A A# B`, spelled with sharps only, and the quality is `maj`, `min`, or `7`. `N` means no chord.
 
 Segments are contiguous: each `start_beat` equals the previous `end_beat`, and the first starts at beat 0. Leading and trailing silence is labeled `N`. The only unlabeled span is the sub-beat head between the start of the audio and `beats[0]`, which is shorter than one beat.
-
-Manual correction, a later slice, edits `segments[].chord`. `candidates` are suggestions and stay as generated.
 
 The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`.
 
