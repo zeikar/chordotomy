@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import librosa
 import numpy as np
 
 ROOTS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -22,6 +23,11 @@ def _build_templates() -> np.ndarray:
 
 TEMPLATES = _build_templates()
 
+# Cosine gaps between a chord and its maj/7 sibling are only ~0.1. Without sharpening them by a
+# temperature, the transition prior swamps the observations and the whole track collapses to N.
+TEMPERATURE = 0.02
+SELF_LOOP = 0.5
+
 
 def match(chroma: np.ndarray) -> np.ndarray:
     """Cosine similarity of each chroma column (12, n) to every label, shape (37, n)."""
@@ -30,3 +36,10 @@ def match(chroma: np.ndarray) -> np.ndarray:
     chroma = chroma / np.linalg.norm(chroma, axis=0, keepdims=True)
     # Floating error can push values past 1, and librosa.sequence.viterbi rejects that.
     return np.clip(TEMPLATES @ chroma, 0.0, 1.0)
+
+
+def smooth(sims: np.ndarray) -> np.ndarray:
+    """Viterbi-decode (37, n) similarities into one label index per beat."""
+    likelihood = np.exp((sims - 1.0) / TEMPERATURE)
+    transition = librosa.sequence.transition_loop(len(LABELS), SELF_LOOP)
+    return librosa.sequence.viterbi(likelihood, transition)

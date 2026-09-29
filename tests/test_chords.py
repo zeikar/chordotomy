@@ -1,6 +1,6 @@
 import numpy as np
 
-from chordotomy.chords import LABELS, match
+from chordotomy.chords import LABELS, match, smooth
 
 # Literal music-theory ground truth, deliberately not imported from the module.
 ROOT_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -41,3 +41,42 @@ def test_silent_and_flat_columns_are_no_chord() -> None:
     sims = match(chroma)
 
     assert list(sims.argmax(axis=0)) == [LABELS.index("N")] * 2
+
+
+def _sims(overrides: dict[int, dict[str, float]]) -> np.ndarray:
+    """(37, 6) similarities: 0.6 everywhere, C:maj 0.95 / C:7 0.85 unless overridden per beat."""
+    sims = np.full((len(LABELS), 6), 0.6)
+    sims[LABELS.index("C:maj")] = 0.95
+    sims[LABELS.index("C:7")] = 0.85
+    for beat, values in overrides.items():
+        for label, value in values.items():
+            sims[LABELS.index(label), beat] = value
+    return sims
+
+
+def _labels(sims: np.ndarray) -> list[str]:
+    return [LABELS[i] for i in smooth(sims)]
+
+
+def test_smooth_suppresses_one_beat_flicker_to_sibling() -> None:
+    sims = _sims({1: {"C:maj": 0.88, "C:7": 0.90}})
+
+    assert _labels(sims) == ["C:maj"] * 6
+
+
+def test_smooth_suppresses_one_beat_sibling_change() -> None:
+    sims = _sims({2: {"C:maj": 0.85, "C:7": 0.95}})
+
+    assert _labels(sims) == ["C:maj"] * 6
+
+
+def test_smooth_keeps_two_beat_sibling_change() -> None:
+    sims = _sims({2: {"C:maj": 0.85, "C:7": 0.95}, 3: {"C:maj": 0.85, "C:7": 0.95}})
+
+    assert _labels(sims) == ["C:maj", "C:maj", "C:7", "C:7", "C:maj", "C:maj"]
+
+
+def test_smooth_keeps_one_beat_distant_change() -> None:
+    sims = _sims({2: {"C:maj": 0.65, "F:maj": 0.95}})
+
+    assert _labels(sims) == ["C:maj", "C:maj", "F:maj", "C:maj", "C:maj", "C:maj"]
