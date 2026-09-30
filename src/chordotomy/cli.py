@@ -12,7 +12,7 @@ from typing import Annotated
 import soundfile
 import typer
 
-from . import __version__, timeline
+from . import __version__, harmony, timeline
 from .features import NoBeatsError
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -32,6 +32,15 @@ def main(
     ] = False,
 ) -> None:
     """Dissect a song's harmony."""
+
+
+def _parse_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return harmony.parse_key(value)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 def _fail(message: str) -> typer.Exit:
@@ -76,6 +85,17 @@ def analyze(
     force: Annotated[
         bool, typer.Option("--force", help="Overwrite an existing output file.")
     ] = False,
+    key: Annotated[
+        str | None,
+        typer.Option(
+            "--key",
+            callback=_parse_key,
+            help=(
+                "Key as <root>:maj or <root>:min, e.g. A:min or Bb:maj; "
+                "overrides the estimated key (candidates are still ranked)."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Analyze AUDIO into a beat-aligned chord-timeline JSON."""
     if output is None:
@@ -88,7 +108,7 @@ def analyze(
         raise _exists(output)
 
     try:
-        result = timeline.analyze(audio)
+        result = timeline.analyze(audio, key=key)
     except (soundfile.LibsndfileError, NoBeatsError) as exc:
         raise _fail(f"{audio}: {exc}") from exc
 

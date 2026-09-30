@@ -38,6 +38,42 @@ def test_analyze_writes_the_timeline(clip, tmp_path) -> None:
     assert data["source"]["path"] == str(clip)
 
 
+def test_key_overrides_the_estimate(clip, tmp_path) -> None:
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--key", "A:min"])
+
+    assert result.exit_code == 0
+    data = json.loads(out.read_text())
+    assert data["key"]["label"] == "A:min"
+    assert data["key"]["source"] == "given"
+    assert data["key"]["candidates"][0] == "C:maj"
+    assert {s["numeral"] for s in data["segments"]} == {"III"}
+
+
+def test_flat_key_is_spelled_with_sharps(clip, tmp_path) -> None:
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--key", "Bb:maj"])
+
+    assert result.exit_code == 0
+    data = json.loads(out.read_text())
+    assert data["key"]["label"] == "A#:maj"
+    assert {s["numeral"] for s in data["segments"]} == {"V/V"}
+    assert {s["role"] for s in data["segments"]} == {"secondary_dominant"}
+
+
+def test_bad_key_is_a_usage_error(clip, tmp_path) -> None:
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--key", "Cm"])
+
+    assert result.exit_code == 2
+    assert "--key" in result.stderr
+    assert "not a key" in result.stderr
+    assert not out.exists()
+
+
 def test_default_output_is_not_overwritten_without_force(clip, tmp_path) -> None:
     runner = CliRunner()
     out = tmp_path / "clip.chords.json"
@@ -61,7 +97,7 @@ def test_default_output_is_not_overwritten_without_force(clip, tmp_path) -> None
 def test_file_appearing_during_analysis_is_not_overwritten(clip, tmp_path, monkeypatch) -> None:
     out = tmp_path / "out.json"
 
-    def stub(path):
+    def stub(path, key=None):
         out.write_text("sentinel")
         return {"schema_version": 1}
 
@@ -156,7 +192,7 @@ def test_forced_write_does_not_follow_a_link_made_during_analysis(
     before = clip.read_bytes()
     out = tmp_path / "out.json"
 
-    def stub(path):
+    def stub(path, key=None):
         os.link(clip, out)
         return {"schema_version": 1}
 
