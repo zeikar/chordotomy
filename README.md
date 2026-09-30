@@ -1,12 +1,12 @@
 # chordotomy
 
-Dissect a song's harmony. Give it a recording and it finds the chords on the beat, labels them with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord) with a short note on why they work.
+Dissect a song's harmony. Give it a recording and it finds the chords on the beat, labels them with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord). A short note on why each one works is planned.
 
 It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** first two slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled. No explanations yet.
+> **Status:** first two slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled.
 
 Everything runs locally. Your audio never leaves your machine.
 
