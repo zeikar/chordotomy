@@ -30,6 +30,7 @@ QUALITIES = {
 # Quality-major, and the order is the tie-break: librosa.sequence.viterbi takes the first argmax.
 # Pitch-set twins score exactly alike without bass evidence (G:min6 and E:hdim7; the four dim7
 # labels on one set), and then the earlier label wins: min6 over hdim7, the lowest root of a dim7.
+# resolve_twins then respells a diminished twin by where it leads.
 LABELS = [f"{root}:{quality}" for quality in QUALITIES for root in ROOTS] + ["N"]
 # A tone's first four partials in semitones above it: the fundamental, the octave, the twelfth
 # and the double octave. Partial k weighs PARTIAL_DECAY ** (k - 1) in a template.
@@ -224,6 +225,73 @@ def segment(states: np.ndarray, scores: np.ndarray, cqt: np.ndarray) -> list[dic
             }
         )
     return segments
+
+
+def _pitch_classes(label: str) -> frozenset[int]:
+    root, quality = label.split(":")
+    return frozenset((ROOTS.index(root) + i) % 12 for i in QUALITIES[quality])
+
+
+def _leading_twin(label: str, following: str) -> str | None:
+    """The dim7 or hdim7 on label's pitch set rooted a semitone below following's root, if any."""
+    leading = ROOTS[(ROOTS.index(following.split(":")[0]) - 1) % 12]
+    # Only a dim7 (the other three roots) or a min6 (the hdim7 a minor third below) has one.
+    for twin in (f"{leading}:dim7", f"{leading}:hdim7"):
+        if twin != label and _pitch_classes(twin) == _pitch_classes(label):
+            return twin
+    return None
+
+
+def resolve_twins(segments: list[dict]) -> list[dict]:
+    """Respell a diminished chord run as the twin that leads into the next chord.
+
+    Pitch-set twins score exactly alike without a bass on one of their roots, so LABELS order picks
+    one (a min6 over its hdim7, a dim7's lowest root), which says nothing about the music. A
+    diminished chord is spelled by where it leads, so a run becomes its twin a semitone below the
+    next chord's root, when it has one: a bass-less C:dim7 before G:maj is F#:dim7, an A:min6
+    before G:maj is F#:hdim7.
+
+    The bass counts for a min6 and not for a dim7. A dim7 is symmetric: every tone is a twin's
+    root, so the bass profile roots it on whatever tone is lowest, and that is its inversion, not
+    its root (C#°7 over E decodes as E:dim7 and becomes C#:dim7 in first inversion before D:min).
+    For the same reason a dim7 run followed by a dim7 on its set is that chord over a moved bass,
+    and takes the following run's label. A min6 and its hdim7 are different chords on one set,
+    and a bass on the min6's root is the evidence for the m6 reading, so that run is left. A run
+    with no leading twin keeps the recognizer's reading, as does a run before N or at the end. A
+    run split by the bass is one chord and one decision. The candidates lead with the new label,
+    then the recognizer's.
+    """
+    runs = [list(run) for _, run in groupby(segments, key=lambda s: s["chord"])]
+    resolved = []
+    following = None  # the next run's label as written
+    # From the last run back, so a run leads into the next chord as it will be written: in a
+    # chromatic chain C#°7 D°7 D#°7 Em decoded as C#:dim7 D:dim7 C:dim7 E:min, D:dim7 is followed
+    # by D#:dim7 and stays, where the decoded C:dim7 would make it B:dim7.
+    for run in reversed(runs):
+        label = run[0]["chord"]
+        root, _, quality = label.partition(":")
+        bass_decided = quality != "dim7" and any(s["bass"] == root for s in run)
+        if label != "N" and following not in (None, "N") and not bass_decided:
+            if quality == "dim7" and _pitch_classes(following) == _pitch_classes(label):
+                twin = following
+            else:
+                twin = _leading_twin(label, following)
+            if twin is not None and twin != label:
+                run = [
+                    {
+                        **s,
+                        "chord": twin,
+                        "candidates": [
+                            twin,
+                            label,
+                            *(c for c in s["candidates"] if c not in (twin, label)),
+                        ][:CANDIDATES],
+                    }
+                    for s in run
+                ]
+        resolved.append(run)
+        following = run[0]["chord"]
+    return [s for run in reversed(resolved) for s in run]
 
 
 # The bass register: C1-B3, the three lowest octaves of the CQT that beat_features returns.

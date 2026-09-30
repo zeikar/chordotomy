@@ -115,6 +115,41 @@ def test_file_appearing_during_analysis_is_not_overwritten(clip, tmp_path, monke
     assert json.loads(out.read_text()) == {"schema_version": 1}
 
 
+@pytest.mark.parametrize("force", [False, True])
+def test_timeline_is_written_as_utf8(clip, tmp_path, monkeypatch, force) -> None:
+    out = tmp_path / "out.json"
+    data = {
+        "source": {"path": "노래.wav"},
+        "segments": [{"numeral": "viiø7/V"}, {"numeral": "vii°7/ii"}],
+    }
+    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None: data)
+
+    args = ["analyze", str(clip), "-o", str(out)] + (["--force"] if force else [])
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0
+    raw = out.read_bytes()
+    for text in ("노래.wav", "viiø7/V", "vii°7/ii"):
+        assert text.encode("utf-8") in raw
+    assert b"\\u" not in raw
+    assert json.loads(out.read_text(encoding="utf-8")) == data
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_an_undecodable_path_is_written_as_an_escape(clip, tmp_path, monkeypatch, force) -> None:
+    # A filename that is not UTF-8 decodes with a surrogate on Linux, and UTF-8 cannot encode it.
+    out = tmp_path / "out.json"
+    data = {"source": {"path": "caf\udce9.wav"}}
+    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None: data)
+
+    args = ["analyze", str(clip), "-o", str(out)] + (["--force"] if force else [])
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0
+    assert b'"caf\\udce9.wav"' in out.read_bytes()
+    assert json.loads(out.read_text(encoding="utf-8")) == data
+
+
 def test_undecodable_audio_is_an_error(tmp_path) -> None:
     bad = tmp_path / "bad.wav"
     bad.write_text("not audio")

@@ -6,7 +6,7 @@ from itertools import groupby
 from pathlib import Path
 
 from . import __version__, harmony
-from .chords import inversion, match, segment, smooth
+from .chords import inversion, match, resolve_twins, segment, smooth
 from .features import SR, beat_features, load_audio
 
 SCHEMA_VERSION = 4
@@ -17,7 +17,7 @@ def analyze(path: Path, key: str | None = None) -> dict:
     y = load_audio(path)
     f = beat_features(y)
     scores = match(f.treble, f.bass)
-    segments = segment(smooth(scores, f.level, f.period), scores, f.cqt)
+    segments = resolve_twins(segment(smooth(scores, f.level, f.period), scores, f.cqt))
 
     # Harmony runs on chord runs, not segments: the key weights and the secondary-dominant
     # look-ahead are defined on chords, and a bass change does not end a chord.

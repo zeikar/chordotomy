@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from chordotomy.chords import QUALITIES
 from chordotomy.harmony import analyze, analyze_chord, estimate_key, parse_key
 
 
@@ -62,6 +63,16 @@ def test_estimate_key_ranks_all_keys() -> None:
     assert all(key.split(":")[1] in ("maj", "min") for key in ranked)
 
 
+def test_a_diatonic_maj7_votes_for_its_key() -> None:
+    # Without C:maj7's vote, G:maj and D:min make G major (6 against C major's 5).
+    assert estimate_key([("C:maj7", 4), ("G:maj", 2), ("D:min", 1)])[0] == "C:maj"
+
+
+def test_estimate_key_takes_every_quality() -> None:
+    ranked = estimate_key([(f"C:{quality}", 1) for quality in QUALITIES])
+    assert len(set(ranked)) == 24
+
+
 @pytest.mark.parametrize(
     ("label", "key", "numeral", "function"),
     [
@@ -82,6 +93,23 @@ def test_estimate_key_ranks_all_keys() -> None:
         ("G:maj", "A:min", "VII", "dominant"),
         ("G:7", "A:min", "VII7", "dominant"),
         ("F#:maj", "B:maj", "V", "dominant"),
+        ("C:maj7", "C:maj", "Imaj7", "tonic"),
+        ("D:min7", "C:maj", "ii7", "predominant"),
+        ("E:min7", "C:maj", "iii7", "tonic"),
+        ("F:maj7", "C:maj", "IVmaj7", "predominant"),
+        ("A:min7", "C:maj", "vi7", "tonic"),
+        ("B:hdim7", "C:maj", "viiø7", "dominant"),
+        ("G:sus4", "C:maj", "Vsus4", "dominant"),
+        ("D:min6", "C:maj", "iiadd6", "predominant"),
+        # On a secondary dominant's root, but a sus4 never counts as one.
+        ("D:sus4", "C:maj", "IIsus4", "predominant"),
+        ("A:sus4", "C:maj", "VIsus4", "tonic"),
+        ("A:min7", "A:min", "i7", "tonic"),
+        ("B:hdim7", "A:min", "iiø7", "predominant"),
+        ("C:maj7", "A:min", "IIImaj7", "tonic"),
+        ("D:min7", "A:min", "iv7", "predominant"),
+        ("F:maj7", "A:min", "VImaj7", "tonic"),
+        ("G#:dim7", "A:min", "#vii°7", "dominant"),
     ],
 )
 def test_analyze_chord_diatonic(label: str, key: str, numeral: str, function: str) -> None:
@@ -152,6 +180,8 @@ def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(
         ("D:maj", "C:maj", "A:min", "V/V", "secondary_dominant"),
         ("D:7", "A:min", "N", "V7/VII", "secondary_dominant"),
         ("A#:maj", "C:maj", "D#:maj", "bVII", "borrowed"),
+        ("D:maj7", "A:min", "G:maj", "IVmaj7", "borrowed"),
+        ("B:hdim7", "A:min", "C:maj", "iiø7", "diatonic"),
     ],
 )
 def test_following_is_ignored_outside_the_overlap(
@@ -160,6 +190,37 @@ def test_following_is_ignored_outside_the_overlap(
     result = analyze_chord(label, key, following)
     assert result == analyze_chord(label, key)
     assert (result["numeral"], result["role"]) == (numeral, role)
+
+
+@pytest.mark.parametrize(
+    ("label", "key", "following", "numeral", "role", "target"),
+    [
+        *[("F#:hdim7", "C:maj", f, "viiø7/V", "secondary_dominant", "V") for f in ("G:maj", "G:7")],
+        *[("F#:hdim7", "C:maj", f, "#ivø7", "chromatic", None) for f in ("F:maj", "N", None)],
+        *[
+            ("C#:dim7", "C:maj", f, "vii°7/ii", "secondary_dominant", "ii")
+            for f in ("D:min", "D:min7")
+        ],
+        ("C#:dim7", "C:maj", "D:maj", "#i°7", "chromatic", None),
+        ("D#:dim7", "C:maj", "E:min", "vii°7/iii", "secondary_dominant", "iii"),
+        ("G#:dim7", "C:maj", "A:min", "vii°7/vi", "secondary_dominant", "vi"),
+        ("E:dim7", "C:maj", "F:maj", "vii°7/IV", "secondary_dominant", "IV"),
+        # The tonic is never a target.
+        ("B:dim7", "C:maj", "C:maj", "vii°7", "borrowed", None),
+        ("D#:dim7", "A:min", "E:maj", "vii°7/V", "secondary_dominant", "V"),
+        ("C#:dim7", "A:min", "D:min", "vii°7/iv", "secondary_dominant", "iv"),
+        ("B:dim7", "A:min", "C:maj", "vii°7/III", "secondary_dominant", "III"),
+    ],
+)
+def test_leading_tone_chord_resolves_only_on_a_diatonic_chord_on_the_target_root(
+    label: str, key: str, following: str | None, numeral: str, role: str, target: str | None
+) -> None:
+    assert analyze_chord(label, key, following) == {
+        "numeral": numeral,
+        "role": role,
+        "function": None,
+        "target": target,
+    }
 
 
 @pytest.mark.parametrize(
@@ -174,6 +235,14 @@ def test_following_is_ignored_outside_the_overlap(
         ("A#:7", "C:maj", "bVII7"),
         ("B:min", "A:min", "ii"),
         ("C#:min", "A:min", "#iii"),
+        ("F:min6", "C:maj", "ivadd6"),
+        # C minor's harmonic vii°7.
+        ("B:dim7", "C:maj", "vii°7"),
+        ("D#:maj7", "C:maj", "bIIImaj7"),
+        ("G:min7", "C:maj", "v7"),
+        ("D:hdim7", "C:maj", "iiø7"),
+        ("D:maj7", "A:min", "IVmaj7"),
+        ("G#:hdim7", "A:min", "#viiø7"),
     ],
 )
 def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
@@ -194,10 +263,26 @@ def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
         # The seventh is outside C minor, so these are not borrowed.
         ("D#:7", "C:maj", "bIII7"),
         ("G#:7", "C:maj", "bVI7"),
+        ("A#:maj7", "C:maj", "bVIImaj7"),
         ("G#:min", "C:maj", "bvi"),
         ("B:min", "C:maj", "vii"),
-        # The leading tone counts only in the dominant.
+        # The leading tone counts only in the dominant and the diminished seventh on it.
         ("F:min", "A:min", "vi"),
+        # With no chord to lead into, a leading-tone chord is only its degree.
+        ("F#:hdim7", "C:maj", "#ivø7"),
+        # maj7 and sus4 are never secondary dominants: not V/V, not V/iii.
+        ("D:maj7", "C:maj", "IImaj7"),
+        ("B:sus4", "C:maj", "VIIsus4"),
+        # A diminished or half-diminished seventh's root is raised, never flattened; C#:maj above
+        # stays bII.
+        ("C#:dim7", "C:maj", "#i°7"),
+        ("D#:dim7", "C:maj", "#ii°7"),
+        ("G#:dim7", "C:maj", "#v°7"),
+        ("A#:dim7", "C:maj", "#vi°7"),
+        ("D#:hdim7", "C:maj", "#iiø7"),
+        ("A#:dim7", "A:min", "#i°7"),
+        ("G:dim7", "A:min", "vii°7"),
+        ("D#:dim7", "A:min", "#iv°7"),
     ],
 )
 def test_analyze_chord_chromatic(label: str, key: str, numeral: str) -> None:
@@ -243,6 +328,15 @@ def test_analyze_without_a_chord() -> None:
         {"label": "C:maj", "source": "given", "candidates": []},
         [NO_ANALYSIS],
     )
+
+
+def test_analyze_labels_a_leading_tone_chord_by_the_next_segment() -> None:
+    progression = [("C:maj", 2), ("C#:dim7", 1), ("D:min7", 1), ("G:7", 2), ("C:maj", 2)]
+    key, analyses = analyze(progression)
+    assert key is not None
+    assert key["label"] == "C:maj"
+    assert [a["numeral"] for a in analyses] == ["I", "vii°7/ii", "ii7", "V7", "I"]
+    assert (analyses[1]["role"], analyses[1]["target"]) == ("secondary_dominant", "ii")
 
 
 def test_analyze_looks_ahead_to_the_next_segment() -> None:

@@ -200,6 +200,61 @@ def test_a_chord_split_on_the_bass_looks_ahead_to_the_next_chord(synth, tmp_path
     assert [s["numeral"] for s in segments] == ["i", "V/iv", "V/iv", "iv", "i"]
 
 
+@pytest.mark.parametrize(("quality", "numeral"), [("dim7", "vii°7/V"), ("hdim7", "viiø7/V")])
+def test_a_diminished_chord_without_a_bass_is_spelled_by_where_it_leads(
+    synth, tmp_path, quality, numeral
+) -> None:
+    # Voiced above the bass register, the twins tie and decode as C:dim7 and A:min6.
+    progression = [("C:maj", 4), (f"F#:{quality}", 4), ("G:maj", 4), ("C:maj", 4)]
+
+    segments = analyze(_write(tmp_path, synth(progression, chord_midi=60)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", f"F#:{quality}", "G:maj", "C:maj"]
+    assert segments[1]["numeral"] == numeral
+    assert segments[1]["bass"] is None
+
+
+@pytest.mark.parametrize(
+    ("bass", "note", "position"),
+    [(37, "C#", "root"), (40, "E", "first"), (43, "G", "second"), (46, "A#", "third")],
+)
+def test_a_diminished_seventh_is_spelled_by_where_it_leads_over_any_bass(
+    synth, tmp_path, bass, note, position
+) -> None:
+    # The bass roots the recognizer's reading on itself (E:dim7 over E); the resolution to D:min7
+    # respells it C#:dim7 in first inversion.
+    progression = [
+        ("C:maj", 4, 36),
+        ("C#:dim7", 4, bass),
+        ("D:min7", 4, 38),
+        ("G:7", 4, 43),
+        ("C:maj", 4, 36),
+    ]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "C#:dim7", "D:min7", "G:7", "C:maj"]
+    assert [s["numeral"] for s in segments] == ["I", "vii°7/ii", "ii7", "V7", "I"]
+    assert (segments[1]["bass"], segments[1]["inversion"]) == (note, position)
+
+
+def test_a_diminished_seventh_over_a_moving_bass_is_one_chord(synth, tmp_path) -> None:
+    # Held four beats each, A and F# decode as A:dim7 and F#:dim7 before the respelling.
+    progression = [
+        ("C:maj", 4, 36),
+        ("D#:dim7", 4, 45),
+        ("D#:dim7", 4, 42),
+        ("E:min", 4, 40),
+        ("C:maj", 4, 36),
+    ]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "D#:dim7", "D#:dim7", "E:min", "C:maj"]
+    assert [s["inversion"] for s in segments[1:3]] == ["second", "first"]
+    assert [s["numeral"] for s in segments[1:3]] == ["vii°7/iii", "vii°7/iii"]
+
+
 def test_edge_silence_is_n(synth, tmp_path) -> None:
     result = analyze(_write(tmp_path, synth([("C:maj", 4), ("N", 6)])))
     segments = result["segments"]

@@ -61,7 +61,7 @@ def _exists(output: Path) -> typer.Exit:
     return _fail(f"{output} exists; pass --force to overwrite")
 
 
-def _replace(output: Path, text: str) -> None:
+def _replace(output: Path, data: bytes) -> None:
     # The replacement keeps the existing output's mode, else the mode a plain open would give, as
     # the non-force path. mkstemp creates it 0600, so it stays private until the final chmod.
     if output.exists():
@@ -72,8 +72,8 @@ def _replace(output: Path, text: str) -> None:
         mode = 0o666 & ~umask
     fd, tmp = tempfile.mkstemp(dir=output.parent, prefix=f".{output.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w") as f:
-            f.write(text)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
         os.chmod(tmp, mode)
         os.replace(tmp, output)
     except BaseException:
@@ -121,17 +121,23 @@ def analyze(
     except (soundfile.LibsndfileError, NoBeatsError) as exc:
         raise _fail(f"{audio}: {exc}") from exc
 
-    text = json.dumps(result, indent=2) + "\n"
+    # UTF-8 characters, not \u escapes, so a numeral's ø or ° and a non-ASCII path read as
+    # themselves in the file, whatever the locale. A path that was not UTF-8 to begin with holds a
+    # lone surrogate, which UTF-8 cannot encode; backslashreplace writes it as the JSON escape
+    # json.dumps would have. Encoded before anything is opened, so a failure leaves no empty file.
+    data = (json.dumps(result, indent=2, ensure_ascii=False) + "\n").encode(
+        "utf-8", "backslashreplace"
+    )
     # The early checks are fast fails; the write must hold up if the output appears or becomes a
     # link while analysis runs. Exclusive creation refuses anything already there. --force
     # writes a temp file and swaps it in, so the write never follows a symlink or hard link
     # to the recording.
     try:
         if force:
-            _replace(output, text)
+            _replace(output, data)
         else:
-            with output.open("x") as f:
-                f.write(text)
+            with output.open("xb") as f:
+                f.write(data)
     except FileExistsError as exc:
         raise _exists(output) from exc
     except OSError as exc:

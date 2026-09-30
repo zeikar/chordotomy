@@ -11,6 +11,7 @@ from chordotomy.chords import (
     inversion,
     match,
     pick_bass,
+    resolve_twins,
     segment,
     smooth,
 )
@@ -250,6 +251,118 @@ def test_segment_candidates_lead_with_chosen_label_then_best_means() -> None:
     assert type(only["end_beat"]) is int
     assert type(only["chord"]) is str
     assert all(type(c) is str for c in only["candidates"])
+
+
+def _runs(*entries: tuple[str, str | None]) -> list[dict]:
+    """Two-beat segments from (chord, bass) pairs, each with candidates led by its chord."""
+    return [
+        {
+            "start_beat": 2 * i,
+            "end_beat": 2 * i + 2,
+            "chord": chord,
+            "candidates": [chord, "C:maj", "A:min"],
+            "bass": bass,
+        }
+        for i, (chord, bass) in enumerate(entries)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("label", "bass", "following", "expected"),
+    [
+        ("C:dim7", None, "G:maj", "F#:dim7"),
+        ("C:dim7", None, "E:min", "D#:dim7"),
+        ("D:dim7", None, "A:min", "G#:dim7"),
+        ("C#:dim7", None, "F:maj", "E:dim7"),
+        # Already the leading-tone spelling.
+        ("C#:dim7", None, "D:min", "C#:dim7"),
+        # C# is not a tone of C:dim7, so no twin leads into D.
+        ("C:dim7", None, "D:min", "C:dim7"),
+        # A bass off the pitch set is no evidence either.
+        ("C:dim7", "D", "G:maj", "F#:dim7"),
+        # A dim7's bass is its inversion, not its root: F#°7 over C.
+        ("C:dim7", "C", "G:maj", "F#:dim7"),
+        # No twin leads into C, so the common-tone diminished keeps the recognizer's reading.
+        ("C:dim7", "C", "C:maj", "C:dim7"),
+        ("A:min6", None, "G:maj", "F#:hdim7"),
+        # A bass on a min6's root is evidence for the m6 reading; on its third it is none.
+        ("A:min6", "A", "G:maj", "A:min6"),
+        ("A:min6", "C", "G:maj", "F#:hdim7"),
+        # The twins E:hdim7 and D:hdim7 do not lead into C: vi add6 and a borrowed iv add6 stay.
+        ("G:min6", None, "C:maj", "G:min6"),
+        ("F:min6", None, "C:maj", "F:min6"),
+        # Nor does D:hdim7 lead into G: IVm6 before V stays.
+        ("F:min6", None, "G:maj", "F:min6"),
+        # An hdim7's only twin is a min6.
+        ("F#:hdim7", None, "G:maj", "F#:hdim7"),
+        ("C:maj", None, "C#:maj", "C:maj"),
+        ("C:dim7", None, "N", "C:dim7"),
+        ("C:dim7", None, None, "C:dim7"),
+    ],
+)
+def test_resolve_twins_spells_a_diminished_chord_by_where_it_leads(
+    label: str, bass: str | None, following: str | None, expected: str
+) -> None:
+    entries = [(label, bass)] + ([] if following is None else [(following, None)])
+
+    resolved = resolve_twins(_runs(*entries))
+
+    assert [s["chord"] for s in resolved] == [expected] + ([] if following is None else [following])
+
+
+def test_resolve_twins_relabels_a_run_split_by_the_bass_as_a_whole() -> None:
+    segments = _runs(("C:dim7", None), ("C:dim7", "D"), ("G:maj", "G"))
+    resolved = resolve_twins(segments)
+
+    assert [s["chord"] for s in resolved] == ["F#:dim7", "F#:dim7", "G:maj"]
+    assert [s["bass"] for s in resolved] == [None, "D", "G"]
+    assert [(s["start_beat"], s["end_beat"]) for s in resolved] == [(0, 2), (2, 4), (4, 6)]
+    # A pure function: the decoder's segments are left as they were.
+    assert [s["chord"] for s in segments] == ["C:dim7", "C:dim7", "G:maj"]
+
+    # A bass on a min6's root anywhere in the run keeps the whole run.
+    resolved = resolve_twins(_runs(("A:min6", None), ("A:min6", "A"), ("G:maj", "G")))
+
+    assert [s["chord"] for s in resolved] == ["A:min6", "A:min6", "G:maj"]
+
+
+def test_resolve_twins_spells_a_dim7_over_a_moving_bass_as_one_chord() -> None:
+    # D#°7 over A, then over F#, decodes as two dim7 runs on one pitch set.
+    resolved = resolve_twins(_runs(("A:dim7", "A"), ("F#:dim7", "F#"), ("E:min", "E")))
+
+    assert [s["chord"] for s in resolved] == ["D#:dim7", "D#:dim7", "E:min"]
+    assert resolved[0]["candidates"][:2] == ["D#:dim7", "A:dim7"]
+
+    # Already spelled as the part after it, which leads on: left as it is.
+    resolved = resolve_twins(_runs(("F#:dim7", "F#"), ("A:dim7", "A"), ("G:maj", "G")))
+
+    assert [s["chord"] for s in resolved] == ["F#:dim7", "F#:dim7", "G:maj"]
+    assert resolved[0]["candidates"] == ["F#:dim7", "C:maj", "A:min"]
+
+    # With no twin leading on, the whole chord keeps the reading of its last part.
+    resolved = resolve_twins(_runs(("A:dim7", "A"), ("C:dim7", "C"), ("C:maj", "C")))
+
+    assert [s["chord"] for s in resolved] == ["C:dim7", "C:dim7", "C:maj"]
+
+
+def test_resolve_twins_reads_a_chain_against_the_next_chord_as_written() -> None:
+    # C#°7 D°7 D#°7 Em without a bass decodes as C#:dim7 D:dim7 C:dim7 E:min. D:dim7 leads into
+    # the D#:dim7 it is followed by, not into C:dim7's B.
+    runs = _runs(("C#:dim7", None), ("D:dim7", None), ("C:dim7", None), ("E:min", None))
+
+    resolved = resolve_twins(runs)
+
+    assert [s["chord"] for s in resolved] == ["C#:dim7", "D:dim7", "D#:dim7", "E:min"]
+
+
+def test_resolve_twins_reorders_the_tie_in_the_candidates() -> None:
+    dim7, following = _runs(("C:dim7", None), ("G:maj", "G"))
+    dim7["candidates"] = ["C:dim7", "D#:dim7", "F#:dim7"]
+    min6, _ = _runs(("A:min6", None), ("G:maj", "G"))
+    min6["candidates"] = ["A:min6", "F#:hdim7", "A:min7"]
+
+    assert resolve_twins([dim7, following])[0]["candidates"] == ["F#:dim7", "C:dim7", "D#:dim7"]
+    assert resolve_twins([min6, following])[0]["candidates"] == ["F#:hdim7", "A:min6", "A:min7"]
 
 
 def _cqt(beats: list) -> np.ndarray:
