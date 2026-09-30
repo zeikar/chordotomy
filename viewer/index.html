@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The page may load only its own files and play blob: audio: no fetches, fonts or trackers,
+         so a recording opened here cannot leave the browser. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; media-src blob:; base-uri 'none'; form-action 'none'"
+    />
+    <title>chordotomy viewer</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 15 12 1' stroke='%23888' stroke-width='2.5'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script src="core.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="bar">
+      <p class="wordmark">chordotomy</p>
+      <dl class="files" id="files" hidden>
+        <div>
+          <dt>Recording</dt>
+          <dd id="audio-name">none yet</dd>
+        </div>
+        <div>
+          <dt>Chords</dt>
+          <dd id="json-name">none yet</dd>
+        </div>
+      </dl>
+      <p class="privacy">Files stay in this browser. Nothing is uploaded.</p>
+      <button type="button" class="button" id="open">Open files</button>
+      <input id="picker" type="file" multiple accept="audio/*,.json,application/json" hidden />
+    </header>
+
+    <p id="status" class="status" role="status" hidden></p>
+
+    <main id="empty" class="empty">
+      <h1>Open a recording and its chord timeline</h1>
+      <p>
+        Drop both files anywhere on this page, or use <strong>Open files</strong>. The timeline is
+        the <code>.chords.json</code> that <code>chordotomy analyze song.mp3</code> writes next to
+        the recording.
+      </p>
+    </main>
+
+    <main id="viewer" class="viewer" hidden>
+      <section class="now" aria-label="Current chord">
+        <div class="now-chord">
+          <p class="big-chord" id="now-chord"></p>
+          <p class="big-numeral" id="now-numeral"></p>
+          <dl class="facts" id="now-facts">
+            <div>
+              <dt>Role</dt>
+              <dd id="now-role"></dd>
+            </div>
+            <div id="now-function-row">
+              <dt>Function</dt>
+              <dd id="now-function"></dd>
+            </div>
+            <div id="now-bass-row">
+              <dt>Bass</dt>
+              <dd id="now-bass"></dd>
+            </div>
+            <div id="now-alt-row">
+              <dt>Also heard as</dt>
+              <dd id="now-alt"></dd>
+            </div>
+          </dl>
+        </div>
+
+        <aside class="key" aria-label="Key">
+          <p class="key-label">Key</p>
+          <p class="key-name" id="key-name"></p>
+          <p class="key-source" id="key-source"></p>
+          <p class="key-label" id="key-candidates-label"></p>
+          <ol class="key-candidates" id="key-candidates"></ol>
+        </aside>
+      </section>
+
+      <section class="timeline" aria-label="Chord timeline">
+        <div class="strip" id="strip">
+          <div class="track" id="track">
+            <div class="segments" id="segments"></div>
+            <div class="ruler" id="ruler" aria-hidden="true"></div>
+            <div class="playhead" id="playhead" aria-hidden="true"></div>
+          </div>
+        </div>
+        <ul class="legend" aria-label="Colours">
+          <li data-role="diatonic">Diatonic</li>
+          <li data-role="secondary_dominant">Secondary dominant</li>
+          <li data-role="borrowed">Borrowed</li>
+          <li data-role="chromatic">Chromatic</li>
+          <li data-role="none">No chord</li>
+        </ul>
+      </section>
+
+      <section class="transport" aria-label="Playback">
+        <audio id="audio" controls preload="auto" hidden></audio>
+        <p class="no-audio" id="no-audio">Open the recording too to play along.</p>
+        <p class="keys">
+          <kbd>Space</kbd> play or pause <kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous or next
+          chord. Click a chord to jump to it.
+        </p>
+      </section>
+    </main>
+
+    <div class="dropzone" id="dropzone" hidden>
+      <p>Drop the recording and its <code>.chords.json</code></p>
+    </div>
+  </body>
+</html>

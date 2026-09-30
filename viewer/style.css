@@ -1,0 +1,534 @@
+/* Staff paper and graphite: the chrome stays grey so that colour only ever means a harmonic role.
+   System fonts only, since the page loads nothing from the network. Sizes step by a perfect
+   fourth (4:3) from 15px. */
+
+:root {
+  color-scheme: light dark;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L",
+    P052, Georgia, serif;
+  --sans: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+
+  --paper: #eceee8;
+  --sheet: #f8f9f5;
+  --cell: #e3e6df;
+  --ink: #1c2330;
+  --pencil: #596170;
+  --rule: #c5c9c1;
+
+  --sec: #8f5400;
+  --sec-fill: #f5e2bd;
+  --bor: #5a43a6;
+  --bor-fill: #e4dcf6;
+  --chr: #a02147;
+  --chr-fill: #f5d8e0;
+  --hatch: #d3d7cf;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #161a21;
+    --sheet: #1d222b;
+    --cell: #2a303b;
+    --ink: #e6e8e3;
+    --pencil: #9aa1ad;
+    --rule: #3a414e;
+
+    --sec: #f0b54a;
+    --sec-fill: #463619;
+    --bor: #b8a4f5;
+    --bor-fill: #342a52;
+    --chr: #f58aa7;
+    --chr-fill: #4c2332;
+    --hatch: #2c323c;
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* The timeline and transport sit at the bottom of the window; the current chord takes the rest. */
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+
+.viewer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+code,
+kbd {
+  font-family: var(--sans);
+  font-size: 0.9em;
+  padding: 0 0.35em;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--sheet);
+}
+
+/* Header */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 32px;
+  padding: 14px 32px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.wordmark {
+  margin: 0;
+  font: 400 26.7px/1 var(--serif);
+  letter-spacing: -0.01em;
+}
+
+.files {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  min-width: 0;
+}
+
+.files div {
+  min-width: 0;
+}
+
+.files dt {
+  font-size: 12px;
+  color: var(--pencil);
+}
+
+.files dd {
+  margin: 0;
+  max-width: 26ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.privacy {
+  margin: 0 0 0 auto;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+.button {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.status {
+  margin: 16px 32px 0;
+  padding: 10px 14px;
+  max-width: 72ch;
+  background: var(--sheet);
+  border-left: 3px solid var(--ink);
+}
+
+/* Before anything is open. The dashed edge is the cut line the whole page drops onto. */
+
+.empty {
+  max-width: 36rem;
+  margin: 14vh auto 0;
+  padding: 40px 44px;
+  border: 1.5px dashed var(--pencil);
+  border-radius: 6px;
+}
+
+.empty h1 {
+  margin: 0 0 16px;
+  font: 400 35.5px/1.15 var(--serif);
+  letter-spacing: -0.01em;
+}
+
+.empty p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 16px;
+}
+
+/* The current chord */
+
+.now {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  align-content: center;
+  gap: 40px;
+  padding: 28px 32px;
+}
+
+[data-role="secondary_dominant"] {
+  --role: var(--sec);
+  --role-fill: var(--sec-fill);
+}
+
+[data-role="borrowed"] {
+  --role: var(--bor);
+  --role-fill: var(--bor-fill);
+}
+
+[data-role="chromatic"] {
+  --role: var(--chr);
+  --role-fill: var(--chr-fill);
+}
+
+.big-chord {
+  margin: 0;
+  font: 400 112px/1 var(--serif);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.now[data-role="none"] .big-chord {
+  color: var(--pencil);
+}
+
+.big-numeral {
+  min-height: 1.1em;
+  margin: 10px 0 22px;
+  font: 400 47.4px/1.1 var(--serif);
+  color: var(--role, var(--ink));
+}
+
+.figures {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: top;
+  margin: 0.08em 0.04em 0 0.06em;
+  font-size: 0.48em;
+  line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  row-gap: 6px;
+  margin: 0;
+}
+
+.facts div {
+  display: contents;
+}
+
+.facts dt {
+  color: var(--pencil);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.facts dd::first-letter {
+  text-transform: uppercase;
+}
+
+#now-role {
+  color: var(--role, var(--ink));
+}
+
+.key {
+  padding-left: 28px;
+  border-left: 1px solid var(--rule);
+}
+
+.key-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+.key-name {
+  margin: 2px 0 4px;
+  font: 400 35.5px/1.15 var(--serif);
+}
+
+.key-source {
+  margin: 0 0 18px;
+}
+
+.key-candidates {
+  margin: 4px 0 0;
+  padding-left: 1.6em;
+}
+
+/* Timeline */
+
+.timeline {
+  padding: 0 32px;
+}
+
+.strip {
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.track {
+  position: relative;
+  height: 122px;
+  min-width: 100%;
+}
+
+.segments {
+  position: absolute;
+  inset: 0 0 32px;
+}
+
+.segment {
+  --bar: transparent;
+  --under: transparent;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 11px 8px 8px;
+  border: 0;
+  border-right: 2px solid var(--sheet);
+  background: var(--role-fill, var(--cell));
+  box-shadow:
+    inset 0 3px 0 var(--bar),
+    inset 0 -4px 0 var(--under);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.segment[data-role="secondary_dominant"],
+.segment[data-role="borrowed"],
+.segment[data-role="chromatic"] {
+  --bar: var(--role);
+}
+
+/* No chord: hatched and quiet, so a long silence reads as a gap rather than a chord. */
+.segment[data-role="none"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sheet) 0 5px,
+    var(--hatch) 5px 6px
+  );
+  color: var(--pencil);
+}
+
+.segment:hover {
+  filter: brightness(0.96);
+}
+
+.segment.current {
+  --under: var(--ink);
+}
+
+.segment:focus-visible {
+  outline-offset: -5px;
+}
+
+.segment-chord,
+.segment-numeral {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--serif);
+}
+
+.segment-chord {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.segment-numeral {
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--role, var(--pencil));
+}
+
+/* Stacked figures at the big numeral's ratio would be 8px here. */
+.segment-numeral .figures {
+  font-size: 0.62em;
+}
+
+.segment[data-role="none"] .segment-chord {
+  font-size: 15px;
+}
+
+.ruler {
+  position: absolute;
+  inset: auto 0 0;
+  height: 32px;
+  border-top: 1px solid var(--rule);
+  font-size: 12px;
+  color: var(--pencil);
+  font-variant-numeric: tabular-nums;
+}
+
+.ruler i {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 6px;
+  background: var(--pencil);
+  opacity: 0.6;
+}
+
+.ruler span {
+  position: absolute;
+  top: 9px;
+  padding-left: 4px;
+  border-left: 1px solid var(--rule);
+  line-height: 1.2;
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 0;
+  padding: 10px 0 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+.legend li::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 11px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  background: var(--role-fill, var(--cell));
+  box-shadow: inset 0 2px 0 var(--role, transparent);
+}
+
+.legend [data-role="none"]::before {
+  background: repeating-linear-gradient(-45deg, var(--sheet) 0 3px, var(--hatch) 3px 4px);
+  box-shadow: inset 0 0 0 1px var(--hatch);
+}
+
+/* Playback */
+
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+  padding: 18px 32px 32px;
+}
+
+.transport audio {
+  flex: 1 1 28rem;
+  min-width: 16rem;
+}
+
+.transport p {
+  margin: 0;
+  color: var(--pencil);
+}
+
+.no-audio {
+  flex: 1 1 28rem;
+}
+
+.keys {
+  font-size: 13px;
+}
+
+.keys kbd {
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.dropzone {
+  position: fixed;
+  inset: 12px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--ink);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.dropzone p {
+  font: 400 35.5px/1.2 var(--serif);
+}
+
+@media (max-width: 760px) {
+  .bar,
+  .now,
+  .timeline,
+  .transport {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .privacy {
+    margin-left: 0;
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .now {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .big-chord {
+    font-size: 84px;
+  }
+
+  .key {
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .empty {
+    margin: 32px 16px 0;
+    padding: 28px 24px;
+  }
+}
