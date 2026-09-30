@@ -85,6 +85,17 @@ test("without a key, roots are spelled as written", () => {
   assert.equal(chordName("C:maj", null, "E", "first"), "C/E");
 });
 
+test("a candidate on a tone of the segment's chord keeps that tone's letter", () => {
+  const { alternativeName } = Core;
+  assert.equal(alternativeName("G#:min", "E:7", "C:maj"), "G♯m"); // not Abm beside E7/G#
+  assert.equal(alternativeName("A#:min", "F#:maj", "D:maj"), "A♯m");
+  assert.equal(alternativeName("E:maj", "E:7", "C:maj"), "E");
+  assert.equal(alternativeName("D:min", "G:7", "C:maj"), "Dm");
+  assert.equal(alternativeName("A#:maj", "D:7", "C:maj"), "B♭"); // not a tone of D7: key degree
+  assert.equal(alternativeName("N", "G:7", "C:maj"), "N.C.");
+  assert.equal(alternativeName("C#:7", "N", "C:maj"), "D♭7");
+});
+
 test("numerals take figured bass from the inversion", () => {
   assert.equal(numeralText("I", "root"), "I");
   assert.equal(numeralText("I", "first"), "I6");

@@ -2,11 +2,30 @@
    System fonts only, since the page loads nothing from the network. Sizes step by a perfect
    fourth (4:3) from 15px. */
 
+/* Iowan, Palatino and Georgia have no ♭ or ♯, and Chrome on macOS falls back to a CJK font whose
+   flat is a full em wide ("B ♭"). This face lends just those two glyphs from installed fonts. The
+   metric overrides stop a math font's tall extents from stretching the line. */
+@font-face {
+  font-family: "Accidentals";
+  src:
+    local("STIX Two Math"),
+    local("STIXTwoMath-Regular"),
+    local("Apple Symbols"),
+    local("AppleSymbols"),
+    local("Segoe UI Symbol"),
+    local("Noto Music"),
+    local("DejaVu Sans");
+  unicode-range: U+266D-266F;
+  ascent-override: 90%;
+  descent-override: 25%;
+  line-gap-override: 0%;
+}
+
 :root {
   color-scheme: light dark;
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L",
-    P052, Georgia, serif;
-  --sans: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --serif: "Accidentals", "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+    "URW Palladio L", P052, Georgia, serif;
+  --sans: "Accidentals", "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
 
   --paper: #eceee8;
   --sheet: #f8f9f5;
@@ -58,72 +77,22 @@ body {
   font: 15px/1.5 var(--sans);
 }
 
-.viewer {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-}
-
 :focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
-code,
+code {
+  font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
 kbd {
-  font-family: var(--sans);
-  font-size: 0.9em;
+  font: 12px var(--sans);
   padding: 0 0.35em;
   border: 1px solid var(--rule);
   border-radius: 3px;
   background: var(--sheet);
-}
-
-/* Header */
-
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 32px;
-  padding: 14px 32px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.wordmark {
-  margin: 0;
-  font: 400 26.7px/1 var(--serif);
-  letter-spacing: -0.01em;
-}
-
-.files {
-  display: flex;
-  gap: 24px;
-  margin: 0;
-  min-width: 0;
-}
-
-.files div {
-  min-width: 0;
-}
-
-.files dt {
-  font-size: 12px;
-  color: var(--pencil);
-}
-
-.files dd {
-  margin: 0;
-  max-width: 26ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.privacy {
-  margin: 0 0 0 auto;
-  font-size: 13px;
-  color: var(--pencil);
+  color: var(--ink);
 }
 
 .button {
@@ -141,6 +110,73 @@ kbd {
   color: var(--paper);
 }
 
+/* Header */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px 32px;
+  padding: 14px 32px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.wordmark {
+  flex: none;
+  margin: 0;
+  font: 400 26.7px/1 var(--serif);
+  letter-spacing: -0.01em;
+}
+
+.files {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 24px;
+  min-width: 0;
+  margin: 0;
+}
+
+.files div {
+  min-width: 0;
+}
+
+.files dt {
+  font-size: 12px;
+  color: var(--pencil);
+}
+
+/* The name's head gives way to an ellipsis; its tail (see showName) always shows. */
+.files dd {
+  display: flex;
+  max-width: 40ch;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.files dd span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.files dd span:last-child {
+  flex: none;
+}
+
+.privacy {
+  flex: 0 1 auto;
+  min-width: 11rem;
+  margin: 0 0 0 auto;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: right;
+  text-wrap: balance;
+  color: var(--pencil);
+}
+
+.bar .button {
+  flex: none;
+}
+
 .status {
   margin: 16px 32px 0;
   padding: 10px 14px;
@@ -149,11 +185,23 @@ kbd {
   border-left: 3px solid var(--ink);
 }
 
+.status p {
+  margin: 0;
+}
+
+body:has(#empty:not([hidden])) .status {
+  box-sizing: border-box;
+  width: 36rem;
+  max-width: calc(100% - 32px);
+  margin-inline: auto;
+}
+
 /* Before anything is open. The dashed edge is the cut line the whole page drops onto. */
 
 .empty {
+  box-sizing: border-box;
   max-width: 36rem;
-  margin: 14vh auto 0;
+  margin: auto;
   padding: 40px 44px;
   border: 1.5px dashed var(--pencil);
   border-radius: 6px;
@@ -163,38 +211,60 @@ kbd {
   margin: 0 0 16px;
   font: 400 35.5px/1.15 var(--serif);
   letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
 .empty p {
-  margin: 0;
-  max-width: 60ch;
+  margin: 0 0 24px;
   font-size: 16px;
 }
 
 /* The current chord */
 
+.viewer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
 .now {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 17rem;
+  /* A fixed chord column, wide enough for E♭7/B♭, so the facts don't shift with each name. */
+  grid-template-columns: 26rem minmax(0, 1fr) 17rem;
+  grid-template-areas: "chord facts key";
+  align-items: center;
   align-content: center;
-  gap: 40px;
+  gap: 24px 40px;
   padding: 28px 32px;
 }
 
+/* Each role has a colour and a mark of its own (solid, dashed, double), so the roles stay apart
+   without colour vision too. */
 [data-role="secondary_dominant"] {
   --role: var(--sec);
   --role-fill: var(--sec-fill);
+  --mark: linear-gradient(var(--sec), var(--sec));
+  --mark-height: 4px;
 }
 
 [data-role="borrowed"] {
   --role: var(--bor);
   --role-fill: var(--bor-fill);
+  --mark: repeating-linear-gradient(90deg, var(--bor) 0 7px, transparent 7px 11px);
+  --mark-height: 4px;
 }
 
 [data-role="chromatic"] {
   --role: var(--chr);
   --role-fill: var(--chr-fill);
+  --mark: linear-gradient(var(--chr) 0 2px, transparent 2px 4px, var(--chr) 4px 6px);
+  --mark-height: 6px;
+}
+
+.now-chord {
+  grid-area: chord;
+  min-width: 0;
 }
 
 .big-chord {
@@ -211,9 +281,9 @@ kbd {
 }
 
 .big-numeral {
-  min-height: 1.1em;
-  margin: 10px 0 22px;
-  font: 400 47.4px/1.1 var(--serif);
+  min-height: 1.2em;
+  margin: 10px 0 0;
+  font: 400 47.4px/1.2 var(--serif);
   color: var(--role, var(--ink));
 }
 
@@ -228,6 +298,7 @@ kbd {
 }
 
 .facts {
+  grid-area: facts;
   display: grid;
   grid-template-columns: 8rem minmax(0, 1fr);
   row-gap: 6px;
@@ -246,15 +317,12 @@ kbd {
   margin: 0;
 }
 
-.facts dd::first-letter {
-  text-transform: uppercase;
-}
-
 #now-role {
   color: var(--role, var(--ink));
 }
 
 .key {
+  grid-area: key;
   padding-left: 28px;
   border-left: 1px solid var(--rule);
 }
@@ -305,8 +373,8 @@ kbd {
 }
 
 .segment {
-  --bar: transparent;
   --under: transparent;
+  --under-height: 4px;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -317,47 +385,46 @@ kbd {
   padding: 11px 8px 8px;
   border: 0;
   border-right: 2px solid var(--sheet);
-  background: var(--role-fill, var(--cell));
-  box-shadow:
-    inset 0 3px 0 var(--bar),
-    inset 0 -4px 0 var(--under);
+  background:
+    var(--mark, none) top / 100% var(--mark-height, 0) no-repeat,
+    var(--role-fill, var(--cell));
+  box-shadow: inset 0 calc(-1 * var(--under-height)) 0 var(--under);
   color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
-}
-
-.segment[data-role="secondary_dominant"],
-.segment[data-role="borrowed"],
-.segment[data-role="chromatic"] {
-  --bar: var(--role);
+  /* clip, not hidden: hidden would make each segment a scroller and stop the sticky labels. */
+  overflow: clip;
+  container-type: inline-size;
 }
 
 /* No chord: hatched and quiet, so a long silence reads as a gap rather than a chord. */
 .segment[data-role="none"] {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--sheet) 0 5px,
-    var(--hatch) 5px 6px
-  );
+  background: repeating-linear-gradient(-45deg, var(--sheet) 0 5px, var(--hatch) 5px 6px);
   color: var(--pencil);
 }
 
 .segment:hover {
-  filter: brightness(0.96);
+  --under: var(--pencil);
+  --under-height: 2px;
 }
 
 .segment.current {
   --under: var(--ink);
+  --under-height: 4px;
 }
 
 .segment:focus-visible {
   outline-offset: -5px;
 }
 
+/* Labels stay in view while the start of a long chord is scrolled off to the left. */
 .segment-chord,
 .segment-numeral {
+  position: sticky;
+  left: 8px;
+  align-self: flex-start;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -382,6 +449,17 @@ kbd {
 
 .segment[data-role="none"] .segment-chord {
   font-size: 15px;
+}
+
+/* A one-beat chord at a quick tempo: smaller type, so a slash chord keeps its bass. */
+@container (max-width: 72px) {
+  .segment-chord {
+    font-size: 16px;
+  }
+
+  .segment-numeral {
+    font-size: 15px;
+  }
 }
 
 .ruler {
@@ -435,17 +513,19 @@ kbd {
 .legend li::before {
   content: "";
   display: inline-block;
-  width: 14px;
-  height: 11px;
+  box-sizing: border-box;
+  width: 20px;
+  height: 14px;
   margin-right: 7px;
-  vertical-align: -1px;
-  background: var(--role-fill, var(--cell));
-  box-shadow: inset 0 2px 0 var(--role, transparent);
+  vertical-align: -2px;
+  background:
+    var(--mark, none) top / 100% var(--mark-height, 0) no-repeat,
+    var(--role-fill, var(--cell));
+  border: 1px solid var(--rule);
 }
 
 .legend [data-role="none"]::before {
   background: repeating-linear-gradient(-45deg, var(--sheet) 0 3px, var(--hatch) 3px 4px);
-  box-shadow: inset 0 0 0 1px var(--hatch);
 }
 
 /* Playback */
@@ -461,6 +541,8 @@ kbd {
 .transport audio {
   flex: 1 1 28rem;
   min-width: 16rem;
+  /* The focus ring follows the rounded player instead of boxing it. */
+  border-radius: 28px;
 }
 
 .transport p {
@@ -474,11 +556,6 @@ kbd {
 
 .keys {
   font-size: 13px;
-}
-
-.keys kbd {
-  font-size: 12px;
-  color: var(--ink);
 }
 
 .dropzone {
@@ -497,7 +574,28 @@ kbd {
   font: 400 35.5px/1.2 var(--serif);
 }
 
+@media (max-width: 1180px) {
+  .now {
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    grid-template-areas:
+      "chord key"
+      "facts key";
+  }
+
+  .big-chord {
+    font-size: 84px;
+  }
+
+  .big-numeral {
+    font-size: 35.5px;
+  }
+}
+
 @media (max-width: 760px) {
+  .bar {
+    flex-wrap: wrap;
+  }
+
   .bar,
   .now,
   .timeline,
@@ -507,14 +605,15 @@ kbd {
   }
 
   .privacy {
-    margin-left: 0;
     order: 3;
     flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
   }
 
   .now {
     grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
+    grid-template-areas: "chord" "facts" "key";
   }
 
   .big-chord {
@@ -528,7 +627,7 @@ kbd {
   }
 
   .empty {
-    margin: 32px 16px 0;
+    margin: 32px 16px auto;
     padding: 28px 24px;
   }
 }

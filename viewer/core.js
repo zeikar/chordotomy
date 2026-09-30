@@ -27,8 +27,11 @@ const Core = (() => {
   // A secondary dominant's root, a fifth above its diatonic target, lands on the same degree, so
   // this also spells V/x and the candidates, which have no numeral of their own.
   const DEGREE = [0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6];
-  // Letter steps from the root to the chord member that an inversion puts in the bass.
+  // Letter steps from the root to the chord member that an inversion puts in the bass, and to a
+  // chord tone by its semitones above the root.
   const MEMBER_STEPS = { root: 0, first: 2, second: 4, third: 6 };
+  const INTERVAL_STEPS = { 0: 0, 3: 2, 4: 2, 7: 4, 10: 6 };
+  const QUALITY_INTERVALS = { maj: [0, 4, 7], min: [0, 3, 7], 7: [0, 4, 7, 10] };
   const FIGURES = {
     triad: { first: ["6"], second: ["6", "4"] },
     seventh: { first: ["6", "5"], second: ["4", "3"], third: ["4", "2"] },
@@ -89,6 +92,20 @@ const Core = (() => {
     const name = spellRoot(chord, parseKey(keyLabel)).name + QUALITY_SUFFIX[chord.split(":")[1]];
     if (!bass || !inversion || inversion === "root") return name;
     return `${name}/${bassName(chord, keyLabel, bass, inversion)}`;
+  }
+
+  // Another candidate for a segment, spelled to agree with the segment's chord: a root that is a
+  // tone of that chord keeps the tone's letter (G♯m beside E7/G♯, not A♭m); any other root is a
+  // degree of the key.
+  function alternativeName(candidate, chord, keyLabel) {
+    if (candidate === "N" || chord === "N") return chordName(candidate, keyLabel);
+    const [root, quality] = chord.split(":");
+    const [otherRoot, otherQuality] = candidate.split(":");
+    const pc = SHARPS.indexOf(otherRoot);
+    const interval = mod(pc - SHARPS.indexOf(root), 12);
+    if (!QUALITY_INTERVALS[quality].includes(interval)) return chordName(candidate, keyLabel);
+    const letter = spellRoot(chord, parseKey(keyLabel)).letter + INTERVAL_STEPS[interval];
+    return spell(pc, letter).name + QUALITY_SUFFIX[otherQuality];
   }
 
   // Split a numeral into parts for display, with the figured bass its inversion calls for:
@@ -160,6 +177,7 @@ const Core = (() => {
   }
 
   return {
+    alternativeName,
     bassName,
     chordName,
     formatTime,

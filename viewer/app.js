@@ -36,13 +36,17 @@
   let turnTarget = 0;
   let turnUntil = 0;
 
+  // Messages add up while one batch of files loads, so a skipped file isn't hidden by an error.
   function say(text) {
-    $("status").textContent = text || "";
-    $("status").hidden = !text;
+    const line = document.createElement("p");
+    line.textContent = text;
+    $("status").append(line);
+    $("status").hidden = false;
   }
 
   function takeFiles(files) {
-    say(null);
+    $("status").replaceChildren();
+    $("status").hidden = true;
     const skipped = [];
     for (const file of files) {
       if (/\.json$/i.test(file.name) || file.type === "application/json") loadTimeline(file);
@@ -52,8 +56,15 @@
     if (skipped.length) say(`Skipped ${skipped.join(", ")}: not a recording or a .chords.json.`);
   }
 
+  // A long name is cut in the middle: its end is where a recording and its timeline differ
+  // (.mp3, .chords.json, .prototype.chords.json).
   function showName(id, name) {
-    $(id).textContent = name;
+    const cut = Math.max(0, name.length - 22);
+    const head = document.createElement("span");
+    const tail = document.createElement("span");
+    head.textContent = name.slice(0, cut);
+    tail.textContent = name.slice(cut);
+    $(id).replaceChildren(head, tail);
     $(id).title = name;
     $("files").hidden = false;
   }
@@ -155,6 +166,13 @@
     if (parts.target) element.append(`/${parts.target}`);
   }
 
+  // Figures read one by one ("V 6 5 of V"), not as a number.
+  function spokenNumeral(segment) {
+    const parts = Core.numeralParts(segment.numeral, segment.inversion);
+    const head = [parts.accidental + parts.roman, ...parts.figures].join(" ");
+    return parts.target ? `${head} of ${parts.target}` : head;
+  }
+
   function renderTimeline() {
     const { beats, segments } = timeline;
     // Scale by the beat, not the second, so a one-beat chord has room for its name at any tempo.
@@ -179,10 +197,12 @@
       numeral.className = "segment-numeral";
       renderNumeral(numeral, segment);
       button.append(chord, numeral);
-      const numeralText = segment.numeral ? Core.numeralText(segment.numeral, segment.inversion) : "";
-      const label = [name, numeralText, Core.formatTime(segment.start_time)].filter(Boolean);
+      button.title = segment.numeral
+        ? `${name}  ${Core.numeralText(segment.numeral, segment.inversion)}`
+        : name;
+      const spoken = segment.numeral ? spokenNumeral(segment) : "";
+      const label = [name, spoken, Core.formatTime(segment.start_time)].filter(Boolean);
       button.setAttribute("aria-label", label.join(", "));
-      button.title = label.slice(0, 2).join("  ");
       return button;
     });
     $("segments").replaceChildren(...buttons);
@@ -211,6 +231,8 @@
     if (segment.role === "borrowed") {
       return `Borrowed from the parallel ${keyLabel.endsWith(":maj") ? "minor" : "major"}`;
     }
+    // Only diatonic chords have a function.
+    if (segment.function) return `Diatonic, ${segment.function} function`;
     return ROLE_TEXT[segment.role] || "Not analyzed";
   }
 
@@ -224,15 +246,14 @@
       segment.inversion,
     );
     renderNumeral($("now-numeral"), segment);
+    // Every row always shows, so the panel doesn't jump on chord changes.
     $("now-role").textContent = isChord ? roleText(segment) : "No chord";
-    $("now-function-row").hidden = !segment.function;
-    $("now-function").textContent = segment.function || "";
-    $("now-bass-row").hidden = !isChord;
     const bass = Core.bassName(segment.chord, keyLabel, segment.bass, segment.inversion);
     $("now-bass").textContent = bass ? `${bass}, ${INVERSION_TEXT[segment.inversion]}` : "None heard";
-    const others = segment.candidates.slice(1).map((label) => Core.chordName(label, keyLabel));
-    $("now-alt-row").hidden = others.length === 0;
-    $("now-alt").textContent = others.join(", ");
+    $("now-alt").textContent = segment.candidates
+      .slice(1)
+      .map((label) => Core.alternativeName(label, segment.chord, keyLabel))
+      .join(", ");
   }
 
   function show(index) {
@@ -275,7 +296,9 @@
     if (x >= left && x <= left + width * 0.85) return;
     turnTarget = Math.max(0, x - width * 0.15);
     turnUntil = performance.now() + 600;
-    strip.scrollTo({ left: turnTarget, behavior: reducedMotion.matches ? "auto" : "smooth" });
+    // A long seek jumps: smooth-scrolling through minutes of chords is only a blur.
+    const jump = reducedMotion.matches || Math.abs(turnTarget - strip.scrollLeft) > width;
+    strip.scrollTo({ left: turnTarget, behavior: jump ? "auto" : "smooth" });
   }
 
   function frame() {
@@ -301,7 +324,9 @@
     }
   }
 
-  $("open").addEventListener("click", () => picker.click());
+  for (const button of document.querySelectorAll(".open-files")) {
+    button.addEventListener("click", () => picker.click());
+  }
   picker.addEventListener("change", () => {
     takeFiles(picker.files);
     picker.value = ""; // so choosing the same file again still fires change
