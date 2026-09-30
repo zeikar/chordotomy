@@ -18,7 +18,7 @@ viewer ←── chord-timeline JSON ←── key estimation + Roman numerals
 - The first version uses no ML: librosa chroma and beat tracking, then major / minor / 7th templates.
 - The bass note comes from a low-register CQT of the mix. It settles slash chords and inversions (`F#7/A#`), which the chroma can't: it folds all octaves together and can't tell which note is lowest. See "Bass from DSP, not Demucs" under Design decisions.
 - Analysis marks secondary dominants and borrowed chords. The analyzer writes no prose: the explanations come from a Claude Code skill that reads the JSON. See "Explanations from an agent skill" under Design decisions.
-- A Python CLI (uv, Typer) writes the JSON. A static HTML viewer plays the audio, highlights the current chord, and lets you correct chords.
+- A Python CLI (uv, Typer) writes the JSON. A static HTML viewer (`viewer/`) plays the audio and highlights the current chord; correcting chords in it comes later.
 
 ### Stages implemented
 

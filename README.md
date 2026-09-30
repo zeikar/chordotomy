@@ -24,7 +24,8 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 - [x] Roman-numeral analysis, with highlights for secondary dominants and borrowed chords
 - [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
 - [x] Short explanations of the highlighted moves (a Claude Code skill)
-- [ ] Viewer: playback that highlights the current chord, plus chord editing and manual entry
+- [x] Viewer: playback that highlights the current chord
+- [ ] Chord editing and manual entry in the viewer
 
 ## Usage
 
