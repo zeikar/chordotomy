@@ -168,6 +168,92 @@ const Core = (() => {
     return null;
   }
 
+  // Hearing the chords. Voicings are MIDI note numbers: 60 is middle C.
+
+  const INTERVALS = { maj: [0, 4, 7], min: [0, 3, 7], 7: [0, 4, 7, 10] };
+  const MIDDLE_C = 60;
+  // The lowest upper voice stays in G3–F♯4, one candidate per inversion, so a long progression
+  // can't creep up or down the keyboard; the bass sits in E2–D♯3, always below it.
+  const LOWEST_VOICE = 55;
+  const LOWEST_BASS = 40;
+
+  function pitchClasses(chord) {
+    if (chord === "N") return [];
+    const [root, quality] = chord.split(":");
+    return INTERVALS[quality].map((interval) => (SHARPS.indexOf(root) + interval) % 12);
+  }
+
+  function inversions(pcs) {
+    const out = [];
+    for (let low = LOWEST_VOICE; low < LOWEST_VOICE + 12; low++) {
+      const first = pcs.indexOf(low % 12);
+      if (first < 0) continue;
+      const notes = [low];
+      for (let k = 1; k < pcs.length; k++) {
+        const pc = pcs[(first + k) % pcs.length];
+        notes.push(notes[k - 1] + mod(pc - notes[k - 1], 12));
+      }
+      out.push(notes);
+    }
+    return out;
+  }
+
+  // How far the voices move: each note to the nearest note of the other chord, both ways, so a
+  // triad and a seventh chord compare too.
+  function motion(a, b) {
+    const nearest = (note, chord) => Math.min(...chord.map((other) => Math.abs(note - other)));
+    const total = (from, to) => from.reduce((sum, note) => sum + nearest(note, to), 0);
+    return total(a, b) + total(b, a);
+  }
+
+  // The close-position inversion that moves least from `previous`; with none, the one nearest
+  // middle C. Ties go to the one nearer the middle.
+  function closestVoicing(pcs, previous) {
+    const centre = (notes) => Math.abs(notes[0] - MIDDLE_C);
+    const cost = (notes) => (previous ? motion(notes, previous) : 0) + centre(notes) / 100;
+    return inversions(pcs).reduce((best, notes) => (cost(notes) < cost(best) ? notes : best));
+  }
+
+  // One voicing per segment in timeline order, each led from the last chord heard (across any N),
+  // so it doesn't depend on where playback starts. The bass is the segment's bass note, else the
+  // root, so slash chords and inversions can be heard. N is null: silence.
+  function voicings(segments) {
+    let previous = null;
+    return segments.map((segment) => {
+      if (segment.chord === "N") return null;
+      const pcs = pitchClasses(segment.chord);
+      previous = closestVoicing(pcs, previous);
+      const bass = segment.bass ? SHARPS.indexOf(segment.bass) : pcs[0];
+      return { notes: previous, bass: LOWEST_BASS + mod(bass - LOWEST_BASS, 12) };
+    });
+  }
+
+  // One strike per beat of every chord, so a change that misses the music's beat is easy to
+  // hear. Each lasts until the next beat; a chord's last beat runs to the segment's end.
+  function strikes(timeline) {
+    const out = [];
+    timeline.segments.forEach((segment, index) => {
+      if (segment.chord === "N") return;
+      for (let beat = segment.start_beat; beat < segment.end_beat; beat++) {
+        const end = beat + 1 < segment.end_beat ? timeline.beats[beat + 1] : segment.end_time;
+        out.push({ time: timeline.beats[beat], end, segment: index });
+      }
+    });
+    return out;
+  }
+
+  // The first strike that hasn't ended by `t`: the one sounding at `t`, or else the next.
+  function strikeIndexAt(list, t) {
+    let lo = 0;
+    let hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].end <= t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
   function formatTime(seconds) {
     const s = Math.max(0, Math.floor(seconds));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -177,13 +263,18 @@ const Core = (() => {
     alternativeName,
     bassName,
     chordName,
+    closestVoicing,
     formatTime,
     keyName,
     numeralParts,
     numeralText,
+    pitchClasses,
     segmentIndexAt,
+    strikeIndexAt,
+    strikes,
     targetName,
     timelineProblem,
+    voicings,
   };
 })();
 

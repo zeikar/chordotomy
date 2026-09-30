@@ -58,7 +58,9 @@ The viewer plays a recording along with its chord timeline. It shows the current
 
 Open it at <https://zeikar.github.io/chordotomy/> once Pages is enabled, or open `viewer/index.html` from a checkout. Drop the recording and its `.chords.json` on the page, or pick them with **Open files**. The files stay in your browser. The page reads them locally and makes no network requests.
 
-Space plays and pauses, ← and → step through the chords, and clicking a chord jumps to it. Editing chords comes later.
+To check the chords by ear, turn on **Hear chords**. The page plays each detected chord on every beat, with its bass note, under the recording. **Mute recording** leaves the chords on their own. The sound is synthesized in the browser.
+
+Space plays and pauses, ← and → step through the chords, H turns the chords on and off, M mutes the recording, and clicking a chord jumps to it. Editing chords comes later.
 
 ## Development
 
@@ -73,6 +75,17 @@ node --test viewer/tests/
 ```
 
 The viewer is plain HTML, CSS, and JavaScript with no build step. Its tests need Node and no packages.
+
+### Real-audio evaluation (opt-in)
+
+`uv sync --extra dev --extra eval` adds mir_eval and pooch, which also enables the evaluation tests (skipped without it). Then:
+
+```sh
+uv run chordotomy evaluate tiny-aam [--limit N]
+uv run chordotomy evaluate guitarset [--limit N]
+```
+
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. Both datasets are CC BY 4.0 and land in the pooch cache (`~/Library/Caches/chordotomy` on macOS; delete it to re-download), never in the repo. The default test run never touches the network. The scores are numbers for development only.
 
 ## License
 

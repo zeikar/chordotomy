@@ -9,6 +9,13 @@
   // previous segment.
   const SEEK_NUDGE = 0.001;
   const AUDIO_NAME = /\.(mp3|wav|flac|m4a|aac|ogg|oga|opus|webm)$/i;
+  // Hearing the chords: every TICK_MS, notes due in the next LOOKAHEAD seconds are scheduled on
+  // the AudioContext clock, mapped from the recording's currentTime. Timers are too coarse to
+  // start notes on time themselves; the audio clock isn't.
+  const TICK_MS = 50;
+  const LOOKAHEAD = 0.15;
+  const ATTACK = 0.012;
+  const RELEASE = 0.02; // time constant of the fade just before the next beat
   const INVERSION_TEXT = {
     root: "root position",
     first: "first inversion",
@@ -34,6 +41,14 @@
   let looping = false;
   let turnTarget = 0;
   let turnUntil = 0;
+  let chordStrikes = [];
+  let chordVoicings = [];
+  let hearChords = false;
+  let context = null;
+  let chordBus = null;
+  let session = null; // the notes of one unbroken stretch of playback, faded out together
+  let ticker = null;
+  let nextStrike = 0;
 
   // Messages add up while one batch of files loads, so a skipped file isn't hidden by an error.
   function say(text) {
@@ -79,6 +94,7 @@
     audio.src = audioUrl;
     audio.hidden = false;
     $("no-audio").hidden = true;
+    $("listen").hidden = false;
     showName("audio-name", file.name);
   }
 
@@ -100,6 +116,10 @@
     showName("json-name", file.name);
     renderKey();
     renderTimeline();
+    stopChords();
+    chordStrikes = Core.strikes(data);
+    chordVoicings = Core.voicings(data.segments);
+    startChords();
     $("empty").hidden = true;
     $("viewer").hidden = false;
     current = null;
@@ -330,6 +350,106 @@
     }
   }
 
+  // Squared, so the slider sounds even. Measured on a mastered track, the default (70) sits about
+  // 8 dB under the recording, and the top reaches its level for listening to the chords alone
+  // with peaks still short of clipping.
+  function chordGain() {
+    return 1.4 * (Number($("chord-volume").value) / 100) ** 2;
+  }
+
+  // First called from the toggle, a user gesture, so the autoplay policy lets the context run.
+  function ensureContext() {
+    if (!context) {
+      context = new AudioContext();
+      chordBus = new GainNode(context, { gain: chordGain() });
+      // Takes the edge off the triangle waves, so the chords sit under the recording.
+      const lowpass = new BiquadFilterNode(context, { type: "lowpass", frequency: 1800 });
+      chordBus.connect(lowpass).connect(context.destination);
+    }
+    if (context.state === "suspended") {
+      context.resume().catch((error) => say(`Couldn't start the chord sound: ${error.message}`));
+    }
+  }
+
+  function startChords() {
+    if (ticker || !hearChords || !timeline || !audioUrl || audio.paused) return;
+    ensureContext();
+    session = new GainNode(context);
+    session.connect(chordBus);
+    // Mid-beat, the chord sounding now starts at once rather than waiting for the next beat.
+    nextStrike = Core.strikeIndexAt(chordStrikes, audio.currentTime);
+    ticker = setInterval(scheduleChords, TICK_MS);
+    scheduleChords();
+  }
+
+  // On pause, seek, stall, rate change or the toggle: fade out everything sounding or queued. The
+  // next start finds its place afresh, so a long seek can't release a burst of stale notes.
+  function stopChords() {
+    clearInterval(ticker);
+    ticker = null;
+    if (!session) return;
+    const old = session;
+    old.gain.setTargetAtTime(0, context.currentTime, 0.01);
+    setTimeout(() => old.disconnect(), 1000);
+    session = null;
+  }
+
+  function scheduleChords() {
+    if (context.state !== "running") return;
+    const media = audio.currentTime;
+    const now = context.currentTime;
+    const rate = audio.playbackRate;
+    while (
+      nextStrike < chordStrikes.length &&
+      chordStrikes[nextStrike].time < media + LOOKAHEAD * rate
+    ) {
+      const strike = chordStrikes[nextStrike++];
+      if (strike.end <= media) continue; // already over: late is better skipped than stacked
+      const start = now + Math.max(0, strike.time - media) / rate;
+      strikeChord(chordVoicings[strike.segment], start, now + (strike.end - media) / rate);
+    }
+  }
+
+  // A soft, clearly pitched voice per note: a triangle and a slightly detuned sine, a quick attack,
+  // a decay toward a lower sustain, and a fade just before the next beat so each strike is heard.
+  function strikeChord(voicing, start, end) {
+    const release = Math.max(start + ATTACK, end - 0.05);
+    const notes = [[voicing.bass, 0.1], ...voicing.notes.map((note) => [note, 0.07])];
+    for (const [note, level] of notes) {
+      const envelope = new GainNode(context, { gain: 0 });
+      envelope.gain.setValueAtTime(0, start);
+      envelope.gain.linearRampToValueAtTime(level, start + ATTACK);
+      envelope.gain.setTargetAtTime(level * 0.4, start + ATTACK, 0.3);
+      envelope.gain.setTargetAtTime(0, release, RELEASE);
+      envelope.connect(session);
+      const frequency = 440 * 2 ** ((note - 69) / 12);
+      for (const [type, detune] of [
+        ["triangle", -4],
+        ["sine", 4],
+      ]) {
+        const oscillator = new OscillatorNode(context, { type, frequency, detune });
+        oscillator.connect(envelope);
+        oscillator.start(start);
+        oscillator.stop(release + RELEASE * 8);
+      }
+    }
+  }
+
+  function setHearChords(on) {
+    hearChords = on;
+    $("hear-chords").setAttribute("aria-pressed", String(on));
+    if (on) {
+      ensureContext();
+      startChords();
+    } else {
+      stopChords();
+    }
+  }
+
+  function toggleMute() {
+    audio.muted = !audio.muted;
+  }
+
   for (const button of document.querySelectorAll(".open-files")) {
     button.addEventListener("click", () => picker.click());
   }
@@ -344,8 +464,39 @@
     if (button) seek(Number(button.dataset.index));
   });
 
+  $("hear-chords").addEventListener("click", () => setHearChords(!hearChords));
+  $("mute-recording").addEventListener("click", toggleMute);
+  $("chord-volume").addEventListener("input", () => {
+    if (chordBus) chordBus.gain.setTargetAtTime(chordGain(), context.currentTime, 0.02);
+  });
+  // The native controls can mute too, so the button follows the element rather than a flag.
+  audio.addEventListener("volumechange", () => {
+    $("mute-recording").setAttribute("aria-pressed", String(audio.muted));
+  });
+
+  // The chords follow the recording's clock: they start when it runs and stop whenever it stops
+  // or jumps. A seek is seeking (stop) then seeked (start from the new place).
+  audio.addEventListener("playing", startChords);
+  audio.addEventListener("seeked", startChords);
+  for (const type of ["pause", "seeking", "waiting", "ended", "emptied"]) {
+    audio.addEventListener(type, stopChords);
+  }
+  audio.addEventListener("ratechange", () => {
+    stopChords();
+    startChords();
+  });
+
   document.addEventListener("keydown", (event) => {
     if (!timeline || event.altKey || event.ctrlKey || event.metaKey) return;
+    // Letter shortcuts work from any control; none of them takes letters.
+    const letter = event.key.toLowerCase();
+    if ((letter === "h" || letter === "m") && audioUrl) {
+      if (!event.repeat) {
+        if (letter === "h") setHearChords(!hearChords);
+        else toggleMute();
+      }
+      return;
+    }
     // Other controls keep their own keys. On a chord button Space plays rather than seeks. The
     // audio element toggles on Space by itself (preventDefault doesn't stop it), but its arrows
     // step chords here like everywhere else.

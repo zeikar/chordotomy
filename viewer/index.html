@@ -101,9 +101,21 @@
       <section class="transport" aria-label="Playback">
         <audio id="audio" controls preload="auto" hidden></audio>
         <p class="no-audio" id="no-audio">Open the recording too to play along.</p>
+        <div class="listen" id="listen" hidden>
+          <button type="button" class="button toggle" id="hear-chords" aria-pressed="false">
+            Hear chords
+          </button>
+          <label class="volume">
+            Chord volume
+            <input type="range" id="chord-volume" min="0" max="100" value="70" />
+          </label>
+          <button type="button" class="button toggle" id="mute-recording" aria-pressed="false">
+            Mute recording
+          </button>
+        </div>
         <p class="keys">
           <kbd>Space</kbd> play or pause <kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous or next
-          chord. Click a chord to jump to it.
+          chord <kbd>H</kbd> hear chords <kbd>M</kbd> mute recording. Click a chord to jump to it.
         </p>
       </section>
     </main>

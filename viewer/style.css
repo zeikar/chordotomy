@@ -562,12 +562,12 @@ body:has(#empty:not([hidden])) .status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px 28px;
-  padding: 18px 32px 32px;
+  gap: 10px 28px;
+  padding: 16px 32px 24px;
 }
 
 .transport audio {
-  flex: 1 1 28rem;
+  flex: 1 1 24rem;
   min-width: 16rem;
   /* The focus ring follows the rounded player instead of boxing it. */
   border-radius: 28px;
@@ -582,7 +582,57 @@ body:has(#empty:not([hidden])) .status {
   flex: 1 1 28rem;
 }
 
+.listen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+}
+
+/* A toggle shows its state with a dot, hollow when off and filled when on, and a filled face;
+   hovering doesn't fill it, so hover never looks like on. */
+.toggle::before {
+  content: "";
+  display: inline-block;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.toggle:hover {
+  background: var(--cell);
+  color: var(--ink);
+}
+
+.toggle[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.toggle[aria-pressed="true"]::before {
+  background: currentColor;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+.volume input {
+  width: 7rem;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
 .keys {
+  flex-basis: 100%;
   font-size: 13px;
 }
 

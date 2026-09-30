@@ -165,3 +165,77 @@ test("times format as m:ss", () => {
   assert.equal(formatTime(65.9), "1:05");
   assert.equal(formatTime(600), "10:00");
 });
+
+test("a label's pitch classes, root first", () => {
+  assert.deepEqual(Core.pitchClasses("C:maj"), [0, 4, 7]);
+  assert.deepEqual(Core.pitchClasses("A:min"), [9, 0, 4]);
+  assert.deepEqual(Core.pitchClasses("G:7"), [7, 11, 2, 5]);
+  assert.deepEqual(Core.pitchClasses("N"), []);
+});
+
+test("the first chord sits on middle C", () => {
+  assert.deepEqual(Core.closestVoicing([0, 4, 7], null), [60, 64, 67]);
+});
+
+test("each chord takes the inversion closest to the one before", () => {
+  const c = [60, 64, 67];
+  assert.deepEqual(Core.closestVoicing(Core.pitchClasses("G:maj"), c), [59, 62, 67]);
+  assert.deepEqual(Core.closestVoicing(Core.pitchClasses("F:maj"), c), [60, 65, 69]);
+  assert.deepEqual(Core.closestVoicing(Core.pitchClasses("G:7"), c), [59, 62, 65, 67]);
+  assert.deepEqual(Core.closestVoicing(Core.pitchClasses("C:maj"), c), c);
+});
+
+test("voicings don't drift out of the middle register", () => {
+  // Round the circle of fifths twice, which would climb forever without a register window.
+  const roots = ["C", "G", "D", "A", "E", "B", "F#", "C#", "G#", "D#", "A#", "F"];
+  let previous = null;
+  for (let i = 0; i < 24; i++) {
+    previous = Core.closestVoicing(Core.pitchClasses(`${roots[i % 12]}:7`), previous);
+    assert.ok(Math.min(...previous) >= 55 && Math.max(...previous) <= 77, previous.join(" "));
+  }
+});
+
+test("segments get voicings in order, a bass below them, and silence for N", () => {
+  const segment = (chord, bass) => ({ chord, bass });
+  const [c, n, g, e] = Core.voicings([
+    segment("C:maj", "E"),
+    segment("N", null),
+    segment("G:7", null),
+    segment("E:7", "G#"),
+  ]);
+  assert.deepEqual(c, { notes: [60, 64, 67], bass: 40 }); // E2: the slash bass, not the root
+  assert.equal(n, null);
+  assert.deepEqual(g, { notes: [59, 62, 65, 67], bass: 43 }); // led from C across the N; G2 root
+  assert.equal(e.bass, 44); // G#2
+  assert.ok(e.bass < Math.min(...e.notes));
+});
+
+test("every beat of a chord strikes it, and N stays silent", () => {
+  const timeline = {
+    beats: [0.5, 1, 1.5, 2, 2.5],
+    segments: [
+      { start_beat: 0, end_beat: 1, end_time: 1, chord: "N" },
+      { start_beat: 1, end_beat: 3, end_time: 2, chord: "C:maj" },
+      { start_beat: 3, end_beat: 5, end_time: 3, chord: "G:maj" },
+    ],
+  };
+  assert.deepEqual(Core.strikes(timeline), [
+    { time: 1, end: 1.5, segment: 1 },
+    { time: 1.5, end: 2, segment: 1 },
+    { time: 2, end: 2.5, segment: 2 },
+    { time: 2.5, end: 3, segment: 2 }, // the last beat runs to the segment's end
+  ]);
+});
+
+test("the strike to start from is the one still sounding, else the next", () => {
+  const strikes = [
+    { time: 1, end: 1.5 },
+    { time: 1.5, end: 2 },
+    { time: 3, end: 3.5 }, // after a gap of N
+  ];
+  assert.equal(Core.strikeIndexAt(strikes, 0), 0);
+  assert.equal(Core.strikeIndexAt(strikes, 1.2), 0); // mid-beat: the chord sounds at once
+  assert.equal(Core.strikeIndexAt(strikes, 1.5), 1);
+  assert.equal(Core.strikeIndexAt(strikes, 2.5), 2);
+  assert.equal(Core.strikeIndexAt(strikes, 9), 3);
+});
