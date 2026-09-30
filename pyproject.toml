@@ -20,6 +20,10 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.5",
 ]
+eval = [
+  "mir_eval>=0.8",
+  "pooch>=1.8",
+]
 
 [build-system]
 requires = ["hatchling"]
