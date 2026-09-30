@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from itertools import pairwise
+from itertools import groupby, pairwise
 
 import librosa
 import numpy as np
@@ -49,27 +49,54 @@ def smooth(sims: np.ndarray) -> np.ndarray:
 
 
 CANDIDATES = 3
+# A bass move cuts a chord run once it holds this many beats. A chord change already cuts, so this
+# governs moves under a held chord only: there a one-beat move is a passing or walking tone, and
+# cutting on it would fragment the timeline without changing the harmony; two beats is a new bass.
+BASS_HOLD = 2
 
 
 def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]:
-    """Merge runs of equal state into segments, each with ranked candidate labels and a bass.
+    """Cut the beats into segments, each with ranked candidate labels and a bass.
 
-    cqt is the (84, n) beat-synchronous matrix from beat_chroma. A segment's bass is the most
-    frequent per-beat pick_bass value (ties to the earliest), or None for N or a silent register.
+    A segment ends where the smoothed state changes and, inside a chord run, where the per-beat
+    pick_bass value changes to one held for BASS_HOLD beats, so consecutive segments may share a
+    chord. cqt is the (84, n) beat-synchronous matrix from beat_chroma. A segment's bass is its
+    held value; with none, the most frequent per-beat value (ties to the earliest). N has None.
     """
-    boundaries = [0, *(np.flatnonzero(np.diff(states)) + 1), len(states)]
+    basses = [pick_bass(column) for column in cqt.T]
+    runs = [0, *map(int, np.flatnonzero(np.diff(states)) + 1), len(states)]
+    held = {}  # segment start -> the bass held inside that segment
+    for run_start, run_end in pairwise(runs):
+        if LABELS[states[run_start]] == "N":
+            continue
+        groups = []  # (first beat, value) of every group of equal values that holds
+        beat = run_start
+        for value, group in groupby(basses[run_start:run_end]):
+            length = len(list(group))
+            if length >= BASS_HOLD:
+                groups.append((beat, value))
+            beat += length
+        if groups:
+            held[run_start] = groups[0][1]
+        for (_, previous), (beat, value) in pairwise(groups):
+            if value != previous:
+                held[beat] = value
     segments = []
-    for start, end in pairwise(boundaries):
+    for start, end in pairwise(sorted({*runs, *held})):
         chosen = int(states[start])
         mean = sims[:, start:end].mean(axis=1)
         # Rank by mean similarity, but the smoothed label leads: it is what the timeline shows.
         ranked = [i for i in np.argsort(-mean, kind="stable") if i != chosen]
         candidates = [LABELS[i] for i in [chosen, *ranked][:CANDIDATES]]
-        # A vote over per-beat values, not a pick on the mean profile: the reported bass must come
-        # from the same per-beat values the bass-change cut rule uses, so a loud one-beat note
-        # cannot outvote the beats around it.
-        votes = Counter(b for b in map(pick_bass, cqt[:, start:end].T) if b is not None)
-        bass = votes.most_common(1)[0][0] if votes and LABELS[chosen] != "N" else None
+        if start in held:
+            # The held value wins over a vote: a move shorter than BASS_HOLD, however loud, is
+            # excluded from the choice, so the reported bass is the one the cut rule saw.
+            bass = held[start]
+        else:
+            # A vote over the per-beat values the cut rule uses, not a pick on the mean profile,
+            # so a loud one-beat note cannot outvote the beats around it.
+            votes = Counter(b for b in basses[start:end] if b is not None)
+            bass = votes.most_common(1)[0][0] if votes and LABELS[chosen] != "N" else None
         segments.append(
             {
                 "start_beat": int(start),

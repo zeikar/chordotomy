@@ -47,9 +47,9 @@ def test_silent_and_flat_columns_are_no_chord() -> None:
     assert list(sims.argmax(axis=0)) == [LABELS.index("N")] * 2
 
 
-def _sims(overrides: dict[int, dict[str, float]]) -> np.ndarray:
-    """(37, 6) similarities: 0.6 everywhere, C:maj 0.95 / C:7 0.85 unless overridden per beat."""
-    sims = np.full((len(LABELS), 6), 0.6)
+def _sims(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
+    """(37, n) similarities: 0.6 everywhere, C:maj 0.95 / C:7 0.85 unless overridden per beat."""
+    sims = np.full((len(LABELS), n), 0.6)
     sims[LABELS.index("C:maj")] = 0.95
     sims[LABELS.index("C:7")] = 0.85
     for beat, values in overrides.items():
@@ -159,6 +159,63 @@ def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> 
     (only,) = segment(states, sims, _cqt(bins))
 
     assert only["bass"] == expected
+
+
+@pytest.mark.parametrize(
+    ("labels", "bins", "expected"),
+    [
+        # A bass held two beats under one chord cuts and is reported.
+        (["C:maj"] * 8, [12] * 4 + [16] * 4, [(0, 4, "C:maj", "C"), (4, 8, "C:maj", "E")]),
+        # A one-beat move under an unchanged chord neither cuts nor is reported,
+        (["C:maj"] * 8, [12] * 3 + [16] + [12] * 4, [(0, 8, "C:maj", "C")]),
+        # however loud it is,
+        (["C:maj"] * 4, [12] * 3 + [(16, 10.0)], [(0, 4, "C:maj", "C")]),
+        # nor at the start of the run.
+        (["C:maj"] * 8, [16] + [12] * 7, [(0, 8, "C:maj", "C")]),
+        # No value holds two beats: the most frequent, ties to the earliest.
+        (["C:maj"] * 8, [12, 16] * 4, [(0, 8, "C:maj", "C")]),
+        # A held silence cuts too.
+        (
+            ["C:maj"] * 6,
+            [12, 12, None, None, 16, 16],
+            [(0, 2, "C:maj", "C"), (2, 4, "C:maj", None), (4, 6, "C:maj", "E")],
+        ),
+        # A bass change on a chord change adds no cut.
+        (
+            ["C:maj"] * 4 + ["F:maj"] * 4,
+            [12] * 4 + [21] * 4,
+            [(0, 4, "C:maj", "C"), (4, 8, "F:maj", "A")],
+        ),
+        # An N run is never cut.
+        (["N"] * 8, [12] * 4 + [16] * 4, [(0, 8, "N", None)]),
+        # A one-beat chord run keeps its own bass, whatever the beats around it hold.
+        (
+            ["N"] * 3 + ["C:maj"] + ["N"] * 4,
+            [12] * 3 + [16] + [12] * 4,
+            [(0, 3, "N", None), (3, 4, "C:maj", "E"), (4, 8, "N", None)],
+        ),
+    ],
+)
+def test_segment_cuts_where_a_held_bass_changes(
+    labels: list[str], bins: list, expected: list[tuple]
+) -> None:
+    segments = segment(_states(*labels), _sims({}, len(labels)), _cqt(bins))
+
+    assert [(s["start_beat"], s["end_beat"], s["chord"], s["bass"]) for s in segments] == expected
+    json.dumps(segments)
+    for s in segments:
+        assert type(s["start_beat"]) is int
+        assert type(s["end_beat"]) is int
+        assert s["candidates"][0] == s["chord"]
+
+
+def test_segments_cut_on_the_bass_rank_candidates_over_their_own_beats() -> None:
+    sims = _sims({beat: {"E:min": 0.9} for beat in range(4, 8)}, 8)
+
+    first, second = segment(_states(*["C:maj"] * 8), sims, _cqt([12] * 4 + [16] * 4))
+
+    assert first["candidates"] == ["C:maj", "C:7", "C:min"]
+    assert second["candidates"] == ["C:maj", "E:min", "C:7"]
 
 
 @pytest.mark.parametrize(

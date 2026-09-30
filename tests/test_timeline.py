@@ -136,6 +136,70 @@ def test_bass_is_none_without_a_bass_note(synth, tmp_path) -> None:
     assert only["inversion"] is None
 
 
+def test_a_bass_held_two_beats_under_one_chord_cuts_and_is_reported(synth, tmp_path) -> None:
+    result = analyze(_write(tmp_path, synth([("C:maj", 4, 36), ("C:maj", 4, 40)])))
+    segments = result["segments"]
+
+    assert [(s["start_beat"], s["end_beat"]) for s in segments] == [(0, 4), (4, 8)]
+    assert [s["chord"] for s in segments] == ["C:maj", "C:maj"]
+    assert [s["bass"] for s in segments] == ["C", "E"]
+    assert [s["inversion"] for s in segments] == ["root", "first"]
+    assert [s["numeral"] for s in segments] == ["I", "I"]
+
+
+def test_a_shorter_bass_move_under_an_unchanged_chord_is_not_reported(synth, tmp_path) -> None:
+    progression = [("C:maj", 3, 36), ("C:maj", 1, 40), ("C:maj", 4, 36)]
+
+    (only,) = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert only["bass"] == "C"
+
+
+def test_an_alternating_bass_under_one_chord_is_one_root_position_segment(synth, tmp_path) -> None:
+    progression = [("C:maj", 1, 36), ("C:maj", 1, 40)] * 4
+
+    (only,) = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert only["bass"] == "C"
+    assert only["inversion"] == "root"
+
+
+def test_a_bass_change_on_a_chord_change_adds_no_cut(synth, tmp_path) -> None:
+    result = analyze(_write(tmp_path, synth([("C:maj", 4, 36), ("F:maj", 4, 45)])))
+
+    assert len(result["segments"]) == 2
+
+
+def test_a_one_beat_slash_chord_with_a_chord_change_is_its_own_segment(synth, tmp_path) -> None:
+    progression = [("C:maj", 4, 36), ("G:maj", 1, 47), ("A:min", 3, 45)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [(s["start_beat"], s["end_beat"]) for s in segments] == [(0, 4), (4, 5), (5, 8)]
+    assert [s["chord"] for s in segments] == ["C:maj", "G:maj", "A:min"]
+    assert [s["bass"] for s in segments] == ["C", "B", "A"]
+    assert [s["inversion"] for s in segments] == ["root", "first", "root"]
+    assert [s["numeral"] for s in segments] == ["I", "V", "vi"]
+
+
+def test_a_chord_split_on_the_bass_looks_ahead_to_the_next_chord(synth, tmp_path) -> None:
+    progression = [
+        ("A:min", 4, 45),
+        ("A:maj", 2, 37),
+        ("A:maj", 2, 40),
+        ("D:min", 4, 38),
+        ("A:min", 4, 45),
+    ]
+
+    segments = analyze(_write(tmp_path, synth(progression)), key="A:min")["segments"]
+
+    assert [s["chord"] for s in segments] == ["A:min", "A:maj", "A:maj", "D:min", "A:min"]
+    assert [s["bass"] for s in segments] == ["A", "C#", "E", "D", "A"]
+    assert [s["inversion"] for s in segments] == ["root", "first", "second", "root", "root"]
+    # Both halves of the split A:maj resolve to the D:min that follows the run.
+    assert [s["numeral"] for s in segments] == ["i", "V/iv", "V/iv", "iv", "i"]
+
+
 def test_edge_silence_is_n(synth, tmp_path) -> None:
     result = analyze(_write(tmp_path, synth([("C:maj", 4), ("N", 6)])))
     segments = result["segments"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from itertools import groupby
 from pathlib import Path
 
 from . import __version__, harmony
@@ -18,8 +19,12 @@ def analyze(path: Path, key: str | None = None) -> dict:
     sims = match(chroma)
     segments = segment(smooth(sims), sims, cqt)
 
-    progression = [(s["chord"], s["end_beat"] - s["start_beat"]) for s in segments]
-    key_info, analyses = harmony.analyze(progression, key)
+    # Harmony runs on chord runs, not segments: the key weights and the secondary-dominant
+    # look-ahead are defined on chords, and a bass change does not end a chord.
+    runs = [list(run) for _, run in groupby(segments, key=lambda s: s["chord"])]
+    progression = [(run[0]["chord"], run[-1]["end_beat"] - run[0]["start_beat"]) for run in runs]
+    key_info, run_analyses = harmony.analyze(progression, key)
+    analyses = [a for run, a in zip(runs, run_analyses, strict=True) for _ in run]
 
     duration = round(len(y) / SR, 3)
     # Rounded once, so segment times equal list entries exactly.
