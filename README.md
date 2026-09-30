@@ -51,6 +51,14 @@ Then ask something like "explain the harmony of song.mp3". The skill runs `chord
 
 Working in this repo, `.claude/settings.json` registers the checkout itself as a directory marketplace and enables the plugin, so the skill runs from the working tree. The first session asks you to trust it; `claude plugin marketplace add .` does the same by hand.
 
+## Viewer
+
+The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. Chords are colored by role, so secondary dominants and borrowed chords stand out.
+
+Open it at <https://zeikar.github.io/chordotomy/> once Pages is enabled, or open `viewer/index.html` from a checkout. Drop the recording and its `.chords.json` on the page, or pick them with **Open files**. The files stay in your browser. The page reads them locally and makes no network requests.
+
+Space plays and pauses, ← and → step through the chords, and clicking a chord jumps to it. Editing chords comes later.
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/).
@@ -60,7 +68,10 @@ uv sync --extra dev
 uv run chordotomy --version
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
+node --test viewer/tests/
 ```
+
+The viewer is plain HTML, CSS, and JavaScript with no build step. Its tests need Node and no packages.
 
 ## License
 
