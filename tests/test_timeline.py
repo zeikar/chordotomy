@@ -222,13 +222,6 @@ def test_all_silent_audio_has_no_beats(tmp_path) -> None:
         analyze(_write(tmp_path, np.zeros(4 * SR, dtype=np.float32)))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "a flat chroma matches the N template; "
-        "the whitened front end removes N from the template race"
-    ),
-)
 def test_a_mix_like_clip_keeps_its_chords(mix, chord_at, tmp_path) -> None:
     progression = [("C:maj", 4), ("A:min", 4), ("F:maj", 4), ("G:7", 4)]
 

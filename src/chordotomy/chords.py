@@ -1,4 +1,9 @@
-"""Chord vocabulary and template matching."""
+"""Chord vocabulary, template scoring and decoding.
+
+The scoring and the no-chord handling follow the ideas of Mauch & Dixon, "Approximate Note
+Transcription for the Improved Identification of Difficult Chords" (ISMIR 2010), implemented from
+the paper, not from their GPL-licensed plugin.
+"""
 
 from __future__ import annotations
 
@@ -13,38 +18,83 @@ QUALITIES = {"maj": (0, 4, 7), "min": (0, 3, 7), "7": (0, 4, 7, 10)}
 LABELS = [f"{root}:{quality}" for root in ROOTS for quality in QUALITIES] + ["N"]
 
 
-def _build_templates() -> np.ndarray:
-    templates = np.zeros((len(LABELS), 12))
-    for row, label in enumerate(LABELS):
-        if label == "N":
-            templates[row] = 1.0  # N is the flat template
-            continue
+def _build_templates() -> tuple[np.ndarray, np.ndarray]:
+    """Binary chord-tone templates and one-hot root templates, one row per label except N."""
+    templates = np.zeros((len(LABELS) - 1, 12))
+    roots = np.zeros((len(LABELS) - 1, 12))
+    for row, label in enumerate(LABELS[:-1]):
         root, quality = label.split(":")
         templates[row, [(ROOTS.index(root) + i) % 12 for i in QUALITIES[quality]]] = 1.0
-    return templates / np.linalg.norm(templates, axis=1, keepdims=True)
+        roots[row, ROOTS.index(root)] = 1.0
+    return templates, roots
 
 
-TEMPLATES = _build_templates()
+TEMPLATES, ROOT_TEMPLATES = _build_templates()
 
-# Cosine gaps between a chord and its maj/7 sibling are only ~0.1. Without sharpening them by a
-# temperature, the transition prior swamps the observations and the whole track collapses to N.
-TEMPERATURE = 0.02
-SELF_LOOP = 0.5
+# N is not a template. A flat template out-scores a triad whenever its tones are under 3.0x the
+# other bins, which a real mix's chroma always is (research pitfall 1). Instead a chord has to
+# beat this constant, and correlation gives a flat chroma 0 against every chord.
+N_SCORE = 0.3
+# BASS_WEIGHT, BASS_TONE, TEMPERATURE and CHORD_SECONDS are the best Tiny AAM majmin among the
+# values that keep the synthesized suite green; the suite's two-beat A:min/C inside a run of
+# C:maj is the binding case.
+# The weight of the bass chroma's evidence for a chord, against the treble's correlation.
+BASS_WEIGHT = 0.45
+# A chord's bass profile is 1 on its root and BASS_TONE on its other tones. A bass on the third
+# or fifth still supports the chord, so the treble decides Am/C against C and G/B against Bm;
+# the root counts more, so a root bass settles the ties the treble cannot (C6 against Am7).
+BASS_TONE = 0.8
+# Sharpens score gaps into likelihood ratios: a gap g on one beat is worth g / TEMPERATURE nats
+# against the transition cost. Too high and two-beat chord changes are smoothed away.
+TEMPERATURE = 0.03
+# The expected chord length in seconds, not beats, so a tracker locked at half or double tempo
+# does not halve or double it (research pitfall 3).
+CHORD_SECONDS = 2.2
+# A beat this far below the track's loud beats is no chord. Whitening is scale-free, so without
+# the gate a silent beat's residual ringing would whiten into a chord.
+N_GATE_DB = 40
 
 
-def match(chroma: np.ndarray) -> np.ndarray:
-    """Cosine similarity of each chroma column (12, n) to every label, shape (37, n)."""
-    # A zero vector has no direction; the epsilon makes it flat, which matches N.
-    chroma = chroma + 1e-9
-    chroma = chroma / np.linalg.norm(chroma, axis=0, keepdims=True)
-    # Floating error can push values past 1, and librosa.sequence.viterbi rejects that.
-    return np.clip(TEMPLATES @ chroma, 0.0, 1.0)
+def _correlate(templates: np.ndarray, chroma: np.ndarray) -> np.ndarray:
+    """Correlation of each template row (m, 12) with each chroma column (12, n), shape (m, n).
+
+    Both sides are centred and unit-normed over the 12 pitch classes; a column with no variation
+    (silent or flat) has no shape to correlate and scores 0.
+    """
+    t = templates - templates.mean(axis=1, keepdims=True)
+    t = t / np.linalg.norm(t, axis=1, keepdims=True)
+    c = chroma - chroma.mean(axis=0, keepdims=True)
+    norm = np.linalg.norm(c, axis=0, keepdims=True)
+    c = np.divide(c, norm, out=np.zeros_like(c), where=norm > 0)
+    return t @ c
 
 
-def smooth(sims: np.ndarray) -> np.ndarray:
-    """Viterbi-decode (37, n) similarities into one label index per beat."""
-    likelihood = np.exp((sims - 1.0) / TEMPERATURE)
-    transition = librosa.sequence.transition_loop(len(LABELS), SELF_LOOP)
+def match(treble: np.ndarray, bass: np.ndarray) -> np.ndarray:
+    """Score treble and bass chroma columns (12, n) against every label, shape (37, n).
+
+    A chord's score is the correlation of the treble chroma with its template, in [-1, 1], plus
+    BASS_WEIGHT times the correlation of the bass chroma with its bass profile. Row 36 (N) is
+    the constant N_SCORE.
+    """
+    profiles = ROOT_TEMPLATES + BASS_TONE * (TEMPLATES - ROOT_TEMPLATES)
+    chords = _correlate(TEMPLATES, treble) + BASS_WEIGHT * _correlate(profiles, bass)
+    return np.vstack([chords, np.full((1, treble.shape[1]), N_SCORE)])
+
+
+def smooth(scores: np.ndarray, level: np.ndarray, period: float) -> np.ndarray:
+    """Viterbi-decode (37, n) scores into one label index per beat.
+
+    level is each beat's loudness in dB relative to the track's loud beats; a beat below
+    -N_GATE_DB can only be N. period is the beat period in seconds.
+    """
+    # Shifting a column by its maximum leaves the path unchanged and keeps every value in (0, 1],
+    # which librosa.sequence.viterbi requires.
+    likelihood = np.exp((scores - scores.max(axis=0, keepdims=True)) / TEMPERATURE)
+    likelihood[:-1, level < -N_GATE_DB] = 0.0  # every chord row; N is the last
+    # The chance that chord changes, arriving every CHORD_SECONDS on average, fire none within
+    # one beat. Unlike 1 - period / CHORD_SECONDS it stays in (0, 1) when a beat is longer than a
+    # chord, as on a half-tempo grid.
+    transition = librosa.sequence.transition_loop(len(LABELS), np.exp(-period / CHORD_SECONDS))
     return librosa.sequence.viterbi(likelihood, transition)
 
 
@@ -55,12 +105,12 @@ CANDIDATES = 3
 BASS_HOLD = 2
 
 
-def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]:
+def segment(states: np.ndarray, scores: np.ndarray, cqt: np.ndarray) -> list[dict]:
     """Cut the beats into segments, each with ranked candidate labels and a bass.
 
     A segment ends where the smoothed state changes and, inside a chord run, where the per-beat
     pick_bass value changes to one held for BASS_HOLD beats, so consecutive segments may share a
-    chord. cqt is the (84, n) beat-synchronous matrix from beat_chroma. A segment's bass is its
+    chord. cqt is the (84, n) beat-synchronous matrix from beat_features. A segment's bass is its
     held value; with none, the most frequent per-beat value, silence included (ties to a note, then
     the earliest). N has None.
     """
@@ -87,8 +137,8 @@ def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]
     segments = []
     for start, end in pairwise(sorted({*runs, *held})):
         chosen = int(states[start])
-        mean = sims[:, start:end].mean(axis=1)
-        # Rank by mean similarity, but the smoothed label leads: it is what the timeline shows.
+        mean = scores[:, start:end].mean(axis=1)
+        # Rank by mean score, but the smoothed label leads: it is what the timeline shows.
         ranked = [i for i in np.argsort(-mean, kind="stable") if i != chosen]
         candidates = [LABELS[i] for i in [chosen, *ranked][:CANDIDATES]]
         if start in held:
@@ -115,7 +165,7 @@ def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]
     return segments
 
 
-# The bass register: C1-B3, the three lowest octaves of the CQT that beat_chroma returns.
+# The bass register: C1-B3, the three lowest octaves of the CQT that beat_features returns.
 BASS_BINS = 36
 # Leakage into a neighbouring bin is 0.5-0.6 of a peak but is never a local maximum, so a bin
 # needs to be both a local maximum and at least this fraction of the register's strongest.
@@ -127,7 +177,7 @@ INVERSIONS = ("root", "first", "second", "third")
 def pick_bass(profile: np.ndarray) -> str | None:
     """Name the lowest salient note in a beat's CQT profile, or None if the register is silent.
 
-    The profile has one bin per semitone with bin 0 = C1, as beat_chroma returns it. Only the
+    The profile has one bin per semitone with bin 0 = C1, as beat_features returns it. Only the
     first BASS_BINS bins are candidates; the bins above are context for the local-maximum test.
     """
     reference = profile[:BASS_BINS].max()

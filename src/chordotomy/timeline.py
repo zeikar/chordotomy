@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import __version__, harmony
 from .chords import inversion, match, segment, smooth
-from .features import SR, beat_chroma, load_audio
+from .features import SR, beat_features, load_audio
 
 SCHEMA_VERSION = 3
 
@@ -15,9 +15,9 @@ SCHEMA_VERSION = 3
 def analyze(path: Path, key: str | None = None) -> dict:
     """Analyze an audio file into a chord-timeline dict of plain, JSON-serialisable types."""
     y = load_audio(path)
-    beat_times, chroma, cqt = beat_chroma(y)
-    sims = match(chroma)
-    segments = segment(smooth(sims), sims, cqt)
+    f = beat_features(y)
+    scores = match(f.treble, f.bass)
+    segments = segment(smooth(scores, f.level, f.period), scores, f.cqt)
 
     # Harmony runs on chord runs, not segments: the key weights and the secondary-dominant
     # look-ahead are defined on chords, and a bass change does not end a chord.
@@ -28,7 +28,7 @@ def analyze(path: Path, key: str | None = None) -> dict:
 
     duration = round(len(y) / SR, 3)
     # Rounded once, so segment times equal list entries exactly.
-    beats = [round(float(t), 3) for t in beat_times]
+    beats = [round(float(t), 3) for t in f.times]
     return {
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "chordotomy", "version": __version__},

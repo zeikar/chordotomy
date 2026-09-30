@@ -2,16 +2,16 @@ import numpy as np
 import pytest
 import soundfile
 
-from chordotomy.chords import LABELS, match, pick_bass
-from chordotomy.features import SR, NoBeatsError, beat_chroma, load_audio
+from chordotomy.chords import LABELS, N_GATE_DB, match, pick_bass
+from chordotomy.features import SR, Features, NoBeatsError, beat_features, load_audio
 
 
-def _labels(chroma: np.ndarray) -> list[str]:
-    return [LABELS[i] for i in match(chroma).argmax(axis=0)]
+def _labels(f: Features) -> list[str]:
+    return [LABELS[i] for i in match(f.treble, f.bass).argmax(axis=0)]
 
 
-def test_load_and_beat_chroma_on_a_repeated_chord(synth, tmp_path) -> None:
-    y = synth([("C:maj", 8)])
+def test_load_and_beat_features_on_a_repeated_chord(synth, tmp_path) -> None:
+    y = synth([("C:maj", 8, 36)])
     path = tmp_path / "clip.wav"
     soundfile.write(path, y, SR)
 
@@ -19,46 +19,57 @@ def test_load_and_beat_chroma_on_a_repeated_chord(synth, tmp_path) -> None:
 
     assert abs(len(loaded) - len(y)) <= 1
 
-    beat_times, chroma, cqt = beat_chroma(loaded)
+    f = beat_features(loaded)
+    n = len(f.times)
 
-    assert len(beat_times) >= 6
-    assert abs(np.median(np.diff(beat_times)) - 0.5) <= 0.025
-    assert chroma.shape == (12, len(beat_times))
-    assert cqt.shape == (84, len(beat_times))
-    for column in chroma.T:
+    assert n >= 6
+    assert abs(np.median(np.diff(f.times)) - 0.5) <= 0.025
+    assert abs(f.period - 0.5) <= 0.025
+    assert f.treble.shape == (12, n)
+    assert f.bass.shape == (12, n)
+    assert f.cqt.shape == (84, n)
+    assert f.level.shape == (n,)
+    for column in f.treble.T:
         assert set(np.argsort(column)[-3:]) == {0, 4, 7}
+    assert list(f.bass.argmax(axis=0)) == [0] * n
 
 
-def test_silent_beats_mid_track_match_no_chord(synth) -> None:
-    beat_times, chroma, _ = beat_chroma(synth([("C:maj", 4), ("N", 4), ("F:maj", 4)]))
+def test_silent_beats_mid_track_fall_below_the_n_gate(synth) -> None:
+    f = beat_features(synth([("C:maj", 4), ("N", 4), ("F:maj", 4)]))
+    n = len(f.times)
 
     # The window starts before 2.0 s to take in the first silent beat: it carries the previous
-    # chord's CQT ringing, which is what the floor exists for.
-    silent = (beat_times >= 1.75) & (beat_times < 3.75)
+    # chord's CQT ringing, which whitening would turn into a chord shape.
+    silent = (f.times >= 1.75) & (f.times < 3.75)
 
     assert silent.any()
-    # Compare labels, not bins: the floor makes silence match N, it does not make bins equal.
-    assert _labels(chroma[:, silent]) == ["N"] * silent.sum()
+    assert f.treble.shape == f.bass.shape == (12, n)
+    assert f.level.shape == (n,)
+    assert np.all(f.level[silent] < -N_GATE_DB)
+    assert np.all(f.level[~silent] > -N_GATE_DB)
 
 
 def test_grid_extends_through_edge_silence(synth) -> None:
     y = synth([("C:maj", 4), ("N", 6)])
-    beat_times, _, _ = beat_chroma(y)
+    f = beat_features(y)
 
-    assert beat_times[-1] >= len(y) / SR - 0.75
-    assert abs(np.median(np.diff(beat_times)) - 0.5) <= 0.025
+    assert f.times[-1] >= len(y) / SR - 0.75
+    assert abs(np.median(np.diff(f.times)) - 0.5) <= 0.025
 
-    beat_times, chroma, _ = beat_chroma(synth([("N", 4), ("C:maj", 4)]))
-    lead = beat_times < 1.75
+    f = beat_features(synth([("N", 4), ("C:maj", 4)]))
+    n = len(f.times)
+    lead = f.times < 1.75
 
-    assert beat_times[0] < 0.5
+    assert f.times[0] < 0.5
     assert lead.any()
-    assert _labels(chroma[:, lead]) == ["N"] * lead.sum()
+    assert f.treble.shape == f.bass.shape == (12, n)
+    assert f.level.shape == (n,)
+    assert np.all(f.level[lead] < -N_GATE_DB)
 
 
 def test_all_silent_audio_has_no_beats() -> None:
     with pytest.raises(NoBeatsError):
-        beat_chroma(np.zeros(4 * SR, dtype=np.float32))
+        beat_features(np.zeros(4 * SR, dtype=np.float32))
 
 
 def test_a_single_beat_extends_the_grid_at_the_tempo_period(synth, monkeypatch) -> None:
@@ -68,13 +79,15 @@ def test_a_single_beat_extends_the_grid_at_the_tempo_period(synth, monkeypatch) 
         "chordotomy.features.librosa.beat.beat_track", lambda **_: (120.0, np.array([frame]))
     )
 
-    beat_times, chroma, cqt = beat_chroma(y)
+    f = beat_features(y)
 
-    assert chroma.shape[1] == len(beat_times)
-    assert cqt.shape[1] == len(beat_times)
-    assert np.allclose(np.diff(beat_times), 0.5, atol=0.02)
-    assert beat_times[0] < 0.5
-    assert len(y) / SR - beat_times[-1] <= 1.0
+    assert f.treble.shape[1] == len(f.times)
+    assert f.bass.shape[1] == len(f.times)
+    assert f.cqt.shape[1] == len(f.times)
+    assert f.level.shape == (len(f.times),)
+    assert np.allclose(np.diff(f.times), 0.5, atol=0.02)
+    assert f.times[0] < 0.5
+    assert len(y) / SR - f.times[-1] <= 1.0
 
 
 def _basses(cqt: np.ndarray) -> list[str | None]:
@@ -83,15 +96,16 @@ def _basses(cqt: np.ndarray) -> list[str | None]:
 
 @pytest.mark.parametrize(("bass_midi", "expected"), [(36, "C"), (40, "E"), (38, "D")])
 def test_the_cqt_names_the_bass_tone_under_a_chord(synth, bass_midi, expected) -> None:
-    _, _, cqt = beat_chroma(synth([("C:maj", 8, bass_midi)]))
+    cqt = beat_features(synth([("C:maj", 8, bass_midi)])).cqt
 
     assert _basses(cqt) == [expected] * cqt.shape[1]
 
 
 def test_silent_beats_mid_track_have_an_all_zero_cqt(synth) -> None:
-    beat_times, _, cqt = beat_chroma(synth([("C:maj", 4, 40), ("N", 4), ("F:maj", 4, 36)]))
+    f = beat_features(synth([("C:maj", 4, 40), ("N", 4), ("F:maj", 4, 36)]))
+    beat_times, cqt = f.times, f.cqt
 
-    # The same window as the chroma's silence test, so the first silent beat's ringing is in it.
+    # The same window as the level's silence test, so the first silent beat's ringing is in it.
     silent = (beat_times >= 1.75) & (beat_times < 3.75)
     before = beat_times < 1.75
     after = beat_times >= 4.25
@@ -104,13 +118,13 @@ def test_silent_beats_mid_track_have_an_all_zero_cqt(synth) -> None:
 
 
 def test_a_chord_above_the_register_has_no_bass_until_one_sounds(synth) -> None:
-    _, chroma, cqt = beat_chroma(synth([("C:maj", 8)], chord_midi=60))
+    f = beat_features(synth([("C:maj", 8)], chord_midi=60))
 
     # The chord path is octave-invariant, so the same chord still reads C:maj an octave up.
-    assert _labels(chroma) == ["C:maj"] * chroma.shape[1]
+    assert _labels(f) == ["C:maj"] * len(f.times)
     # Nothing sounds in the register; C4's leakage into B3 is a slope, not a peak.
-    assert _basses(cqt) == [None] * cqt.shape[1]
+    assert _basses(f.cqt) == [None] * f.cqt.shape[1]
 
-    _, _, cqt = beat_chroma(synth([("C:maj", 8, 40)], chord_midi=60))
+    cqt = beat_features(synth([("C:maj", 8, 40)], chord_midi=60)).cqt
 
     assert _basses(cqt) == ["E"] * cqt.shape[1]
