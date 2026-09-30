@@ -62,16 +62,19 @@ test("the bass is spelled as the chord member its inversion names", () => {
 });
 
 test("the bass alone, for the now-playing panel", () => {
-  assert.equal(Core.bassName("D:7", "C:maj", "D", "root"), "D");
-  assert.equal(Core.bassName("A#:maj", "C:maj", "A#", "root"), "B♭");
-  assert.equal(Core.bassName("D:7", "C:maj", "F#", "first"), "F♯");
-  assert.equal(Core.bassName("D:7", "C:maj", null, null), null);
-  assert.equal(Core.bassName("N", "C:maj", null, null), null);
+  assert.equal(Core.bassName("D:7", "C:maj", "D"), "D");
+  assert.equal(Core.bassName("A#:maj", "C:maj", "A#"), "B♭");
+  assert.equal(Core.bassName("D:7", "C:maj", "F#"), "F♯");
+  assert.equal(Core.bassName("D:7", "C:maj", null), null);
+  assert.equal(Core.bassName("N", "C:maj", null), null);
 });
 
-test("a non-chord bass is spelled as a degree of the key", () => {
+test("a non-chord bass is spelled by its interval above the chord's root", () => {
   assert.equal(chordName("A:min", "C:maj", "D", "non_chord"), "Am/D");
   assert.equal(chordName("D#:maj", "A#:maj", "G#", "non_chord"), "E♭/A♭");
+  assert.equal(chordName("B:min", "D:maj", "A#", "non_chord"), "Bm/A♯"); // not Bm/Bb
+  assert.equal(chordName("A:maj", "D:maj", "D#", "non_chord"), "A/D♯"); // not A/Eb
+  assert.equal(chordName("C:maj", "C:maj", "A#", "non_chord"), "C/B♭");
 });
 
 test("spellings that would need a double accidental move to the next letter", () => {
@@ -85,15 +88,17 @@ test("without a key, roots are spelled as written", () => {
   assert.equal(chordName("C:maj", null, "E", "first"), "C/E");
 });
 
-test("a candidate on a tone of the segment's chord keeps that tone's letter", () => {
+test("a candidate is spelled by its interval above the segment's chord", () => {
   const { alternativeName } = Core;
   assert.equal(alternativeName("G#:min", "E:7", "C:maj"), "G♯m"); // not Abm beside E7/G#
   assert.equal(alternativeName("A#:min", "F#:maj", "D:maj"), "A♯m");
+  assert.equal(alternativeName("A#:min", "C#:maj", "D:maj"), "A♯m"); // not Bbm beside C#
   assert.equal(alternativeName("E:maj", "E:7", "C:maj"), "E");
   assert.equal(alternativeName("D:min", "G:7", "C:maj"), "Dm");
-  assert.equal(alternativeName("A#:maj", "D:7", "C:maj"), "B♭"); // not a tone of D7: key degree
+  assert.equal(alternativeName("A#:maj", "D:7", "C:maj"), "B♭");
+  assert.equal(alternativeName("C#:maj", "F:min", "C:maj"), "D♭");
   assert.equal(alternativeName("N", "G:7", "C:maj"), "N.C.");
-  assert.equal(alternativeName("C#:7", "N", "C:maj"), "D♭7");
+  assert.equal(alternativeName("C#:7", "N", "C:maj"), "D♭7"); // no chord: a degree of the key
 });
 
 test("numerals take figured bass from the inversion", () => {

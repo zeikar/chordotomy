@@ -36,7 +36,10 @@
       <input id="picker" type="file" multiple accept="audio/*,.json,application/json" hidden />
     </header>
 
-    <div id="status" class="status" role="status" hidden></div>
+    <div id="status" class="status" role="status" hidden>
+      <div id="messages"></div>
+      <button type="button" class="dismiss" id="dismiss">Dismiss</button>
+    </div>
 
     <main id="empty" class="empty">
       <h1>Open a recording and its chord timeline</h1>

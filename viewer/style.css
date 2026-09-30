@@ -153,7 +153,7 @@ kbd {
 }
 
 .files dd span:first-child {
-  min-width: 0;
+  min-width: 1.5em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -178,15 +178,42 @@ kbd {
 }
 
 .status {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
   margin: 16px 32px 0;
-  padding: 10px 14px;
+  padding: 10px 10px 10px 14px;
   max-width: 72ch;
   background: var(--sheet);
   border-left: 3px solid var(--ink);
 }
 
+#messages {
+  flex: 1;
+}
+
 .status p {
   margin: 0;
+}
+
+.status p + p {
+  margin-top: 6px;
+}
+
+.dismiss {
+  flex: none;
+  padding: 0 4px;
+  font: 13px var(--sans);
+  color: var(--pencil);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The empty state has its own Open files button; one is enough. */
+body:has(#empty:not([hidden])) .bar .open-files {
+  visibility: hidden;
 }
 
 body:has(#empty:not([hidden])) .status {
@@ -431,14 +458,15 @@ body:has(#empty:not([hidden])) .status {
   font-family: var(--serif);
 }
 
+/* Line heights in px, so the smaller type of a narrow segment keeps its neighbours' rows. */
 .segment-chord {
   font-size: 20px;
-  line-height: 1.2;
+  line-height: 24px;
 }
 
 .segment-numeral {
   font-size: 18px;
-  line-height: 1.25;
+  line-height: 23px;
   color: var(--role, var(--pencil));
 }
 

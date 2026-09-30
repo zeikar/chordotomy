@@ -25,13 +25,9 @@ const Core = (() => {
   // Scale degree (0 = I … 6 = VII) of each root offset from the tonic, the table chordotomy's
   // numerals use in both modes: offset 10 is bVII (a B-flat in C), offset 6 is #IV (an F-sharp).
   // A secondary dominant's root, a fifth above its diatonic target, lands on the same degree, so
-  // this also spells V/x and the candidates, which have no numeral of their own.
+  // this also spells V/x. Above a chord's root it gives each chord tone its member's letter (a
+  // third two letters up, a seventh six), and any other note its interval's.
   const DEGREE = [0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6];
-  // Letter steps from the root to the chord member that an inversion puts in the bass, and to a
-  // chord tone by its semitones above the root.
-  const MEMBER_STEPS = { root: 0, first: 2, second: 4, third: 6 };
-  const INTERVAL_STEPS = { 0: 0, 3: 2, 4: 2, 7: 4, 10: 6 };
-  const QUALITY_INTERVALS = { maj: [0, 4, 7], min: [0, 3, 7], 7: [0, 4, 7, 10] };
   const FIGURES = {
     triad: { first: ["6"], second: ["6", "4"] },
     seventh: { first: ["6", "5"], second: ["4", "3"], third: ["4", "2"] },
@@ -58,10 +54,15 @@ const Core = (() => {
     return { pc: SHARPS.indexOf(root), letter: LETTERS.indexOf(written[0]), mode };
   }
 
+  // Spell `pc` by its interval above a spelled reference: a key's tonic or a chord's root.
+  function spellAbove(pc, referencePc, referenceLetter) {
+    return spell(pc, referenceLetter + DEGREE[mod(pc - referencePc, 12)]);
+  }
+
   // Spell a pitch class as a degree of the key; without a key, as written (sharps).
   function spellInKey(pc, key) {
     if (!key) return spell(pc, LETTERS.indexOf(SHARPS[pc][0]));
-    return spell(pc, key.letter + DEGREE[mod(pc - key.pc, 12)]);
+    return spellAbove(pc, key.pc, key.letter);
   }
 
   function keyName(label) {
@@ -74,15 +75,17 @@ const Core = (() => {
     return spellInKey(SHARPS.indexOf(chord.split(":")[0]), key);
   }
 
-  // The bass is spelled as the chord member its inversion names (F♯ under D7, not G♭); a
-  // non-chord bass as a degree of the key.
-  function bassName(chord, keyLabel, bass, inversion) {
+  // Spell a note against a chord (not N) by its interval above the chord's spelled root, so the
+  // bass and the other candidates agree with the chord: a chord tone as the member it is (F♯ under
+  // D7, not G♭), any other note by its interval (Bm/A♯, not Bm/B♭).
+  function spellAgainst(pc, chord, keyLabel) {
+    const root = spellRoot(chord, parseKey(keyLabel));
+    return spellAbove(pc, SHARPS.indexOf(chord.split(":")[0]), root.letter).name;
+  }
+
+  function bassName(chord, keyLabel, bass) {
     if (!bass || chord === "N") return null;
-    const key = parseKey(keyLabel);
-    const pc = SHARPS.indexOf(bass);
-    const steps = MEMBER_STEPS[inversion];
-    if (steps === undefined) return spellInKey(pc, key).name;
-    return spell(pc, spellRoot(chord, key).letter + steps).name;
+    return spellAgainst(SHARPS.indexOf(bass), chord, keyLabel);
   }
 
   // `C:maj` → C, `A:min` → Am, `G:7` → G7, `N` → N.C.; over a bass that isn't the root, a slash
@@ -91,21 +94,15 @@ const Core = (() => {
     if (chord === "N") return "N.C.";
     const name = spellRoot(chord, parseKey(keyLabel)).name + QUALITY_SUFFIX[chord.split(":")[1]];
     if (!bass || !inversion || inversion === "root") return name;
-    return `${name}/${bassName(chord, keyLabel, bass, inversion)}`;
+    return `${name}/${bassName(chord, keyLabel, bass)}`;
   }
 
-  // Another candidate for a segment, spelled to agree with the segment's chord: a root that is a
-  // tone of that chord keeps the tone's letter (G♯m beside E7/G♯, not A♭m); any other root is a
-  // degree of the key.
+  // Another candidate for a segment, spelled against the segment's chord (G♯m beside E7/G♯, not
+  // A♭m). Beside N there is no chord to agree with, so it is a degree of the key.
   function alternativeName(candidate, chord, keyLabel) {
     if (candidate === "N" || chord === "N") return chordName(candidate, keyLabel);
-    const [root, quality] = chord.split(":");
-    const [otherRoot, otherQuality] = candidate.split(":");
-    const pc = SHARPS.indexOf(otherRoot);
-    const interval = mod(pc - SHARPS.indexOf(root), 12);
-    if (!QUALITY_INTERVALS[quality].includes(interval)) return chordName(candidate, keyLabel);
-    const letter = spellRoot(chord, parseKey(keyLabel)).letter + INTERVAL_STEPS[interval];
-    return spell(pc, letter).name + QUALITY_SUFFIX[otherQuality];
+    const [root, quality] = candidate.split(":");
+    return spellAgainst(SHARPS.indexOf(root), chord, keyLabel) + QUALITY_SUFFIX[quality];
   }
 
   // Split a numeral into parts for display, with the figured bass its inversion calls for:

@@ -9,7 +9,6 @@
   // previous segment.
   const SEEK_NUDGE = 0.001;
   const AUDIO_NAME = /\.(mp3|wav|flac|m4a|aac|ogg|oga|opus|webm)$/i;
-  const ROLE_TEXT = { diatonic: "Diatonic", chromatic: "Chromatic" };
   const INVERSION_TEXT = {
     root: "root position",
     first: "first inversion",
@@ -40,13 +39,17 @@
   function say(text) {
     const line = document.createElement("p");
     line.textContent = text;
-    $("status").append(line);
+    $("messages").append(line);
     $("status").hidden = false;
   }
 
-  function takeFiles(files) {
-    $("status").replaceChildren();
+  function clearMessages() {
+    $("messages").replaceChildren();
     $("status").hidden = true;
+  }
+
+  function takeFiles(files) {
+    clearMessages();
     const skipped = [];
     for (const file of files) {
       if (/\.json$/i.test(file.name) || file.type === "application/json") loadTimeline(file);
@@ -56,10 +59,11 @@
     if (skipped.length) say(`Skipped ${skipped.join(", ")}: not a recording or a .chords.json.`);
   }
 
-  // A long name is cut in the middle: its end is where a recording and its timeline differ
-  // (.mp3, .chords.json, .prototype.chords.json).
+  // A long name is cut before its extensions, which always show: they are where a recording and
+  // its timeline differ (.mp3, .chords.json, .prototype.chords.json).
   function showName(id, name) {
-    const cut = Math.max(0, name.length - 22);
+    const extensions = /(\.[^.\s]+)+$/.exec(name);
+    const cut = extensions ? extensions.index : name.length;
     const head = document.createElement("span");
     const tail = document.createElement("span");
     head.textContent = name.slice(0, cut);
@@ -83,7 +87,7 @@
     try {
       data = JSON.parse(await file.text());
     } catch (error) {
-      say(`Couldn't read ${file.name} as JSON: ${error.message}`);
+      say(`Couldn't read ${file.name} as JSON (${error.message}).`);
       return;
     }
     const problem = Core.timelineProblem(data);
@@ -119,11 +123,13 @@
   function renderKey() {
     const key = timeline.key;
     $("key-name").textContent = key ? Core.keyName(key.label) : "None";
-    $("key-source").textContent = !key
-      ? "The timeline has no chords."
-      : key.source === "given"
-        ? "Given with --key."
-        : "Estimated from the chords.";
+    if (key && key.source === "given") {
+      const flag = document.createElement("code");
+      flag.textContent = "--key";
+      $("key-source").replaceChildren("Given with ", flag, ".");
+    } else {
+      $("key-source").textContent = key ? "Estimated from the chords." : "The timeline has no chords.";
+    }
     const candidates = key ? key.candidates : [];
     $("key-candidates-label").textContent =
       key && key.source === "given" ? "The chords suggest" : "Ranked candidates";
@@ -231,9 +237,9 @@
     if (segment.role === "borrowed") {
       return `Borrowed from the parallel ${keyLabel.endsWith(":maj") ? "minor" : "major"}`;
     }
-    // Only diatonic chords have a function.
+    // Every diatonic chord has a function, and only diatonic chords do.
     if (segment.function) return `Diatonic, ${segment.function} function`;
-    return ROLE_TEXT[segment.role] || "Not analyzed";
+    return "Chromatic";
   }
 
   function renderNow(segment) {
@@ -248,7 +254,7 @@
     renderNumeral($("now-numeral"), segment);
     // Every row always shows, so the panel doesn't jump on chord changes.
     $("now-role").textContent = isChord ? roleText(segment) : "No chord";
-    const bass = Core.bassName(segment.chord, keyLabel, segment.bass, segment.inversion);
+    const bass = Core.bassName(segment.chord, keyLabel, segment.bass);
     $("now-bass").textContent = bass ? `${bass}, ${INVERSION_TEXT[segment.inversion]}` : "None heard";
     $("now-alt").textContent = segment.candidates
       .slice(1)
@@ -327,6 +333,7 @@
   for (const button of document.querySelectorAll(".open-files")) {
     button.addEventListener("click", () => picker.click());
   }
+  $("dismiss").addEventListener("click", clearMessages);
   picker.addEventListener("change", () => {
     takeFiles(picker.files);
     picker.value = ""; // so choosing the same file again still fires change
