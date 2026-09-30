@@ -1,6 +1,8 @@
+import json
+
 import pytest
 
-from chordotomy.harmony import analyze_chord, estimate_key, parse_key
+from chordotomy.harmony import analyze, analyze_chord, estimate_key, parse_key
 
 
 @pytest.mark.parametrize(
@@ -198,3 +200,68 @@ def test_analyze_chord_chromatic(label: str, key: str, numeral: str) -> None:
         "function": None,
         "target": None,
     }
+
+
+PROGRESSION = [("C:maj", 2), ("A:min", 2), ("D:7", 2), ("G:7", 2), ("N", 1), ("C:maj", 2)]
+NO_ANALYSIS = {"numeral": None, "role": None, "function": None, "target": None}
+
+
+def test_analyze_estimates_the_key() -> None:
+    key, analyses = analyze(PROGRESSION)
+    assert key is not None
+    assert key["label"] == "C:maj"
+    assert key["source"] == "estimated"
+    assert len(key["candidates"]) == 3
+    assert len(set(key["candidates"])) == 3
+    assert key["candidates"][0] == key["label"]
+    assert [a["numeral"] for a in analyses] == ["I", "vi", "V7/V", "V7", None, "I"]
+    json.dumps((key, analyses))
+
+
+def test_analyze_given_key_keeps_the_estimated_candidates() -> None:
+    estimated, _ = analyze(PROGRESSION)
+    key, analyses = analyze(PROGRESSION, key="A:min")
+    assert estimated is not None
+    assert key == {
+        "label": "A:min",
+        "source": "given",
+        "candidates": estimated["candidates"],
+    }
+    assert [a["numeral"] for a in analyses] == ["III", "i", "V7/VII", "VII7", None, "III"]
+
+
+def test_analyze_without_a_chord() -> None:
+    assert analyze([("N", 4)]) == (None, [NO_ANALYSIS])
+    assert analyze([("N", 4)], key="C:maj") == (
+        {"label": "C:maj", "source": "given", "candidates": []},
+        [NO_ANALYSIS],
+    )
+
+
+def test_analyze_looks_ahead_to_the_next_segment() -> None:
+    progression = [
+        ("A:min", 2),
+        ("A:maj", 1),
+        ("D:min", 1),
+        ("A:maj", 1),
+        ("N", 1),
+        ("D:min", 1),
+        ("D:maj", 1),
+        ("A:min", 1),
+        ("A:maj", 2),
+    ]
+    _, analyses = analyze(progression, key="A:min")
+    assert [a["numeral"] for a in analyses] == [
+        "i", "V/iv", "iv", "I", None, "iv", "IV", "i", "I"
+    ]  # fmt: skip
+    assert [a["role"] for a in analyses] == [
+        "diatonic",
+        "secondary_dominant",
+        "diatonic",
+        "borrowed",
+        None,
+        "diatonic",
+        "borrowed",
+        "diatonic",
+        "borrowed",
+    ]

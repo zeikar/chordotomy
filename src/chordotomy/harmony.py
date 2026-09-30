@@ -34,6 +34,7 @@ TARGETS = {
     "min": {3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII"},
 }
 PARALLEL = {"maj": "min", "min": "maj"}
+CANDIDATES = 3
 
 
 def parse_key(text: str) -> str:
@@ -124,3 +125,31 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
     if borrowed:
         return {"numeral": text, "role": "borrowed", "function": None, "target": None}
     return {"numeral": text, "role": "chromatic", "function": None, "target": None}
+
+
+def analyze(
+    progression: list[tuple[str, int]], key: str | None = None
+) -> tuple[dict | None, list[dict]]:
+    """Analyze a list of (chord label, beats) into a key object and one analysis per entry.
+
+    `key`, if given, must already be normalized by `parse_key`. The key object is `None` only
+    when there is no chord to estimate from and no key was given.
+    """
+    ranked = estimate_key(progression)
+    if key is None and not ranked:
+        # Every entry is N here, and an N is analyzed without looking at the key.
+        return None, [analyze_chord("N", "C:maj") for _ in progression]
+    label = key or ranked[0]
+    # The candidates stay the estimator's ranking even when the key is given, so a wrong
+    # override can be compared against what the chords suggest.
+    key_object = {
+        "label": label,
+        "source": "estimated" if key is None else "given",
+        "candidates": ranked[:CANDIDATES],
+    }
+    labels = [chord for chord, _ in progression]
+    analyses = [
+        analyze_chord(chord, label, following)
+        for chord, following in zip(labels, [*labels[1:], None], strict=True)
+    ]
+    return key_object, analyses
