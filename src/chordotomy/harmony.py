@@ -7,7 +7,7 @@ from collections import Counter
 from .chords import QUALITIES, ROOTS
 
 KEYS = [f"{root}:{mode}" for root in ROOTS for mode in ("maj", "min")]
-FLATS = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
+FLATS = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#", "Cb": "B", "Fb": "E"}
 SCALE = {"maj": {0, 2, 4, 5, 7, 9, 11}, "min": {0, 2, 3, 5, 7, 8, 10}}
 # The tonic outweighs IV and V, which outweigh the other degrees (1; a chord that is not diatonic
 # weighs 0), so time spent on I, IV and V decides between keys that share most of their triads.
@@ -54,6 +54,14 @@ def _is_diatonic(offset: int, quality: str, mode: str) -> bool:
     if mode == "min" and offset == 7 and quality in ("maj", "7"):
         return True
     return all((offset + interval) % 12 in SCALE[mode] for interval in QUALITIES[quality])
+
+
+def _resolves(following: str | None, root: str, tonic: str, mode: str) -> bool:
+    if following is None or following == "N":
+        return False
+    following_root, quality = following.split(":")
+    offset = (ROOTS.index(following_root) - ROOTS.index(tonic)) % 12
+    return following_root == root and _is_diatonic(offset, quality, mode)
 
 
 def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
@@ -109,12 +117,12 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
     if secondary:
         target = TARGETS[mode][target_offset]
         resolution = ROOTS[(ROOTS.index(tonic) + target_offset) % 12]
-        resolution += ":min" if target.islower() else ":maj"
         # Only the major triads on the tonic and subdominant of a minor key are also borrowed, and
-        # for those the very next chord being the target triad is the one thing that tells V/iv
-        # from a borrowed I; a seventh on the target, another chord or an N is no resolution.
+        # for those the very next chord being diatonic on the target's root is the one thing that
+        # tells V/VII from a borrowed IV (G:maj and G:7 both resolve it; D:7 does not resolve
+        # A:maj, as it is not diatonic); another chord or an N is no resolution.
         # Everywhere else `following` is ignored, so a label depends on the chord and key alone.
-        if not borrowed or following == resolution:
+        if not borrowed or _resolves(following, resolution, tonic, mode):
             text = ("V7" if quality == "7" else "V") + "/" + target
             return {
                 "numeral": text,

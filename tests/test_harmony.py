@@ -7,7 +7,14 @@ from chordotomy.harmony import analyze, analyze_chord, estimate_key, parse_key
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("C:maj", "C:maj"), ("A:min", "A:min"), ("Bb:maj", "A#:maj"), ("Db:min", "C#:min")],
+    [
+        ("C:maj", "C:maj"),
+        ("A:min", "A:min"),
+        ("Bb:maj", "A#:maj"),
+        ("Db:min", "C#:min"),
+        ("Cb:maj", "B:maj"),
+        ("Fb:maj", "E:maj"),
+    ],
 )
 def test_parse_key(text: str, expected: str) -> None:
     assert parse_key(text) == expected
@@ -124,11 +131,11 @@ def test_analyze_chord_secondary_dominant(label: str, key: str, numeral: str, ta
     [
         ("A:maj", "D:min", "V/iv", "secondary_dominant", "iv"),
         *[("A:maj", f, "I", "borrowed", None) for f in ("D:7", "D:maj", "N", "E:maj", None)],
-        ("D:maj", "G:maj", "V/VII", "secondary_dominant", "VII"),
-        *[("D:maj", f, "IV", "borrowed", None) for f in ("G:7", "A:min", "N", None)],
+        *[("D:maj", f, "V/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:7")],
+        *[("D:maj", f, "IV", "borrowed", None) for f in ("G:min", "A:min", "N", None)],
     ],
 )
-def test_overlap_resolves_only_on_the_target_triad(
+def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(
     label: str, following: str | None, numeral: str, role: str, target: str | None
 ) -> None:
     assert analyze_chord(label, "A:min", following) == {
@@ -249,10 +256,12 @@ def test_analyze_looks_ahead_to_the_next_segment() -> None:
         ("D:maj", 1),
         ("A:min", 1),
         ("A:maj", 2),
+        ("D:maj", 1),
+        ("G:7", 1),
     ]
     _, analyses = analyze(progression, key="A:min")
     assert [a["numeral"] for a in analyses] == [
-        "i", "V/iv", "iv", "I", None, "iv", "IV", "i", "I"
+        "i", "V/iv", "iv", "I", None, "iv", "IV", "i", "I", "V/VII", "VII7"
     ]  # fmt: skip
     assert [a["role"] for a in analyses] == [
         "diatonic",
@@ -264,4 +273,6 @@ def test_analyze_looks_ahead_to_the_next_segment() -> None:
         "borrowed",
         "diatonic",
         "borrowed",
+        "secondary_dominant",
+        "diatonic",
     ]

@@ -33,7 +33,7 @@ Consecutive beats with the same state become one segment. Each segment carries t
 
 ### Harmonic analysis
 
-The analysis is a pure function of the chord segments (label and beat count) and an optional key. It takes no audio, so corrected or hand-entered chords go through the same code. It lives in `harmony.py`.
+The analysis is a pure function of the chord segments (label and beat count) and an optional key. It takes no audio (see "Key from chords, not audio" under Design decisions). It lives in `harmony.py`.
 
 A chord is diatonic when every chord tone (root, third, fifth, and the seventh of a `7` chord) lies in the key's scale: major, or natural minor. Minor admits one more case, `maj` and `7` on the dominant degree, the harmonic-minor V and V7. The raised leading tone is admitted nowhere else, so `F:min` in A minor is chromatic, not diatonic. The resulting sets are major: `I ii iii IV V V7 vi`; minor: `i III iv v V V7 VI VII VII7`. `VII7` is there because `G:7` in A minor is G–B–D–F, all natural minor. `C:7` in C major is not diatonic, since Bb is outside the scale.
 
@@ -50,7 +50,7 @@ Each chord gets one role. The first match wins:
 3. `borrowed`, when the chord is diatonic in the parallel mode (same tonic, other mode). The seventh counts, so `A#:7` (Bb7) is a borrowed `bVII7` in C major, while `D#:7` and `G#:7` (Eb7, Ab7) are not borrowed, because Db and Gb are outside C minor.
 4. `chromatic`, everything else, with the plain numeral.
 
-Two chords satisfy both rule 2 and rule 3, both in minor keys: the major triads on the tonic and the subdominant. `A:maj` in A minor is either `V/iv` or a borrowed `I`, and `D:maj` is either `V/VII` or a borrowed `IV`. Here the label looks one segment ahead. The chord is a secondary dominant only when the immediately following segment is the target triad itself, `D:min` after `A:maj`, or `G:maj` after `D:maj`. A seventh on that root, any other chord, an `N`, or the end of the track makes it borrowed. Silence is not a resolution, however long. Every other label depends on the chord and key alone.
+Two chords satisfy both rule 2 and rule 3, both in minor keys: the major triads on the tonic and the subdominant. `A:maj` in A minor is either `V/iv` or a borrowed `I`, and `D:maj` is either `V/VII` or a borrowed `IV`. Here the label looks one segment ahead. The chord is a secondary dominant only when the immediately following segment is diatonic in the key and has the target's root: `D:min` after `A:maj` (`D:7` and `D:maj` are not diatonic in A minor), `G:maj` or `G:7` after `D:maj`. Any other chord, a non-diatonic chord on that root, an `N`, or the end of the track makes it borrowed. Silence is not a resolution, however long. Every other label depends on the chord and key alone.
 
 The function is set for diatonic chords only: `I`, `III`, `VI` are `tonic`; `II`, `IV` are `predominant`; `V`, `VII` are `dominant`. `iii` and `vi` are tonic substitutes, and `VII` in minor is the subtonic dominant. Other roles have no function.
 
