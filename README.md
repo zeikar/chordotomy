@@ -49,6 +49,8 @@ The repo is also a Claude Code plugin with one skill, `explain-harmony`. Install
 
 Then ask something like "explain the harmony of song.mp3". The skill runs `chordotomy analyze` locally with the plugin's own copy (it needs uv), reads the JSON, and explains the secondary dominants, borrowed chords, and bass lines. The audio stays on your machine; Claude reads only the chord timeline.
 
+Working in this repo, `.claude/settings.json` registers the checkout itself as a directory marketplace and enables the plugin, so the skill runs from the working tree. The first session asks you to trust it; `claude plugin marketplace add .` does the same by hand.
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/).

@@ -4,9 +4,7 @@
     "name": "zeikar",
     "url": "https://github.com/zeikar"
   },
-  "metadata": {
-    "description": "The chordotomy plugin: explain a song's harmony from the local chordotomy analyzer."
-  },
+  "description": "The chordotomy plugin: explain a song's harmony from the local chordotomy analyzer.",
   "plugins": [
     {
       "name": "chordotomy",

@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "chordotomy": {
+      "source": {
+        "source": "directory",
+        "path": "."
+      }
+    }
+  },
+  "enabledPlugins": {
+    "chordotomy@chordotomy": true
+  }
+}
