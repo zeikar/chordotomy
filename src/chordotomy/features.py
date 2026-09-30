@@ -37,7 +37,7 @@ WHITEN_BINS = 37
 TREBLE_IN = (40, 48)
 # Treble fades out from C6 to C7: below the hi-hat and sibilance octaves (research pitfall 6).
 TREBLE_OUT = (84, 96)
-# Bass is flat through B3, the top of the pick_bass register, and fades out by B4.
+# Bass is flat through B2 and fades out by B3, the top of the pick_bass register.
 BASS_OUT = (47, 59)
 
 

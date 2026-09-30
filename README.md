@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** first three slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** first three slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords, from a whitened chroma with an energy-gated no-chord state, and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 

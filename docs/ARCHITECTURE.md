@@ -5,17 +5,23 @@ Three slices are implemented: chords on the beat, then key estimation and Roman-
 ## Pipeline
 
 ```text
-audio ─→ beat tracking ─→ chroma per beat ─→ template match + temporal smoothing
-              │                                          │
-              │                                          ↓
-              └─→ CQT per beat ─→ bass note, segment cuts ─→ segments
-                                                             │
-                                                             ↓
-viewer ←── chord-timeline JSON ←── key estimation + Roman numerals
+audio ─→ beat tracking
+           │
+           ├─→ harmonic signal ─→ one tuning estimate ─┬─→ CQT, 36 bins per octave ─→ whitening
+           │                                           │      ─→ treble and bass chroma, level, per beat
+           │                                           │                    │
+           │                                           │                    ↓
+           │                                           │   template correlation + gated N + Viterbi
+           │                                           │                    │
+           │                                           └─→ CQT, 12 bins per octave ─→ bass note,
+           │                                                                 segment cuts ─→ segments
+           │                                                                                  │
+           │                                                                                  ↓
+viewer ←── chord-timeline JSON ←────────────────────────────── key estimation + Roman numerals
 ```
 
 - Chords are called per beat, not per frame, so a passing note doesn't become a chord change.
-- The first version uses no ML: librosa chroma and beat tracking, then major / minor / 7th templates.
+- There is no ML: a whitened chroma from librosa's CQT and beat tracking, then major / minor / 7th templates. See "Whitened chroma and an energy-gated N" under Design decisions.
 - The bass note comes from a low-register CQT of the mix. It settles slash chords and inversions (`F#7/A#`), which the chroma can't: it folds all octaves together and can't tell which note is lowest. See "Bass from DSP, not Demucs" under Design decisions.
 - Analysis marks secondary dominants and borrowed chords. The analyzer writes no prose: the explanations come from a Claude Code skill that reads the JSON. See "Explanations from an agent skill" under Design decisions.
 - A Python CLI (uv, Typer) writes the JSON. A static HTML viewer (`viewer/`) plays the audio and highlights the current chord; correcting chords in it comes later.
@@ -26,27 +32,35 @@ Audio is decoded to mono at 22050 Hz. The harmonic part is taken with HPSS, so d
 
 Beats come from `librosa.beat.beat_track` with `trim=False`, because the default trim dropped the last real beats of a synthesized clip. The tracker places no beats in leading or trailing silence. So the grid is extended at the median beat period (the tracker's tempo when only one beat is found) in both directions. Without that, the final chord's last beat would swallow a silent tail, and leading silence would have no beats to label `N`. A tail beat is added only if at least half a period remains, to avoid a sliver interval. Beat tracking runs first, so a file with no beats fails before any chroma work.
 
-Chroma is a CQT chroma with `norm=None`, reduced to the median over each beat. The default per-frame normalisation scales near-silent ringing up to full scale and gives a silent beat a random chord. After the median, 1 % of the loudest value is added to every bin. A beat far below that floor ends up nearly flat and matches `N`. A quiet chord well above the floor keeps its shape.
+The chord CQT starts at C1 and spans 252 bins, seven octaves at 36 bins per octave (a third of a semitone), the resolution of Mauch & Dixon. Its tuning is one `estimate_tuning` value on the harmonic signal, shared with the bass CQT below.
 
-Templates are binary: 12 roots × {maj, min, 7}, plus a flat template for `N`. Each beat's chroma is scored against every template by cosine similarity.
+Each frame is then whitened along the frequency axis. A bin becomes its excess over the Hamming-weighted running mean of its octave (37 bins, k-18 to k+18), in running standard deviations; a bin at or below the mean is 0. So a chord's own tones cannot dominate their background, and a broadband, loud mix stops looking flat. The window edges repeat the edge value, and digital silence (sigma 0) whitens to 0. No max-normalisation follows, because the correlation below is scale-free.
 
-Smoothing is a Viterbi decode over the per-beat similarities. Likelihoods are `exp((sim - 1) / 0.02)` and a state stays put with probability 0.5, the rest spread evenly over the other states. The cosine gap between a chord and its maj / 7 sibling is only about 0.1, so without the sharpening the transition prior swamps the observations and everything collapses to `N`. The self-loop is weak enough that a real change lasting two beats survives, and strong enough that a single beat where a chord flickers to its sibling does not.
+Two pitch windows fold the whitened bins to twelve pitch classes: each class takes the bin on its pitch and one either side, which absorbs what the tuning estimate leaves. Both windows are raised cosines. The treble window fades in from E2 to C3 (MIDI 40 to 48) and out from C6 to C7 (MIDI 84 to 96). It starts above the bass line and the kick, which would flatten the chroma, and ends below the hi-hat and sibilance octaves. The bass window is flat up to B2 (MIDI 47) and fades out by B3 (MIDI 59). Each beat takes the median of its frames, for both chromas.
 
-Consecutive beats with the same state become one chord run. A run is also cut where the per-beat bass changes to a value that holds for two beats (see the bass paragraphs below). Each resulting segment carries three candidate labels, computed over its own beats: the smoothed chord first, then the labels with the highest mean similarity over the segment. Scores are not written out, per the confidence rule below. Consecutive segments may therefore share a chord.
+The level is the median RMS of the harmonic signal per beat, in dB relative to the 95th-percentile beat. A high percentile rather than the maximum, so one loud hit cannot push a quiet intro under the gate below.
+
+Templates are binary: 12 roots × {maj, min, 7}. A chord's score is the Pearson correlation of the treble chroma with its template, in [-1, 1], plus `BASS_WEIGHT` = 0.45 times the correlation of the bass chroma with the chord's bass profile. The profile is 1.0 on the root and `BASS_TONE` = 0.8 on the chord's other tones. Both sides are centred and unit-normed over the twelve classes, so a flat or silent chroma has no shape and scores 0 against every chord.
+
+`N` is not a template. Its score is the constant `N_SCORE` = 0.3, which a chord has to beat. A beat more than `N_GATE_DB` = 40 dB below the loud beats can only be `N`, because whitening is scale-free and would turn a silent beat's residual ringing into a chord.
+
+Smoothing is a Viterbi decode over these scores. Likelihoods are `exp((score - best) / TEMPERATURE)` with `TEMPERATURE` = 0.03, so a gap of g on one beat is worth g / 0.03 nats against the transition cost. A state stays put with probability p = exp(-period / `CHORD_SECONDS`), with `CHORD_SECONDS` = 2.2, and the rest is spread evenly over the other states. Chord length is in seconds, not beats, so a tracker locked at half or double tempo does not halve or double it. The temperature is low enough that a real change lasting two beats survives, and the self-loop is strong enough that a single beat where a chord flickers to its sibling does not.
+
+Consecutive beats with the same state become one chord run. A run is also cut where the per-beat bass changes to a value that holds for two beats (see the bass paragraphs below). Each resulting segment carries three candidate labels, computed over its own beats: the smoothed chord first, then the labels with the highest mean score over the segment. Scores are not written out, per the confidence rule below. Consecutive segments may therefore share a chord.
 
 The cut rule governs a bass move under a held chord only, because a chord change already cuts. So a one-beat slash chord that comes with a chord change (C → G/B → Am) is its own segment. A one-beat bass move under an unchanged chord is almost always a passing or walking tone, and cutting on it would fragment the timeline without changing the harmony. An alternating bass under a held chord (C–E–C–E, C–G–C–G) is a root-position accompaniment pattern, not a series of inversions: no value holds two beats, so it stays one segment. A segment's bass is the value held inside it. A move shorter than two beats is excluded from that choice, so three C beats and one loud E beat read C. A segment with no held value takes the most frequent per-beat value, silence included, ties to a note and then to the earliest, so `null` when most beats are silent. The first held value cuts at its own start when at least two beats precede it in the run (`C–E–C–E–G–G` is two segments, the first by that vote); with fewer, it absorbs them. A bass-register silence held for two or more beats under one chord (a bass player resting while the chord is voiced above the register) also cuts: the middle segment has bass `null`, and the chord on either side keeps its own bass. `N` runs are never cut and have no bass.
 
-The bass note is by definition the lowest sounding note, so it is read from a CQT that keeps octaves apart. Folding it into a chroma would lose that: a chord played alone ties its tones on an argmax, and any low chord tone louder than the bass would win. The CQT is taken from the same harmonic signal as the chroma. It starts at C1 (32.7 Hz) and spans 84 bins, seven octaves at 12 bins per octave, the same span as the chroma. Bin k is k semitones above C1. The lowest 36 bins (C1–B3, 32.7–246.9 Hz) are the bass register. The bins above it are context for the peak test and give the silence floor the file's level.
+The bass note is by definition the lowest sounding note, so it is read from a CQT that keeps octaves apart. Folding it into a chroma would lose that: a chord played alone ties its tones on an argmax, and any low chord tone louder than the bass would win. The CQT is taken from the same harmonic signal as the chroma. It starts at C1 (32.7 Hz) and spans 84 bins, seven octaves at 12 bins per octave, the same span as the chord CQT. Bin k is k semitones above C1. The lowest 36 bins (C1–B3, 32.7–246.9 Hz) are the bass register. The bins above it are context for the peak test and give the silence floor the file's level.
 
 Twelve bins per octave rather than the chroma's 36, because the CQT window at C1 is then 0.53 s instead of 1.59 s, so beats stay separable. The cost is that a note leaks into its neighbouring semitone bins at 0.50 to 0.60 of its peak. The pick rule below is built around that. The magnitude is reduced to the median over each beat, on the same grid as the chroma.
 
-For tuning, the bass CQT uses the estimate `chroma_cqt` makes for itself on the locked librosa (`estimate_tuning` at 36 bins per octave on the harmonic signal), divided by three for its 12-bin grid. So the bass bins line up with the chord chroma's tuning, and on a recording detuned by half a semitone the chroma's root and the bass note fall on the same side. No guarantee is claimed across librosa versions. The chroma call itself is unchanged.
+For tuning, both CQTs take the same `estimate_tuning` value, measured at 36 bins per octave on the harmonic signal. The bass CQT divides it by three for its 12-bin grid. So the bass bins line up with the chord chroma's, and on a recording detuned by half a semitone the chroma's root and the bass note fall on the same side.
 
-A beat column is zeroed when its register maximum is below 1 % of the loudest bin of the whole matrix, the file's loudest note anywhere. A file with nothing in the register never sets its own reference this way: what survives there is leakage under real notes above, which the peak test rejects. The column is zeroed rather than lifted by the chroma's additive floor, because a flat column would make C1 the lowest peak.
+A beat column is zeroed when its register maximum is below 1 % (`SILENCE_FLOOR`) of the loudest bin of the whole matrix, the file's loudest note anywhere. A file with nothing in the register never sets its own reference this way: what survives there is leakage under real notes above, which the peak test rejects. The column is zeroed rather than lifted by an additive floor, because a flat column would make C1 the lowest peak.
 
 On each column the bass is the lowest local maximum inside the register that is at least half the register's maximum. Its pitch class is the bin mod 12. Local maxima are tested over the whole 84-bin profile, so a note just above the register (C4 leaks into B3 at half its height) is a slope, not a peak. Leakage is never a local maximum, and a bass note's harmonics all lie above it. Taking the lowest peak rather than the loudest is the definition of a bass; the price is that a fundamental weaker than half the loudest register bin is not picked. A zero column, or one with no qualifying peak, has no bass.
 
-The chord chroma already spans the bass register and is unchanged. A bass usually doubles the root and reinforces the right chord. A loud non-chord bass can pull the label: a D pedal under `A:min` reads `D:7`. Changing which chord is chosen is out of scope for this stage.
+The bass also feeds the chord choice, through the bass chroma and its weight in the score. The treble chroma starts at E2, so the bass line no longer flattens it. The bass chroma is not a root vote: a chord's bass profile is 1.0 on its root and 0.8 on its other tones. A bass pedal now argues for every chord that contains it, most for the chord rooted on it. A loud pedal outside the chord still pulls the label toward chords that contain it. A bass on the third or fifth still supports its chord, so the treble decides between a first inversion and the chord rooted on the bass (`A:min/C` against `C:maj`, `G:maj/B` against `B:min`). A root bass breaks the ties the treble cannot, like `C:maj` with an added sixth against `A:min` with a seventh. The bass note that goes into the segments is still the CQT pick above, not this chroma.
 
 ### Harmonic analysis
 
@@ -166,7 +180,7 @@ Baseline, front end at `b70fb50`:
 
 On Tiny AAM the analyzer calls 12% of the duration `N` against 1.5% in the reference, and most of that is two tracks: 2720 (77% `N`) and 2990 (56%).
 
-Whitened front end, at the commit that adds these rows. The decode constants were tuned on Tiny AAM; GuitarSet was held out:
+Whitened front end, at the commit that adds these rows. The decode constants were tuned on Tiny AAM; GuitarSet was held out. `BASS_WEIGHT`, `BASS_TONE`, `TEMPERATURE` and `CHORD_SECONDS` are the best Tiny AAM majmin among the values that keep the default test suite green. The suite is a hard constraint: two-beat chord changes and first-inversion chords must survive. Without it the best Tiny AAM majmin was about 0.823. The 0.788 below is the price of that constraint, chosen deliberately. Vocabulary expansion (v4) is the next stage.
 
 | | root | majmin | sevenths | majmin_inv | N_est | N_ref |
 |---|---|---|---|---|---|---|
@@ -198,6 +212,22 @@ The tradeoff is lower accuracy than a separated stem when other low instruments 
 ### Explanations from an agent skill
 
 The analyzer never calls an LLM. The repo is a Claude Code plugin whose `explain-harmony` skill (`skills/explain-harmony/`) runs `chordotomy analyze`, reads the JSON, and writes the explanations. The app then needs no API key, SDK dependency, or network code, and it stays deterministic and testable. The agent can also take follow-up questions. The audio stays local; only the chord timeline, as text, reaches the model. The tradeoffs: explanations are not stored in the JSON, so a viewer can't show them without a separate write-back, and getting them needs an agent.
+
+### Whitened chroma and an energy-gated N
+
+The first front end summed the CQT into a chroma, added a floor, and scored it by cosine against binary templates plus a flat template for `N`. On real mixes it called 12 % of Tiny AAM `N`, and 77 % of track 2720. On that track the `N` similarity had a median of 0.774 against 0.731 for the best chord.
+
+The flat template wins because a real mix's chroma is never sparse. The flat template beats a triad whenever the chord-tone bins are under 3.0 times the others (for a `7` chord, 2.73 times), and harmonics, drums and melody keep a mix under that. Mauch & Dixon measured the same thing: without preprocessing, many chords in noisier songs become "no chord". In their Table 1, without NNLS, chord recognition is 38.6 % with no preprocessing, 74.5 % with background subtraction and 79.0 % with standardisation. So the chroma is whitened against its octave background before it is scored. This is implemented from the paper, never from their GPL plugin (see "Licenses").
+
+`N` is a gate and a constant, not a template, because no template shape is right for it. Silence is an energy fact, so `N_GATE_DB` reads it from the level. A quiet-but-tonal beat is a chord, so `N_SCORE` is a bar the correlation has to clear, and a flat chroma correlates 0 against every chord. The gate cannot be read from the chroma, because whitening is scale-free.
+
+The evidence is the Tiny AAM rows in Evaluation: `N` falls from 12.3 % to 1.1 % of the duration (the reference has 1.5 %), and majmin rises from 0.738 to 0.788. GuitarSet, held out, goes from 0.519 to 0.619.
+
+The bass evidence is a chord-tone profile because a root-only term pulled first inversions toward the chord rooted on the bass (`A:min/C` read as `C:maj`, `G:maj/B` as `B:min`), and slash chords are a product feature.
+
+The self-loop is in seconds because a tracker locked at half or double tempo would otherwise double or halve the expected chord length.
+
+The constants trade Tiny AAM score for the test suite; see the note under the Evaluation tables. Not done: NNLS note profiles bought about 1 pp of majmin in the paper, and the vocabulary (sevenths beyond `7`, sus, diminished) is the next stage, v4.
 
 ### Confidence is a rank, not a percentage
 
