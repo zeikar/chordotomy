@@ -76,17 +76,6 @@ node --test viewer/tests/
 
 The viewer is plain HTML, CSS, and JavaScript with no build step. Its tests need Node and no packages.
 
-### Real-audio evaluation (opt-in)
-
-`uv sync --extra dev --extra eval` adds mir_eval and pooch, which also enables the evaluation tests (skipped without it). Then:
-
-```sh
-uv run chordotomy evaluate tiny-aam [--limit N]
-uv run chordotomy evaluate guitarset [--limit N]
-```
-
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. Both datasets are CC BY 4.0 and land in the pooch cache (`~/Library/Caches/chordotomy` on macOS; delete it to re-download), never in the repo. The default test run never touches the network. The scores are numbers for development only.
-
 ## License
 
 MIT
