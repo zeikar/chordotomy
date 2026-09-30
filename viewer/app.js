@@ -43,7 +43,7 @@
   let turnUntil = 0;
   let chordStrikes = [];
   let chordVoicings = [];
-  let hearChords = false;
+  let playChords = false;
   let context = null;
   let chordBus = null;
   let session = null; // the notes of one unbroken stretch of playback, faded out together
@@ -380,7 +380,7 @@
   }
 
   function startChords() {
-    if (ticker || !hearChords || !timeline || !audioUrl || !clockRunning()) return;
+    if (ticker || !playChords || !timeline || !audioUrl || !clockRunning()) return;
     ensureContext();
     if (audition) fadeOut(audition);
     audition = null;
@@ -411,7 +411,7 @@
   // its own gain, since the seek's own events stop the playback session right after.
   function auditionChord(index) {
     const voicing = chordVoicings[index];
-    if (!hearChords || !voicing || !audioUrl || !audio.paused) return;
+    if (!playChords || !voicing || !audioUrl || !audio.paused) return;
     ensureContext();
     if (audition) fadeOut(audition);
     audition = new GainNode(context);
@@ -467,9 +467,9 @@
     }
   }
 
-  function setHearChords(on) {
-    hearChords = on;
-    $("hear-chords").setAttribute("aria-pressed", String(on));
+  function setPlayChords(on) {
+    playChords = on;
+    $("play-chords").setAttribute("aria-pressed", String(on));
     if (on) {
       ensureContext();
       startChords();
@@ -481,7 +481,7 @@
       audition = null;
       // Idle, the context would keep the audio device busy. Suspend once the fade is done.
       setTimeout(() => {
-        if (!hearChords) context.suspend();
+        if (!playChords) context.suspend();
       }, 200);
     }
   }
@@ -513,9 +513,9 @@
     if (button) seek(Number(button.dataset.index));
   });
 
-  $("hear-chords").addEventListener("click", (event) => {
+  $("play-chords").addEventListener("click", (event) => {
     releaseFocus(event);
-    setHearChords(!hearChords);
+    setPlayChords(!playChords);
   });
   $("mute-recording").addEventListener("click", (event) => {
     releaseFocus(event);
@@ -547,17 +547,17 @@
     if (!timeline || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target;
     // Letter shortcuts work from any control; none of them takes letters. The physical key is the
-    // fallback, so they also work with a non-Latin layout on (Korean input sends "ㅗ" for H).
+    // fallback, so they also work with a non-Latin layout on (Korean input sends "ㅊ" for C).
     const letter = /^[a-z]$/i.test(event.key)
       ? event.key.toLowerCase()
-      : { KeyH: "h", KeyM: "m" }[event.code];
-    if ((letter === "h" || letter === "m") && audioUrl) {
+      : { KeyC: "c", KeyM: "m" }[event.code];
+    if ((letter === "c" || letter === "m") && audioUrl) {
       event.preventDefault();
       if (event.repeat) return;
       // The button that changed doesn't have focus, so say what happened for screen readers.
-      if (letter === "h") {
-        setHearChords(!hearChords);
-        $("announce").textContent = hearChords ? "Chords on" : "Chords off";
+      if (letter === "c") {
+        setPlayChords(!playChords);
+        $("announce").textContent = playChords ? "Chords on" : "Chords off";
       } else {
         toggleMute();
         $("announce").textContent = audio.muted ? "Recording muted" : "Recording on";
@@ -574,8 +574,8 @@
       // The volume slider's and the player's own arrows (on the player, both would seek).
       if (target === audio || target.closest("input")) return;
       event.preventDefault();
-      const step = event.key === "ArrowRight" ? 1 : -1;
-      const index = Math.min(buttons.length - 1, Math.max(0, currentIndex() + step));
+      const index = Core.stepIndex(timeline.segments, now(), event.key === "ArrowRight" ? 1 : -1);
+      if (index < 0) return;
       seek(index);
       if (strip.contains(document.activeElement)) buttons[index].focus({ preventScroll: true });
     }

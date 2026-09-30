@@ -150,6 +150,24 @@ test("the segment at a time is the last one starting at or before it", () => {
   assert.equal(segmentIndexAt([], 1), -1);
 });
 
+test("left goes to the start of the chord, then to the one before; right to the next", () => {
+  const segments = [
+    { start_time: 0.5, end_time: 1.5 },
+    { start_time: 1.5, end_time: 4.5 },
+    { start_time: 4.5, end_time: 6.0 },
+  ];
+  const { stepIndex } = Core;
+  assert.equal(stepIndex(segments, 3.0, -1), 1); // well into the chord: back to its start
+  assert.equal(stepIndex(segments, 1.501, -1), 0); // at its start: the chord before
+  assert.equal(stepIndex(segments, 2.3, -1), 0); // within its first second, as on a second press
+  assert.equal(stepIndex(segments, 0.2, -1), 0); // before the first chord
+  assert.equal(stepIndex(segments, 0.501, -1), 0); // at the first chord's start
+  assert.equal(stepIndex(segments, 3.0, 1), 2);
+  assert.equal(stepIndex(segments, 5.9, 1), 2); // the last chord stays put
+  assert.equal(stepIndex(segments, 0.2, 1), 1);
+  assert.equal(stepIndex([], 1, -1), -1);
+});
+
 test("only schema version 3 is accepted", () => {
   const ok = { schema_version: 3, beats: [], segments: [] };
   assert.equal(Core.timelineProblem(ok), null);

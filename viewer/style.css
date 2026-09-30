@@ -650,7 +650,7 @@ body:has(#empty:not([hidden])) .status {
 }
 
 /* Still adjustable while the chords are off, but it shouldn't be the heaviest mark in the row. */
-.listen:has(#hear-chords[aria-pressed="false"]) .volume {
+.listen:has(#play-chords[aria-pressed="false"]) .volume {
   opacity: 0.55;
 }
 

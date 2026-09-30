@@ -58,9 +58,9 @@ The viewer plays a recording along with its chord timeline. It shows the current
 
 Open it at <https://zeikar.github.io/chordotomy/> once Pages is enabled, or open `viewer/index.html` from a checkout. Drop the recording and its `.chords.json` on the page, or pick them with **Open files**. The files stay in your browser. The page reads them locally and makes no network requests.
 
-To check the chords by ear, turn on **Hear chords**. The page plays each detected chord on every beat, with its bass note, under the recording. **Mute recording** leaves the chords on their own. The sound is synthesized in the browser.
+To check the chords by ear, turn on **Play chords**. The page plays each detected chord on every beat, with its bass note, under the recording. **Mute recording** leaves the chords on their own. The sound is synthesized in the browser.
 
-Space plays and pauses, ← and → step through the chords, H turns the chords on and off, M mutes the recording, and clicking a chord jumps to it. Editing chords comes later.
+Space plays and pauses. → goes to the next chord. ← goes back to the start of the current chord, or to the chord before when it is already within a second of the start, so pressing it twice steps back. C turns the chords on and off, M mutes the recording, and clicking a chord jumps to it. Editing chords comes later.
 
 ## Development
 

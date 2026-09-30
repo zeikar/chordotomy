@@ -15,6 +15,8 @@ const Core = (() => {
   const NATURAL = [0, 2, 4, 5, 7, 9, 11];
   const GLYPH = { "-1": "♭", 0: "", 1: "♯" };
   const QUALITY_SUFFIX = { maj: "", min: "m", 7: "7" };
+  // Seconds into a chord after which ← goes back to its start rather than to the chord before.
+  const RESTART = 1;
   // Keys whose written sharp tonic is conventionally spelled flat. Every other key keeps its label.
   const FLAT_KEYS = {
     "C#:maj": "Db",
@@ -149,6 +151,17 @@ const Core = (() => {
       }
     }
     return found;
+  }
+
+  // Where ← (step -1) and → (step +1) go from time `t`. → is the next segment. ← is the start
+  // of the current one, or the previous one when `t` is still within RESTART seconds of that
+  // start, so pressing it again keeps going back, like a music player's previous-track button.
+  function stepIndex(segments, t, step) {
+    if (!segments.length) return -1;
+    const index = Math.max(0, segmentIndexAt(segments, t));
+    if (step > 0) return Math.min(segments.length - 1, index + 1);
+    if (t - segments[index].start_time > RESTART) return index;
+    return Math.max(0, index - 1);
   }
 
   // A reason the parsed JSON can't be shown, or null if it can.
@@ -316,6 +329,7 @@ const Core = (() => {
     numeralText,
     pitchClasses,
     segmentIndexAt,
+    stepIndex,
     strikeIndexAt,
     strikes,
     targetName,
