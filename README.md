@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** first two slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled.
+> **Status:** first three slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled. Each chord segment also carries its bass note and inversion.
 
 Everything runs locally. Your audio never leaves your machine.
 
@@ -22,7 +22,8 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 
 - [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th)
 - [x] Roman-numeral analysis, with highlights for secondary dominants and borrowed chords
-- [ ] Slash chords from a Demucs bass stem, short explanations
+- [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
+- [ ] Short explanations of the highlighted moves
 - [ ] Viewer: playback that highlights the current chord, plus chord editing and manual entry
 
 ## Usage
