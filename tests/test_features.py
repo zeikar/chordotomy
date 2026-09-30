@@ -124,7 +124,10 @@ def test_a_chord_above_the_register_has_no_bass_until_one_sounds(synth) -> None:
     assert _labels(f) == ["C:maj"] * len(f.times)
     # Nothing sounds in the register; C4's leakage into B3 is a slope, not a peak.
     assert _basses(f.cqt) == [None] * f.cqt.shape[1]
+    # So the leakage casts no bass vote either.
+    assert np.all(f.bass == 0)
 
-    cqt = beat_features(synth([("C:maj", 8, 40)], chord_midi=60)).cqt
+    f = beat_features(synth([("C:maj", 8, 40)], chord_midi=60))
 
-    assert _basses(cqt) == ["E"] * cqt.shape[1]
+    assert _basses(f.cqt) == ["E"] * f.cqt.shape[1]
+    assert np.all(f.bass.any(axis=0))

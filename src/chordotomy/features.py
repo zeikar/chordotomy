@@ -16,7 +16,7 @@ import librosa
 import numpy as np
 from scipy.ndimage import convolve1d
 
-from .chords import BASS_BINS
+from .chords import BASS_BINS, pick_bass
 
 SR = 22050
 HOP = 512
@@ -72,7 +72,8 @@ class Features(NamedTuple):
     times: (n,) beat starts in seconds. Beat i spans [times[i], times[i + 1]); the last beat
         runs to the end of the audio.
     treble, bass: (12, n) whitened chroma through the treble and bass pitch windows, C first,
-        the median per beat.
+        the median per beat. bass is all zero on beats where pick_bass finds no note: the
+        correlation that scores it is scale-free, so leakage there would count as a bass.
     cqt: (84, n) CQT magnitude, bin k is k semitones above C1, the median per beat; beats with a
         silent bass register are all-zero columns.
     level: (n,) the median RMS per beat in dB relative to the 95th-percentile beat.
@@ -192,6 +193,9 @@ def beat_features(y: np.ndarray) -> Features:
     # leakage slopes under real notes above, which the peak test rejects. Zeroed rather than
     # lifted by an additive floor, because a flat column would make C1 the lowest peak.
     cqt[:, cqt[:BASS_BINS].max(axis=0) < SILENCE_FLOOR * cqt.max()] = 0.0
+    # The bass correlation is scale-free, so on a beat with no bass note the leakage under a chord
+    # above the register would vote at full strength (it pulls a bass-less C:maj toward C:maj7).
+    bass[:, np.array([pick_bass(column) is None for column in cqt.T])] = 0.0
     return Features(
         times=librosa.frames_to_time(beat_frames, sr=SR, hop_length=HOP),
         treble=treble,

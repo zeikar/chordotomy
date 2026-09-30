@@ -4,38 +4,82 @@ from itertools import pairwise
 import numpy as np
 import pytest
 
-from chordotomy.chords import LABELS, N_SCORE, inversion, match, pick_bass, segment, smooth
+from chordotomy.chords import (
+    LABELS,
+    N_SCORE,
+    QUALITY_OFFSET,
+    inversion,
+    match,
+    pick_bass,
+    segment,
+    smooth,
+)
 
 # Literal music-theory ground truth, deliberately not imported from the module.
 ROOT_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-INTERVALS = {"maj": (0, 4, 7), "min": (0, 3, 7), "7": (0, 4, 7, 10)}
+INTERVALS = {
+    "maj": (0, 4, 7),
+    "min": (0, 3, 7),
+    "7": (0, 4, 7, 10),
+    "maj7": (0, 4, 7, 11),
+    "min7": (0, 3, 7, 10),
+    "min6": (0, 3, 7, 9),
+    "hdim7": (0, 3, 6, 10),
+    "dim7": (0, 3, 6, 9),
+    "sus4": (0, 5, 7),
+}
 
 
 def test_vocabulary() -> None:
-    assert len(LABELS) == 37
+    assert len(LABELS) == 109
+    # Quality-major: the order is the tie-break between pitch-set twins.
     assert LABELS[0] == "C:maj"
+    assert LABELS[12] == "C:min"
     assert LABELS[-1] == "N"
-    assert "F#:7" in LABELS
-    assert "A#:min" in LABELS
+    for label in ("F#:7", "A#:min", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4"):
+        assert label in LABELS
     assert len(set(LABELS)) == len(LABELS)
 
 
-def test_match_ranks_ideal_chroma_first() -> None:
-    names = []
-    columns = []
-    for root, root_name in enumerate(ROOT_NAMES):
-        for quality, intervals in INTERVALS.items():
-            column = np.zeros(12)
-            column[[(root + i) % 12 for i in intervals]] = 1.0
-            names.append(f"{root_name}:{quality}")
-            columns.append(column)
-    chroma = np.stack(columns, axis=1)
+def _pitch_set(label: str) -> set[int]:
+    root, quality = label.split(":")
+    return {(ROOT_NAMES.index(root) + i) % 12 for i in INTERVALS[quality]}
+
+
+def _chroma(*notes: str) -> np.ndarray:
+    """A (12, 1) binary chroma, 1.0 on each named pitch class."""
+    column = np.zeros((12, 1))
+    column[[ROOT_NAMES.index(note) for note in notes]] = 1.0
+    return column
+
+
+@pytest.fixture
+def no_offsets(monkeypatch) -> None:
+    """Every QUALITY_OFFSET entry 0, for tests that feed hand-built binary chromas.
+
+    The offsets are sized for chromas that carry partials, as audio does. A binary chroma has
+    none: against the templates a binary Cmaj7 beats C:maj by only 0.12, under the maj7 offset.
+    """
+    for quality in QUALITY_OFFSET:
+        monkeypatch.setitem(QUALITY_OFFSET, quality, 0.0)
+
+
+def test_match_ranks_ideal_chroma_first(no_offsets) -> None:
+    names = [f"{root}:{quality}" for quality in INTERVALS for root in ROOT_NAMES]
+    chroma = np.zeros((12, len(names)))
+    for column, name in enumerate(names):
+        chroma[list(_pitch_set(name)), column] = 1.0
 
     scores = match(chroma, np.zeros_like(chroma))
 
-    assert scores.shape == (37, 36)
+    assert scores.shape == (109, 108)
     assert np.all(scores[LABELS.index("N")] == N_SCORE)
-    assert [LABELS[i] for i in scores.argmax(axis=0)] == names
+    top = [LABELS[i] for i in scores.argmax(axis=0)]
+    for name, label in zip(names, top, strict=True):
+        assert _pitch_set(label) == _pitch_set(name), (name, label)
+        # A twin's pitch set goes to the earlier twin without a bass; see the tie-break test.
+        if name.split(":")[1] not in ("min6", "hdim7", "dim7"):
+            assert label == name
 
 
 def test_silent_and_flat_columns_are_no_chord() -> None:
@@ -46,19 +90,64 @@ def test_silent_and_flat_columns_are_no_chord() -> None:
     assert list(scores.argmax(axis=0)) == [LABELS.index("N")] * 2
 
 
-def test_bass_evidence_settles_a_relative_tie() -> None:
-    # C E G A is C6 or Am7: C:maj and A:min correlate equally with it.
-    treble = np.zeros((12, 1))
-    treble[[0, 4, 7, 9]] = 1.0
-    on_c, on_a = np.zeros((12, 1)), np.zeros((12, 1))
-    on_c[0] = on_a[9] = 1.0
+def test_twins_tie_break_on_label_order(no_offsets) -> None:
+    # G Bb D E is G:min6 or E:hdim7.
+    scores = match(_chroma("G", "A#", "D", "E"), np.zeros((12, 1)))[:, 0]
+    first, second = np.argsort(-scores, kind="stable")[:2]
 
-    assert LABELS[match(treble, on_c).argmax()] == "C:maj"
-    assert LABELS[match(treble, on_a).argmax()] == "A:min"
+    assert (LABELS[first], LABELS[second]) == ("G:min6", "E:hdim7")
+    assert scores[first] == scores[second]
+    # The decode takes the first argmax too.
+    assert _labels(np.repeat(scores[:, None], 4, axis=1)) == ["G:min6"] * 4
+
+    # C Eb Gb A is the dim7 on any of its four tones.
+    scores = match(_chroma("C", "D#", "F#", "A"), np.zeros((12, 1)))[:, 0]
+
+    assert LABELS[scores.argmax()] == "C:dim7"
+    for label in ("D#:dim7", "F#:dim7", "A:dim7"):
+        assert scores[LABELS.index(label)] == scores[LABELS.index("C:dim7")]
+
+
+@pytest.mark.parametrize(
+    ("notes", "bass", "expected"),
+    [
+        (("G", "A#", "D", "E"), "E", "E:hdim7"),
+        (("G", "A#", "D", "E"), "G", "G:min6"),
+        (("C", "D#", "F#", "A"), "A", "A:dim7"),
+        (("C", "D#", "F#", "A"), "F#", "F#:dim7"),
+    ],
+)
+def test_bass_tells_the_twins_apart(no_offsets, notes, bass, expected) -> None:
+    assert LABELS[match(_chroma(*notes), _chroma(bass)).argmax()] == expected
+
+
+@pytest.mark.parametrize("bass", ["A", "C"])
+def test_a_seventh_over_its_third_is_an_inversion(no_offsets, bass) -> None:
+    # C E G A is Am7 or C6; C6 is not in the vocabulary, so a C bass makes Am7/C, not C6.
+    assert LABELS[match(_chroma("C", "E", "G", "A"), _chroma(bass)).argmax()] == "A:min7"
+    assert inversion("A:min7", bass) == {"A": "root", "C": "first"}[bass]
+
+
+def test_offsets_apply_per_quality(monkeypatch) -> None:
+    treble, bass = _chroma("C", "E", "G", "B"), np.zeros((12, 1))
+    monkeypatch.setitem(QUALITY_OFFSET, "maj7", 0.0)
+    free = match(treble, bass)[:, 0]
+    monkeypatch.setitem(QUALITY_OFFSET, "maj7", -1.0)
+    penalised = match(treble, bass)[:, 0]
+
+    assert LABELS[free.argmax()] == "C:maj7"
+    assert LABELS[penalised.argmax()] == "C:maj"
+    # Its rank moves as the maj7 rows drop past it, but the entry does not touch its score.
+    assert penalised[LABELS.index("C:min7")] == free[LABELS.index("C:min7")]
+
+
+def test_twins_share_one_offset() -> None:
+    # Otherwise the offset, not the bass, would tell G:min6 from E:hdim7.
+    assert QUALITY_OFFSET["min6"] == QUALITY_OFFSET["hdim7"]
 
 
 def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
-    """(37, n) scores: 0.0 everywhere, C:maj 0.8 / C:7 0.6 unless overridden per beat, N N_SCORE."""
+    """(109, n) scores: 0.0 everywhere, C:maj 0.8 / C:7 0.6 unless overridden, N N_SCORE."""
     scores = np.zeros((len(LABELS), n))
     scores[LABELS.index("C:maj")] = 0.8
     scores[LABELS.index("C:7")] = 0.6
@@ -75,9 +164,10 @@ def _labels(scores: np.ndarray, level: np.ndarray | None = None, period: float =
     return [LABELS[i] for i in smooth(scores, level, period)]
 
 
-# At period 0.5 the self-loop is about 0.80, so leaving a chord and coming back costs about 10
-# nats; a score gap of g on one beat is worth g / TEMPERATURE = 33 g nats. The gaps below hold
-# the verdict by at least 2 nats.
+# At period 0.5 the self-loop is about 0.80 and the rest is spread over 108 other labels, so a
+# switch costs about 6.05 nats and leaving a chord and coming back about 12.1; a score gap of g
+# on one beat is worth g / TEMPERATURE = 50 g nats. The gaps below hold the verdict by at least 2
+# nats.
 
 
 def test_smooth_suppresses_one_beat_sibling_change() -> None:
@@ -117,8 +207,8 @@ def test_no_chord_above_the_n_score_is_n() -> None:
 
 
 def test_the_self_loop_follows_seconds_not_beats() -> None:
-    # 7.3 nats against a round trip of about 10 at period 0.5 and about 5 at period 3.0.
-    scores = _scores({2: {"C:maj": 0.58, "C:7": 0.8}})
+    # 10 nats against a round trip of about 12.1 at period 0.5 and about 7.2 at period 3.0.
+    scores = _scores({2: {"C:maj": 0.6, "C:7": 0.8}})
 
     assert _labels(scores, period=0.5) == ["C:maj"] * 6
     assert _labels(scores, period=3.0) == ["C:maj", "C:maj", "C:7", "C:maj", "C:maj", "C:maj"]
@@ -276,6 +366,15 @@ def test_segments_cut_on_the_bass_rank_candidates_over_their_own_beats() -> None
         ("C:7", "A#", "third"),
         ("A:min", "C", "first"),
         ("F#:7", "E", "third"),
+        ("C:maj7", "B", "third"),
+        ("D:min7", "C", "third"),
+        # The added sixth of a min6 is its third position.
+        ("G:min6", "E", "third"),
+        ("F#:hdim7", "E", "third"),
+        ("C#:dim7", "A#", "third"),
+        ("G:sus4", "C", "first"),
+        ("G:sus4", "D", "second"),
+        ("G:sus4", "B", "non_chord"),
         ("C:maj", "D", "non_chord"),
         ("C:maj", "A#", "non_chord"),
         ("N", "C", None),

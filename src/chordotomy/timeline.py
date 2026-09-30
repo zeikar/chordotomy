@@ -1,4 +1,4 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v3)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v4)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from . import __version__, harmony
 from .chords import inversion, match, segment, smooth
 from .features import SR, beat_features, load_audio
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def analyze(path: Path, key: str | None = None) -> dict:

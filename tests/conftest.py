@@ -18,7 +18,17 @@ BEAT = 60 / BPM
 
 # Literal music-theory ground truth, deliberately not imported from chordotomy.chords.
 ROOT_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-INTERVALS = {"maj": (0, 4, 7), "min": (0, 3, 7), "7": (0, 4, 7, 10)}
+INTERVALS = {
+    "maj": (0, 4, 7),
+    "min": (0, 3, 7),
+    "7": (0, 4, 7, 10),
+    "maj7": (0, 4, 7, 11),
+    "min7": (0, 3, 7, 10),
+    "min6": (0, 3, 7, 9),
+    "hdim7": (0, 3, 6, 10),
+    "dim7": (0, 3, 6, 9),
+    "sus4": (0, 5, 7),
+}
 
 Progression = list[tuple[str, int] | tuple[str, int, int]]
 
