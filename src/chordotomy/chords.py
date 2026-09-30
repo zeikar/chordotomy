@@ -61,7 +61,8 @@ def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]
     A segment ends where the smoothed state changes and, inside a chord run, where the per-beat
     pick_bass value changes to one held for BASS_HOLD beats, so consecutive segments may share a
     chord. cqt is the (84, n) beat-synchronous matrix from beat_chroma. A segment's bass is its
-    held value; with none, the most frequent per-beat value (ties to the earliest). N has None.
+    held value; with none, the most frequent per-beat value, silence included (ties to a note, then
+    the earliest). N has None.
     """
     basses = [pick_bass(column) for column in cqt.T]
     runs = [0, *map(int, np.flatnonzero(np.diff(states)) + 1), len(states)]
@@ -77,7 +78,9 @@ def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]
                 groups.append((beat, value))
             beat += length
         if groups:
-            held[run_start] = groups[0][1]
+            # Fewer than BASS_HOLD beats before the first held group are a blip it absorbs; more
+            # are a stretch of their own, which the vote below labels.
+            held[run_start if groups[0][0] - run_start < BASS_HOLD else groups[0][0]] = groups[0][1]
         for (_, previous), (beat, value) in pairwise(groups):
             if value != previous:
                 held[beat] = value
@@ -94,9 +97,12 @@ def segment(states: np.ndarray, sims: np.ndarray, cqt: np.ndarray) -> list[dict]
             bass = held[start]
         else:
             # A vote over the per-beat values the cut rule uses, not a pick on the mean profile,
-            # so a loud one-beat note cannot outvote the beats around it.
-            votes = Counter(b for b in basses[start:end] if b is not None)
-            bass = votes.most_common(1)[0][0] if votes and LABELS[chosen] != "N" else None
+            # so a loud one-beat note cannot outvote the beats around it. Silence votes too, so a
+            # lone note among rests does not label the span; a tie goes to a note, then earliest.
+            votes = Counter(basses[start:end])
+            bass = max(votes, key=lambda b: (votes[b], b is not None))
+            if LABELS[chosen] == "N":
+                bass = None
         segments.append(
             {
                 "start_beat": int(start),

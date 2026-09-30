@@ -150,6 +150,9 @@ def test_segment_bass_is_none_for_no_chord() -> None:
         ([16, 12], "E"),
         ([None, 12], "C"),
         ([None] * 3, None),
+        # Silence votes too: a lone note among rests does not label the segment.
+        ([None, 16, None, 7, None], None),
+        ([None, 16, 16, None, 7], "E"),
     ],
 )
 def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> None:
@@ -172,6 +175,14 @@ def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> 
         (["C:maj"] * 4, [12] * 3 + [(16, 10.0)], [(0, 4, "C:maj", "C")]),
         # nor at the start of the run.
         (["C:maj"] * 8, [16] + [12] * 7, [(0, 8, "C:maj", "C")]),
+        # The first held value cuts at its own start when two or more beats precede it,
+        (
+            ["C:maj"] * 6,
+            [12, 16, 12, 16, 7, 7],
+            [(0, 4, "C:maj", "C"), (4, 6, "C:maj", "G")],
+        ),
+        # but a one-beat leading blip is absorbed rather than made a one-beat segment.
+        (["C:maj"] * 4, [16, 12, 12, 12], [(0, 4, "C:maj", "C")]),
         # No value holds two beats: the most frequent, ties to the earliest.
         (["C:maj"] * 8, [12, 16] * 4, [(0, 8, "C:maj", "C")]),
         # A held silence cuts too.
