@@ -100,13 +100,27 @@
 
       <section class="transport" aria-label="Playback">
         <audio id="audio" controls preload="auto" hidden></audio>
-        <p class="no-audio" id="no-audio">Open the recording too to play along.</p>
+        <p class="no-audio" id="no-audio">
+          Open the recording too, to play along and hear the chords.
+        </p>
         <div class="listen" id="listen" hidden>
-          <button type="button" class="button toggle" id="mute-recording" aria-pressed="false">
+          <button
+            type="button"
+            class="button toggle"
+            id="mute-recording"
+            aria-pressed="false"
+            title="Silence the recording to hear the chords on their own"
+          >
             Mute recording
           </button>
           <div class="listen-chords">
-            <button type="button" class="button toggle" id="hear-chords" aria-pressed="false">
+            <button
+              type="button"
+              class="button toggle"
+              id="hear-chords"
+              aria-pressed="false"
+              title="Play the detected chords on every beat, to check them by ear"
+            >
               Hear chords
             </button>
             <label class="volume">
@@ -120,8 +134,9 @@
           <span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous or next chord</span>
           <span class="needs-recording" hidden><kbd>H</kbd> hear chords</span>
           <span class="needs-recording" hidden><kbd>M</kbd> mute recording</span>
-          <span>Click a chord to jump to it.</span>
+          <span>click a chord to jump to it</span>
         </p>
+        <p class="visually-hidden" id="announce" aria-live="polite"></p>
       </section>
     </main>
 

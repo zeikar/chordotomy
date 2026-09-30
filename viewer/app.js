@@ -47,6 +47,7 @@
   let context = null;
   let chordBus = null;
   let session = null; // the notes of one unbroken stretch of playback, faded out together
+  let audition = null; // a chord sounded once while paused
   let ticker = null;
   let nextStrike = 0;
 
@@ -340,6 +341,7 @@
     if (audioUrl) audio.currentTime = segment.start_time + SEEK_NUDGE;
     else idleTime = segment.start_time;
     update();
+    auditionChord(index);
   }
 
   function togglePlay() {
@@ -380,6 +382,8 @@
   function startChords() {
     if (ticker || !hearChords || !timeline || !audioUrl || !clockRunning()) return;
     ensureContext();
+    if (audition) fadeOut(audition);
+    audition = null;
     session = new GainNode(context);
     session.connect(chordBus);
     // Mid-beat, the chord sounding now starts at once rather than waiting for the next beat.
@@ -393,11 +397,28 @@
   function stopChords() {
     clearInterval(ticker);
     ticker = null;
-    if (!session) return;
-    const old = session;
-    old.gain.setTargetAtTime(0, context.currentTime, 0.01);
-    setTimeout(() => old.disconnect(), 1000);
+    if (session) fadeOut(session);
     session = null;
+  }
+
+  // Fade rather than cut, so stopping never clicks; unhook once the fade is long over.
+  function fadeOut(node) {
+    node.gain.setTargetAtTime(0, context.currentTime, 0.01);
+    setTimeout(() => node.disconnect(), 1000);
+  }
+
+  // Paused, a chord you click or step to sounds once, so it can be checked on its own. This has
+  // its own gain, since the seek's own events stop the playback session right after.
+  function auditionChord(index) {
+    const voicing = chordVoicings[index];
+    if (!hearChords || !voicing || !audioUrl || !audio.paused) return;
+    ensureContext();
+    if (audition) fadeOut(audition);
+    audition = new GainNode(context);
+    audition.connect(chordBus);
+    const segment = timeline.segments[index];
+    const now = context.currentTime;
+    strikeChord(voicing, now, now + Math.min(segment.end_time - segment.start_time, 1.5), audition);
   }
 
   function scheduleChords() {
@@ -414,13 +435,13 @@
     });
     nextStrike = next;
     for (const strike of due) {
-      strikeChord(chordVoicings[strike.segment], now + strike.start, now + strike.end);
+      strikeChord(chordVoicings[strike.segment], now + strike.start, now + strike.end, session);
     }
   }
 
   // A soft, clearly pitched voice per note: a triangle and a slightly detuned sine, a quick attack,
   // a decay toward a lower sustain, and a fade just before the next beat so each strike is heard.
-  function strikeChord(voicing, start, end) {
+  function strikeChord(voicing, start, end, destination) {
     const release = Math.max(start + ATTACK, end - 0.05);
     const notes = [[voicing.bass, 0.1], ...voicing.notes.map((note) => [note, 0.07])];
     for (const [note, level] of notes) {
@@ -429,7 +450,7 @@
       envelope.gain.linearRampToValueAtTime(level, start + ATTACK);
       envelope.gain.setTargetAtTime(level * 0.4, start + ATTACK, 0.3);
       envelope.gain.setTargetAtTime(0, release, RELEASE);
-      envelope.connect(session);
+      envelope.connect(destination);
       const frequency = 440 * 2 ** ((note - 69) / 12);
       const oscillators = [
         ["triangle", -4],
@@ -452,8 +473,12 @@
     if (on) {
       ensureContext();
       startChords();
+      // Paused, turning it on sounds the current chord, so it's never on and silent.
+      if (timeline) auditionChord(currentIndex());
     } else {
       stopChords();
+      if (audition) fadeOut(audition);
+      audition = null;
       // Idle, the context would keep the audio device busy. Suspend once the fade is done.
       setTimeout(() => {
         if (!hearChords) context.suspend();
@@ -528,9 +553,14 @@
       : { KeyH: "h", KeyM: "m" }[event.code];
     if ((letter === "h" || letter === "m") && audioUrl) {
       event.preventDefault();
-      if (!event.repeat) {
-        if (letter === "h") setHearChords(!hearChords);
-        else toggleMute();
+      if (event.repeat) return;
+      // The button that changed doesn't have focus, so say what happened for screen readers.
+      if (letter === "h") {
+        setHearChords(!hearChords);
+        $("announce").textContent = hearChords ? "Chords on" : "Chords off";
+      } else {
+        toggleMute();
+        $("announce").textContent = audio.muted ? "Recording muted" : "Recording on";
       }
       return;
     }
@@ -541,7 +571,8 @@
       event.preventDefault();
       togglePlay();
     } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      if (target.closest("input")) return; // the volume slider's own arrows
+      // The volume slider's and the player's own arrows (on the player, both would seek).
+      if (target === audio || target.closest("input")) return;
       event.preventDefault();
       const step = event.key === "ArrowRight" ? 1 : -1;
       const index = Math.min(buttons.length - 1, Math.max(0, currentIndex() + step));

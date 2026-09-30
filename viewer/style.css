@@ -66,6 +66,16 @@
   display: none !important;
 }
 
+/* Read by screen readers, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The timeline and transport sit at the bottom of the window; the current chord takes the rest. */
 body {
   display: flex;
@@ -141,7 +151,7 @@ kbd {
 }
 
 .files dt {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--pencil);
 }
 
@@ -261,7 +271,7 @@ body:has(#empty:not([hidden])) .status {
   /* A fixed chord column, wide enough for E♭7/B♭, so the facts don't shift with each name. */
   grid-template-columns: 26rem minmax(0, 1fr) 17rem;
   grid-template-areas: "chord facts key";
-  align-items: center;
+  align-items: start;
   align-content: center;
   gap: 24px 40px;
   padding: 28px 32px;
@@ -372,7 +382,8 @@ body:has(#empty:not([hidden])) .status {
 
 .key-candidates {
   margin: 4px 0 0;
-  padding-left: 1.6em;
+  padding: 0;
+  list-style-position: inside;
 }
 
 /* Timeline */
@@ -496,7 +507,7 @@ body:has(#empty:not([hidden])) .status {
   inset: auto 0 0;
   height: 32px;
   border-top: 1px solid var(--rule);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--pencil);
   font-variant-numeric: tabular-nums;
 }
@@ -510,11 +521,10 @@ body:has(#empty:not([hidden])) .status {
   opacity: 0.6;
 }
 
+/* A time label starts at its moment; the ticks are the beats, one system of marks. */
 .ruler span {
   position: absolute;
   top: 9px;
-  padding-left: 4px;
-  border-left: 1px solid var(--rule);
   line-height: 1.2;
 }
 
@@ -559,12 +569,13 @@ body:has(#empty:not([hidden])) .status {
 
 /* Playback */
 
+/* Gaps step 8 / 16 / 28: within a control, between controls, between groups. */
 .transport {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 28px;
-  padding: 16px 32px 24px;
+  gap: 16px 28px;
+  padding: 16px 32px 20px;
 }
 
 /* The player keeps room for a usable seek bar; the controls beside it wrap below before it
@@ -590,36 +601,40 @@ body:has(#empty:not([hidden])) .status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 32px;
+  gap: 16px 28px;
 }
 
 .listen-chords {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 16px;
+  gap: 16px;
+  padding-left: 28px;
+  border-left: 1px solid var(--rule);
 }
 
-/* A toggle shows its state with a dot, hollow when off and filled when on, and a filled face. */
+/* A toggle shows its state with a dot, hollow when off and filled when on. On also takes the
+   ink underline that marks the current chord in the timeline: a mode that may stay on for
+   minutes shouldn't outweigh the chords it is there to check. */
 .toggle::before {
   content: "";
   display: inline-block;
   box-sizing: border-box;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   margin-right: 8px;
-  vertical-align: 1px;
+  vertical-align: -1px;
   border: 1.5px solid currentColor;
   border-radius: 50%;
 }
 
 .toggle[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--sheet);
+  box-shadow: inset 0 -3px 0 var(--ink);
 }
 
 .toggle[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--ink) 85%, var(--paper));
+  background: color-mix(in srgb, var(--ink) 8%, var(--sheet));
 }
 
 .toggle[aria-pressed="true"]::before {
@@ -709,6 +724,12 @@ body:has(#empty:not([hidden])) .status {
     flex-basis: 100%;
     margin-left: 0;
     text-align: left;
+  }
+
+  /* The chord group wraps under Mute here, so a divider would hang in mid-air. */
+  .listen-chords {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .now {
