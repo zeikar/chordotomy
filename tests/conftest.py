@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 import numpy as np
 import pytest
+from scipy.signal import fftconvolve
 
 from chordotomy.features import SR
 
@@ -76,3 +77,67 @@ def chord_at() -> Callable[[Progression, float], str]:
         return "N"
 
     return label_at
+
+
+DETUNE = 2 ** (0.4 / 12)  # +40 cents: real recordings are never at A440 to the cent
+
+
+def _partials(t: np.ndarray, note: int, n_harmonics: int, rng, decay: float | None = None):
+    freq = 440.0 * 2 ** ((note - 69) / 12) * DETUNE
+    tone = np.zeros_like(t)
+    for h in range(1, n_harmonics + 1):
+        tone += np.sin(2 * np.pi * h * freq * t + rng.uniform(0, 2 * np.pi)) * h**-0.5
+    return tone if decay is None else tone * np.exp(-t / decay)
+
+
+@pytest.fixture
+def mix() -> Callable[[Progression], np.ndarray]:
+    """A progression rendered like a produced mix, not like a clean test tone.
+
+    The `synth` clips can never produce a flat chroma; a real mix can, and then every chord
+    scores like the N template. Each ingredient is one way a mix flattens chroma:
+    - 12 harmonics with random phases, the root an octave below, sustained: harmonics of every
+      note leak into the other pitch classes, and a held chord has no onsets for HPSS to drop.
+    - two melody tones per beat on non-chord tones (root + 2, root + 5 an octave up): pitch
+      classes that contradict the chord.
+    - hi-hat bursts and a kick sweep: percussive energy across the spectrum.
+    - a white-noise wash: broadband energy HPSS keeps as "harmonic", filling all 12 bins.
+    - +40 cents on every pitch: energy straddles two semitone bins instead of landing in one.
+    - reverb, added 1:1: smears each chord into the next and adds diffuse energy.
+    Seeded, so the clip is identical on every run.
+    """
+    rng = np.random.default_rng(0)
+
+    def make(progression: Progression) -> np.ndarray:
+        n = int(round(BEAT * SR))
+        t = np.arange(n) / SR
+        envelope = np.minimum(t / 0.005, 1.0) * (0.4 + 0.6 * np.exp(-t / 0.4))
+        eighth = n // 2
+        t8 = t[:eighth]
+        hat_len = int(0.03 * SR)
+        kick_len = int(0.08 * SR)
+        tk = np.arange(kick_len) / SR
+        # Exponential sweep 150 -> 50 Hz: the phase is the integral of the frequency.
+        rate = np.log(50 / 150) / 0.08
+        kick = np.sin(2 * np.pi * 150 * (np.exp(rate * tk) - 1) / rate) * np.exp(-tk / 0.05)
+        beats = []
+        for label, n_beats, *_ in progression:
+            root_pc = ROOT_NAMES.index(label.split(":")[0])
+            quality = label.split(":")[1]
+            for _ in range(n_beats):
+                notes = [48 + root_pc + i for i in INTERVALS[quality]] + [36 + root_pc]
+                beat = sum(_partials(t, note, 12, rng) for note in notes) * envelope
+                for offset, step in ((0, 2), (eighth, 5)):
+                    melody = 60 + root_pc + step
+                    beat[offset : offset + eighth] += 0.8 * _partials(t8, melody, 8, rng, 0.15)
+                    beat[offset : offset + hat_len] += rng.standard_normal(hat_len) * 0.3
+                beat[:kick_len] += kick
+                beat += rng.standard_normal(n) * 0.2 * np.abs(beat).max()
+                beats.append(beat)
+        y = np.concatenate(beats)
+        m = int(0.8 * SR)
+        impulse = rng.standard_normal(m) * np.exp(-np.arange(m) / SR / 0.25)
+        y = y + fftconvolve(y, impulse)[: len(y)]
+        return (y / np.abs(y).max() * 0.5).astype(np.float32)
+
+    return make

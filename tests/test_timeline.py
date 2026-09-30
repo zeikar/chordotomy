@@ -220,3 +220,30 @@ def test_edge_silence_is_n(synth, tmp_path) -> None:
 def test_all_silent_audio_has_no_beats(tmp_path) -> None:
     with pytest.raises(NoBeatsError):
         analyze(_write(tmp_path, np.zeros(4 * SR, dtype=np.float32)))
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "a flat chroma matches the N template; "
+        "the whitened front end removes N from the template race"
+    ),
+)
+def test_a_mix_like_clip_keeps_its_chords(mix, chord_at, tmp_path) -> None:
+    progression = [("C:maj", 4), ("A:min", 4), ("F:maj", 4), ("G:7", 4)]
+
+    result = analyze(_write(tmp_path, mix(progression)))
+
+    segments = result["segments"]
+    beats = result["beats"]
+    assert "N" not in [s["chord"] for s in segments], [s["chord"] for s in segments]
+    correct = total = 0
+    for s in segments:
+        for i in range(s["start_beat"], s["end_beat"]):
+            end = beats[i + 1] if i + 1 < len(beats) else result["source"]["duration"]
+            midpoint = (beats[i] + end) / 2
+            if midpoint >= 8.0:
+                continue
+            total += 1
+            correct += s["chord"].split(":")[0] == chord_at(progression, midpoint).split(":")[0]
+    assert correct >= 15, (correct, total)
