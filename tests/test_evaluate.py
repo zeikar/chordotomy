@@ -10,10 +10,12 @@ from chordotomy import evaluate  # noqa: E402
 METRICS = ("root", "majmin", "sevenths", "majmin_inv")
 
 
-def _score(ref, est):
+def _score(ref, est, est_bass_missing=None):
     ref_i = np.array([[a, b] for a, b, _ in ref], dtype=float)
     est_i = np.array([[a, b] for a, b, _ in est], dtype=float)
-    return evaluate.score(ref_i, [c for *_, c in ref], est_i, [c for *_, c in est])
+    return evaluate.score(
+        ref_i, [c for *_, c in ref], est_i, [c for *_, c in est], est_bass_missing
+    )
 
 
 def test_timeline_to_intervals() -> None:
@@ -113,6 +115,55 @@ def test_inversion_fails_only_majmin_inv() -> None:
     track = _score([(0, 1, "C:maj/3")], [(0, 1, "C:maj")])
 
     assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [0.0]]
+
+
+def test_missing_bass_flags_follow_the_segments() -> None:
+    result = {
+        "segments": [
+            {"start_time": 0.0, "end_time": 1.0, "chord": "C:maj", "bass": None},
+            {"start_time": 1.0, "end_time": 2.0, "chord": "C:maj", "bass": "C"},
+            {"start_time": 2.0, "end_time": 3.0, "chord": "N", "bass": None},
+        ]
+    }
+
+    assert evaluate.bass_missing(result) == [True, False, False]
+
+
+def test_missing_bass_misses_an_inverted_reference_only_in_majmin_inv() -> None:
+    track = _score([(0, 1, "C:maj/3")], [(0, 1, "C:maj")], [True])
+
+    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [0.0]]
+
+
+def test_root_bass_and_correct_bass_against_an_inverted_reference() -> None:
+    root = _score([(0, 1, "C:maj/3")], [(0, 1, "C:maj")], [False])
+    third = _score([(0, 1, "C:maj/3")], [(0, 1, "C:maj/3")], [False])
+
+    assert root["majmin_inv"][0].tolist() == [0.0]
+    assert third["majmin_inv"][0].tolist() == [1.0]
+
+
+def test_missing_bass_misses_a_root_position_reference_too() -> None:
+    track = _score([(0, 1, "C:maj")], [(0, 1, "C:maj")], [True])
+
+    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [0.0]]
+
+
+def test_missing_bass_keeps_an_excluded_interval_excluded() -> None:
+    track = _score([(0, 1, "C:(1,5)/5")], [(0, 1, "C:maj")], [True])
+
+    assert track["majmin_inv"][0].tolist() == [-1.0]
+
+
+def test_missing_bass_survives_padding_and_merging() -> None:
+    track = _score(
+        [(0, 1, "C:maj"), (1, 2, "C:maj/5"), (2, 3, "C:maj/5")],
+        [(0.5, 2.5, "C:maj")],
+        [True],
+    )
+
+    assert track["majmin_inv"][0].tolist() == [0.0, 0.0, 0.0, 0.0, 0.0]
+    assert track["majmin"][0].tolist() == [0.0, 1.0, 1.0, 1.0, 0.0]
 
 
 def test_estimate_is_padded_with_n_to_the_reference_span() -> None:

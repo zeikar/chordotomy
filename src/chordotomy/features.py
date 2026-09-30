@@ -8,6 +8,7 @@ bass pitch window. Implemented from the paper, not from their GPL-licensed plugi
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import NamedTuple
 
@@ -47,15 +48,22 @@ def _ramp(midi: np.ndarray, start: float, end: float) -> np.ndarray:
     return 0.5 - 0.5 * np.cos(np.pi * x)
 
 
-_MIDI = librosa.note_to_midi("C1") + np.arange(CHORD_BINS) * 12 / CHORD_BINS_PER_OCTAVE
-TREBLE_WINDOW = _ramp(_MIDI, *TREBLE_IN) * (1.0 - _ramp(_MIDI, *TREBLE_OUT))
-BASS_WINDOW = 1.0 - _ramp(_MIDI, *BASS_OUT)
-FOLD = librosa.filters.cq_to_chroma(
-    CHORD_BINS,
-    bins_per_octave=CHORD_BINS_PER_OCTAVE,
-    n_chroma=12,
-    fmin=librosa.note_to_hz("C1"),
-)
+@functools.cache
+def _windows() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(treble window, bass window, fold to 12 pitch classes) over the chord CQT's bins.
+
+    Built on first use: librosa's filter code initialises numba, which importing the package for
+    a command like --version should not pay for (or fail on, in a read-only cache).
+    """
+    midi = librosa.note_to_midi("C1") + np.arange(CHORD_BINS) * 12 / CHORD_BINS_PER_OCTAVE
+    fold = librosa.filters.cq_to_chroma(
+        CHORD_BINS,
+        bins_per_octave=CHORD_BINS_PER_OCTAVE,
+        n_chroma=12,
+        fmin=librosa.note_to_hz("C1"),
+    )
+    treble = _ramp(midi, *TREBLE_IN) * (1.0 - _ramp(midi, *TREBLE_OUT))
+    return treble, 1.0 - _ramp(midi, *BASS_OUT), fold
 
 
 class Features(NamedTuple):
@@ -163,13 +171,14 @@ def beat_features(y: np.ndarray) -> Features:
     beat_frames = np.concatenate([head, beat_frames, tail])
 
     boundaries = list(beat_frames) + [n_frames]
+    treble_window, bass_window, fold = _windows()
     whitened = _whiten(chord_cqt)
     # No max-normalisation: the correlation that scores these is scale-free.
     treble = librosa.util.sync(
-        (FOLD * TREBLE_WINDOW) @ whitened, boundaries, aggregate=np.median, pad=False
+        (fold * treble_window) @ whitened, boundaries, aggregate=np.median, pad=False
     )
     bass = librosa.util.sync(
-        (FOLD * BASS_WINDOW) @ whitened, boundaries, aggregate=np.median, pad=False
+        (fold * bass_window) @ whitened, boundaries, aggregate=np.median, pad=False
     )
     rms = librosa.util.sync(
         librosa.feature.rms(y=harmonic, hop_length=HOP), boundaries, aggregate=np.median, pad=False

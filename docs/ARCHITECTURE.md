@@ -162,20 +162,20 @@ The schema is stable. Any change to the documented schema, an added field includ
 
 `chordotomy evaluate {tiny-aam,guitarset} [--limit N]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.
 
-- **Tiny AAM**: 20 mixed tracks with one chord per beat, reduced to major, minor and `N`.
+- **Tiny AAM**: 20 mixed tracks with one chord per beat, reduced to major, minor and `N`. Its annotation has no bass, so its `majmin_inv` assumes every reference chord is in root position; read it as bass agreement with that assumption, not as inversion accuracy.
 - **GuitarSet**: the 180 accompaniment takes (`_comp`, mono mic), scored against the performed chord annotation, which carries the bass.
 
 Scoring is `mir_eval`, and the table is per track with an `overall` row weighted by duration. Three things matter when reading it:
 
 - `majmin` reduces sevenths and sixths to the triad. It leaves out power chords, sus and diminished chords, so those intervals are not counted at all.
 - `N` against `N` counts as correct. A track the analyzer calls all `N` is scored right wherever the reference is also `N`, so `N_est` and `N_ref`, the shares of duration labeled `N`, are printed beside the scores.
-- `sevenths` needs the seventh to match, and `majmin_inv` compares the bass as a scale degree above the root, so a right chord over the wrong bass fails it.
+- `sevenths` needs the seventh to match, and `majmin_inv` compares the bass as a scale degree above the root, so a right chord over the wrong bass, or over no detected bass (`bass` null), fails it.
 
 Baseline, front end at `b70fb50`:
 
 | | root | majmin | sevenths | majmin_inv | N_est | N_ref |
 |---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks) | 0.773 | 0.738 | 0.725 | 0.669 | 0.123 | 0.015 |
+| Tiny AAM (20 tracks) | 0.773 | 0.738 | 0.725 | 0.653 | 0.123 | 0.015 |
 | GuitarSet (180 takes) | 0.485 | 0.519 | 0.460 | 0.335 | 0.450 | 0.000 |
 
 On Tiny AAM the analyzer calls 12% of the duration `N` against 1.5% in the reference, and most of that is two tracks: 2720 (77% `N`) and 2990 (56%).
@@ -184,8 +184,8 @@ Whitened front end, at the commit that adds these rows. The decode constants wer
 
 | | root | majmin | sevenths | majmin_inv | N_est | N_ref |
 |---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks) | 0.848 | 0.788 | 0.760 | 0.707 | 0.011 | 0.015 |
-| GuitarSet (180 takes) | 0.688 | 0.619 | 0.492 | 0.374 | 0.007 | 0.000 |
+| Tiny AAM (20 tracks) | 0.848 | 0.788 | 0.760 | 0.691 | 0.011 | 0.015 |
+| GuitarSet (180 takes) | 0.688 | 0.619 | 0.492 | 0.373 | 0.007 | 0.000 |
 
 ## Design decisions
 

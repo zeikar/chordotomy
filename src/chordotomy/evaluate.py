@@ -79,6 +79,11 @@ def timeline_to_intervals(result: dict) -> tuple[np.ndarray, list[str]]:
     return np.array(intervals, dtype=float).reshape(-1, 2), labels
 
 
+def bass_missing(result: dict) -> list[bool]:
+    """Per segment: a chord was labeled but no bass was detected for it."""
+    return [s["chord"] != "N" and s["bass"] is None for s in result["segments"]]
+
+
 def tiny_aam_reference(text: str, duration: float) -> tuple[np.ndarray, list[str]]:
     """Beat-level reference from a Tiny AAM beatinfo.arff; each beat ends where the next starts."""
     starts = []
@@ -121,19 +126,40 @@ def score(
     ref_labels: list[str],
     est_intervals: np.ndarray,
     est_labels: list[str],
+    est_bass_missing: list[bool] | None = None,
 ) -> dict:
-    """One track's per-interval comparisons and durations for each metric, plus the N shares."""
+    """One track's per-interval comparisons and durations for each metric, plus the N shares.
+
+    est_bass_missing flags estimate segments whose chord has no detected bass. A bare `C:maj`
+    reads as root position to mir_eval, which would award an inversion the estimate never
+    showed, so majmin_inv counts such a span as a miss whatever the reference bass. The other
+    metrics ignore the flag.
+    """
     import mir_eval
 
-    est_intervals, est_labels = mir_eval.util.adjust_intervals(
-        est_intervals, est_labels, ref_intervals.min(), ref_intervals.max(), "N", "N"
+    if est_bass_missing is None:
+        est_bass_missing = [False] * len(est_labels)
+    # The flag rides along with each label through padding and merging as a (label, flag) pair.
+    est_intervals, paired = mir_eval.util.adjust_intervals(
+        est_intervals,
+        list(zip(est_labels, est_bass_missing, strict=True)),
+        ref_intervals.min(),
+        ref_intervals.max(),
+        ("N", False),
+        ("N", False),
     )
-    intervals, ref, est = mir_eval.util.merge_labeled_intervals(
-        ref_intervals, ref_labels, est_intervals, est_labels
+    intervals, ref, paired = mir_eval.util.merge_labeled_intervals(
+        ref_intervals, ref_labels, est_intervals, paired
     )
+    est = [label for label, _ in paired]
     durations = mir_eval.util.intervals_to_durations(intervals)
     total = float(durations.sum())
     track = {metric: (getattr(mir_eval.chord, metric)(ref, est), durations) for metric in METRICS}
+    inv = track["majmin_inv"][0]
+    for i, (_, missing) in enumerate(paired):
+        # -1 is an interval mir_eval excluded; it stays excluded.
+        if missing and inv[i] != -1:
+            inv[i] = 0.0
     track["n_est"] = float(durations[np.array(est) == "N"].sum()) / total
     track["n_ref"] = float(durations[np.array(ref) == "N"].sum()) / total
     track["duration"] = total
@@ -249,7 +275,9 @@ def run(dataset: str, limit: int | None) -> dict[str, dict]:
             dataset, annotation, result["source"]["duration"]
         )
         est_intervals, est_labels = timeline_to_intervals(result)
-        scored[name] = score(ref_intervals, ref_labels, est_intervals, est_labels)
+        scored[name] = score(
+            ref_intervals, ref_labels, est_intervals, est_labels, bass_missing(result)
+        )
     rows = summarise(scored)
 
     columns = (*METRICS, "n_est", "n_ref")

@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -227,3 +229,19 @@ def test_forced_write_keeps_the_existing_mode(clip, tmp_path) -> None:
     assert result.exit_code == 0
     assert out.stat().st_mode & 0o777 == 0o600
     assert json.loads(out.read_text())["schema_version"] == 3
+
+
+def test_importing_the_cli_touches_no_librosa() -> None:
+    # A fresh interpreter with a stand-in librosa whose every attribute raises, so no real librosa
+    # (and no numba) is loaded, and an eager note_to_midi or cq_to_chroma at import would fail.
+    code = (
+        "import sys, types\n"
+        "class Fake(types.ModuleType):\n"
+        "    def __getattr__(self, name):\n"
+        "        raise AssertionError(f'librosa.{name} used at import')\n"
+        "sys.modules['librosa'] = Fake('librosa')\n"
+        "import chordotomy.cli\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
