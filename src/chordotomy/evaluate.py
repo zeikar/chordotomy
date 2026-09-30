@@ -22,8 +22,8 @@ METRICS = ("root", "majmin", "sevenths", "majmin_inv")
 # Scale degree of the bass above the chord root, by semitone offset 1..11, as mir_eval reads it.
 DEGREES = ("b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7")
 
-# Both datasets are CC BY 4.0 (Zenodo). They are downloaded on demand into the pooch cache, never
-# committed and never placed in the repo.
+# Both datasets are CC BY 4.0 (Zenodo). They are downloaded on demand into cache_dir() and never
+# committed (in a checkout that is the gitignored datasets/).
 REGISTRY = {
     "tinyAAM.zip": "md5:9121d5ae106747e67721bde0d55f9e00",
     "annotation.zip": "md5:b39b78e63d3446f2e54ddb7a54df9b10",
