@@ -27,6 +27,13 @@ FUNCTIONS = {
     "VI": "tonic",
     "VII": "dominant",
 }
+# Triads a secondary dominant can tonicize, by root offset: the tonic and the diminished degrees
+# are excluded, and minor's degree 5 is written V, as its harmonic-minor dominant.
+TARGETS = {
+    "maj": {2: "ii", 4: "iii", 5: "IV", 7: "V", 9: "vi"},
+    "min": {3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII"},
+}
+PARALLEL = {"maj": "min", "min": "maj"}
 
 
 def parse_key(text: str) -> str:
@@ -80,8 +87,11 @@ def numeral(offset: int, quality: str, mode: str) -> str:
     return text + "7" if quality == "7" else text
 
 
-def analyze_chord(label: str, key: str) -> dict[str, str | None]:
-    """Classify one chord against a key: numeral, role, function and target."""
+def analyze_chord(label: str, key: str, following: str | None = None) -> dict[str, str | None]:
+    """Classify one chord against a key: numeral, role, function and target.
+
+    `following` is the label of the next segment (`N` included), `None` for the last one.
+    """
     if label == "N":
         return {"numeral": None, "role": None, "function": None, "target": None}
     tonic, mode = key.split(":")
@@ -92,4 +102,25 @@ def analyze_chord(label: str, key: str) -> dict[str, str | None]:
         # Diatonic numerals carry no accidental, so case and the 7 are all to strip.
         function = FUNCTIONS[text.upper().removesuffix("7")]
         return {"numeral": text, "role": "diatonic", "function": function, "target": None}
+    target_offset = (offset - 7) % 12
+    secondary = quality in ("maj", "7") and target_offset in TARGETS[mode]
+    borrowed = _is_diatonic(offset, quality, PARALLEL[mode])
+    if secondary:
+        target = TARGETS[mode][target_offset]
+        resolution = ROOTS[(ROOTS.index(tonic) + target_offset) % 12]
+        resolution += ":min" if target.islower() else ":maj"
+        # Only the major triads on the tonic and subdominant of a minor key are also borrowed, and
+        # for those the very next chord being the target triad is the one thing that tells V/iv
+        # from a borrowed I; a seventh on the target, another chord or an N is no resolution.
+        # Everywhere else `following` is ignored, so a label depends on the chord and key alone.
+        if not borrowed or following == resolution:
+            text = ("V7" if quality == "7" else "V") + "/" + target
+            return {
+                "numeral": text,
+                "role": "secondary_dominant",
+                "function": None,
+                "target": target,
+            }
+    if borrowed:
+        return {"numeral": text, "role": "borrowed", "function": None, "target": None}
     return {"numeral": text, "role": "chromatic", "function": None, "target": None}
