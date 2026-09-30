@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import stat
 import tempfile
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -13,7 +15,14 @@ import soundfile
 import typer
 
 from . import __version__, harmony, timeline
+from . import evaluate as evaluation
 from .features import NoBeatsError
+
+
+class Dataset(StrEnum):
+    TINY_AAM = "tiny-aam"
+    GUITARSET = "guitarset"
+
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -128,3 +137,26 @@ def analyze(
     except OSError as exc:
         raise _fail(f"{output}: {exc}") from exc
     typer.echo(f"Wrote {output}")
+
+
+@app.command()
+def evaluate(
+    dataset: Annotated[Dataset, typer.Argument(help="Dataset to score against.")],
+    limit: Annotated[
+        int | None, typer.Option("--limit", min=1, help="Score only the first N tracks.")
+    ] = None,
+) -> None:
+    """Score the chord front end on a public dataset (opt-in, downloads on first use)."""
+    # Check the extra before anything can download.
+    for name in ("mir_eval", "pooch"):
+        try:
+            importlib.import_module(name)
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+            raise _fail("the evaluation needs the eval extra: uv sync --extra eval") from exc
+
+    try:
+        evaluation.run(dataset.value, limit)
+    except evaluation.DatasetError as exc:
+        raise _fail(f"{dataset.value}: {exc}") from exc
