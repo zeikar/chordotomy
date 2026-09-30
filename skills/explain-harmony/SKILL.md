@@ -1,0 +1,116 @@
+---
+name: explain-harmony
+description: This skill should be used when the user wants the harmony of a recording, or of a chordotomy `.chords.json` timeline, explained, e.g. "analyze the harmony of song.mp3", "explain the chords in this song", "why does the progression in this track work", "find the secondary dominants / borrowed chords in this recording", "Roman-numeral analysis of this audio file", "이 곡 화성 분석해줘", "이 노래 코드 진행 설명해줘", "차용화음 / 세컨더리 도미넌트 찾아줘". Runs the local chordotomy analyzer and explains the notable moves from its JSON. Not for a progression typed as text with no audio or timeline.
+---
+
+# Explain a song's harmony with chordotomy
+
+chordotomy is a local analyzer. It turns a recording into a beat-aligned chord timeline with a key, Roman numerals, secondary dominants, borrowed chords, and bass notes with inversions. It writes no prose. This skill runs it, reads the JSON, and writes the short explanation of why the highlighted moves work.
+
+Audio never leaves the machine. Run the analyzer locally, and never upload or send the audio anywhere.
+
+## Step 1: Get the timeline
+
+The input is an audio file or an existing `*.chords.json`.
+
+- **Given a `.chords.json`:** go to Step 2.
+- **Given audio:** first look for `<audio stem>.chords.json` next to it. If it exists, use it and do not re-run. It may hold chords the user corrected.
+- **Re-extracting:** never pass `--force` on an existing timeline without asking the user first. `--force` extracts the chords from the audio again and discards any corrections.
+- **Analyzing in a stated key:** if the user states a key, or asks to re-analyze in another key, write to a new file next to the audio that names the key, rather than overwriting, e.g. `--key A:min -o "<audio dir>/<stem>.A-minor.chords.json"`. If that keyed file already exists, use it instead of re-running. `--key` takes `<root>:maj` or `<root>:min`, and flat roots such as `Bb:maj` are accepted.
+
+Choose the command by what is installed, and run it once. An analysis error is not a reason to try another command.
+
+1. `uv` is on `PATH`: `uv run --project "${CLAUDE_PLUGIN_ROOT}" chordotomy analyze "<audio>"`. This is the copy that ships with this plugin, at the same commit as this skill. The first run builds its environment, so allow a timeout of up to 10 minutes.
+2. There is no `uv`, but `chordotomy` is on `PATH`: `chordotomy analyze "<audio>"`. Mention that it may be a different version from this skill.
+3. Neither is installed: tell the user to install uv (https://docs.astral.sh/uv/) and stop.
+
+When working inside a chordotomy checkout, `uv run chordotomy analyze "<audio>"` also works.
+
+The analyzer writes `<audio stem>.chords.json` next to the audio (or to `-o`) and prints `Wrote <path>`. If it fails:
+
+- **`error: <audio>: no beats detected`** (exit 1): the file is silent or shorter than one beat. Say so and stop.
+- **`error: <audio>: Error opening … Format not recognised`** (exit 1): the decoder reads wav, flac, ogg and mp3, but not m4a or aac. Suggest converting locally, e.g. `ffmpeg -i song.m4a song.wav`, which keeps the audio on the machine.
+- **Exit 2:** a usage error, such as a missing file or a bad `--key`. Show its message.
+
+## Step 2: Read the JSON
+
+The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines. Read a compact view instead of the raw file:
+
+```bash
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("schema", d.get("schema_version"), "| key", json.dumps(d.get("key"))); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","candidates")])) for s in d["segments"]]' "<file>.chords.json"
+```
+
+Check `schema_version`. This skill is written for version 3:
+
+- **Below 3:** there is no `bass` and no `inversion`.
+- **Below 2:** there is no key and there are no numerals either.
+- **Above 3:** this skill may be out of date. Explain only the fields listed here.
+
+In every case other than 3, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+
+The fields:
+
+- **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means no chord was found at all; say so. With `source: given`, mention when `candidates[0]` differs from the given key.
+- **Per segment:**
+  - `start_time`, `end_time`
+  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord`)
+  - `bass`, `inversion`
+  - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`
+- **`N`:** a segment with no chord: silence, or a passage with no clear harmony, such as a drum break.
+
+## Step 3: Pick the moves worth noticing
+
+Consecutive segments can repeat a `chord` when the bass changes under it. Treat such a stretch as one **chord run**, one highlight. The **next chord** after a run is the first following segment whose `chord` differs; `N` counts.
+
+Highlight, in time order:
+
+1. **Every `secondary_dominant` run, with its next chord.** An `N` next means the chord did not resolve.
+2. **Every `borrowed` run.**
+3. **Every `chromatic` run.**
+4. **Bass lines.** Look for three or more consecutive `bass` values, each 1 or 2 semitones from the last, with no `null` in between. The bass has no octave, so call a line descending or ascending only when every step goes the same way around the pitch-class circle.
+5. **Every `non_chord` bass.**
+6. **Inversions worth a word.** For example, a second-inversion tonic right before V, or a V7 in third inversion.
+
+Group repeats. When the same run is followed by the same next chord again, explain it once and list where it recurs ("at 0:12, 0:44 and 1:30"). If there is nothing in categories 1–3, say the harmony stays diatonic, and point out the V → I and IV → I motions instead.
+
+## Step 4: Explain each move
+
+Consult **`references/moves.md`** for how to explain each kind of move and read a `non_chord` bass. It also covers resolutions and chains, spelling, and figured-bass numerals.
+
+Rules:
+
+- **Ground every claim in the JSON:** the numeral, role, target, next chord and bass. Music theory explains why those facts work. It never adds facts the JSON does not contain. The analyzer knows nothing about melody, lyrics, instrumentation or phrase boundaries, so claim none of them.
+- **Be brief:** one to three sentences per move.
+- **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. Never state percentages or confidence numbers. The candidates are a ranking, not probabilities.
+- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
+- **Write times as m:ss** from `start_time`.
+- **Answer in the user's language.**
+
+## Step 5: Output
+
+Use this shape, with headings in the user's language:
+
+```
+Key: C major (estimated; next in the ranking: G major, F major)
+Progression: I – V6 – vi – I64 – IV – I6 – ii – V7 – I
+
+Moves worth noticing
+- 0:00–0:14 bass C–B–A–G–F–E–D: …
+- 0:08 D7 → G7 (V7/V → V7): …why it works…
+- 0:24 Fm (iv, borrowed from C minor): …
+
+(The labels come from automatic extraction; <any caveat worth making>.)
+```
+
+- **Progression line:** the numerals of the chord runs in order, with each segment's inversion figure. Collapse immediate repeats. For a long song, show the first 16 and say that it continues.
+- **Highlights:** list them in time order.
+
+Then offer follow-ups:
+
+- re-analyzing in another key, written to a new file, if the estimate looks wrong;
+- explaining any passage in more depth.
+
+## Additional Resources
+
+- **`references/moves.md`:** how to explain each kind of move, spelling, and figured bass.
+- **`${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`:** the full JSON schema and the analysis rules (how keys, roles, the secondary-dominant look-ahead and the held bass are decided).

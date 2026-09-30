@@ -19,4 +19,4 @@ The reasons are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#design-decisions)
 - Audio never leaves the machine. No upload service.
 - Tests synthesize their audio. Never commit recordings.
 - The version lives only in `pyproject.toml`; code reads it through `importlib.metadata`. like-surgeon kept a second copy in `__init__.py`, and the two drifted.
-- Once the chord-timeline JSON has a schema, document it in ARCHITECTURE.md and treat changes to it as breaking.
+- Once the chord-timeline JSON has a schema, document it in ARCHITECTURE.md and treat changes to it as breaking. The `explain-harmony` skill reads it too, so a schema change updates `skills/explain-harmony/` (its version check and field list).

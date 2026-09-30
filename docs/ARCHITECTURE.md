@@ -17,7 +17,7 @@ viewer ←── chord-timeline JSON ←── key estimation + Roman numerals
 - Chords are called per beat, not per frame, so a passing note doesn't become a chord change.
 - The first version uses no ML: librosa chroma and beat tracking, then major / minor / 7th templates.
 - The bass note comes from a low-register CQT of the mix. It settles slash chords and inversions (`F#7/A#`), which the chroma can't: it folds all octaves together and can't tell which note is lowest. See "Bass from DSP, not Demucs" under Design decisions.
-- Analysis marks secondary dominants and borrowed chords. An LLM writes a short explanation for each one.
+- Analysis marks secondary dominants and borrowed chords. The analyzer writes no prose: the explanations come from a Claude Code skill that reads the JSON. See "Explanations from an agent skill" under Design decisions.
 - A Python CLI (uv, Typer) writes the JSON. A static HTML viewer plays the audio, highlights the current chord, and lets you correct chords.
 
 ### Stages implemented
@@ -165,6 +165,10 @@ People will feed it commercial recordings. A hosted upload service would mean st
 The bass note comes from a low-register CQT (see Stages implemented), not from a Demucs bass stem. Demucs's code is MIT, but its pretrained weights on Hugging Face (`adefossez/HTDemucs`) carry no license statement. They were trained on MUSDB18-HQ, which is licensed for non-commercial research, plus private songs, so the terms of the output could not be stated. DSP also avoids a multi-gigabyte torch dependency.
 
 The tradeoff is lower accuracy than a separated stem when other low instruments or kick drums share the register. HPSS removes most of the kick.
+
+### Explanations from an agent skill
+
+The analyzer never calls an LLM. The repo is a Claude Code plugin whose `explain-harmony` skill (`skills/explain-harmony/`) runs `chordotomy analyze`, reads the JSON, and writes the explanations. The app then needs no API key, SDK dependency, or network code, and it stays deterministic and testable. The agent can also take follow-up questions. The audio stays local; only the chord timeline, as text, reaches the model. The tradeoffs: explanations are not stored in the JSON, so a viewer can't show them without a separate write-back, and getting them needs an agent.
 
 ### Confidence is a rank, not a percentage
 

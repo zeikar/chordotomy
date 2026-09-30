@@ -1,0 +1,17 @@
+{
+  "name": "chordotomy",
+  "owner": {
+    "name": "zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "metadata": {
+    "description": "The chordotomy plugin: explain a song's harmony from the local chordotomy analyzer."
+  },
+  "plugins": [
+    {
+      "name": "chordotomy",
+      "description": "Explain a song's harmony in Claude Code: runs the local chordotomy analyzer on a recording and explains its secondary dominants, borrowed chords, and inversions.",
+      "source": "./"
+    }
+  ]
+}
