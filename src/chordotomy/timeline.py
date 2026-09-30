@@ -14,7 +14,7 @@ SCHEMA_VERSION = 2
 def analyze(path: Path, key: str | None = None) -> dict:
     """Analyze an audio file into a chord-timeline dict of plain, JSON-serialisable types."""
     y = load_audio(path)
-    beat_times, chroma = beat_chroma(y)
+    beat_times, chroma, cqt = beat_chroma(y)
     sims = match(chroma)
     segments = segment(smooth(sims), sims)
 
