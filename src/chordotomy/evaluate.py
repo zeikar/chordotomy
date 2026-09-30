@@ -56,8 +56,9 @@ TINY_AAM_IDS = [
     "2990",
     "3000",
 ]
-# None means pooch.os_cache("chordotomy"), resolved in fetch because pooch is imported lazily.
+# None means cache_dir() decides; tests point it at a temporary directory.
 CACHE_DIR: Path | None = None
+_CHECKOUT = Path(__file__).resolve().parents[2]
 
 _AAM_CHORD = re.compile(r"([A-G]#?)(maj|min)")
 
@@ -166,12 +167,25 @@ class DatasetError(Exception):
     """A dataset could not be downloaded, unpacked or read (raised where external data enters)."""
 
 
+def cache_dir() -> Path:
+    """Where the datasets are downloaded to."""
+    if CACHE_DIR is not None:
+        return CACHE_DIR
+    # In a checkout the datasets sit in its gitignored datasets/, where they are easy to find and
+    # delete; an installed package has no checkout, so it falls back to the user cache.
+    if (_CHECKOUT / "pyproject.toml").is_file():
+        return _CHECKOUT / "datasets"
+    import pooch
+
+    return Path(pooch.os_cache("chordotomy"))
+
+
 def fetch(archive: str, members: list[str] | None) -> list[Path]:
     """Download `archive` into the cache if needed and extract `members` (all when None)."""
     import pooch
 
     cache = pooch.create(
-        path=CACHE_DIR if CACHE_DIR is not None else pooch.os_cache("chordotomy"),
+        path=cache_dir(),
         base_url="https://zenodo.org/api/records/",
         registry=REGISTRY,
         urls=URLS,

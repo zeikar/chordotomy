@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -132,3 +134,11 @@ def test_summarise_weights_overall_by_duration() -> None:
     assert rows["overall"]["majmin"] == pytest.approx(0.25)
     assert rows["overall"]["duration"] == 4.0
     assert rows["overall"]["n_est"] == 0.0
+
+
+def test_a_checkout_downloads_into_its_gitignored_datasets_dir(monkeypatch) -> None:
+    monkeypatch.setattr(evaluate, "CACHE_DIR", None)
+
+    path = evaluate.cache_dir()
+
+    assert path == Path(__file__).resolve().parents[1] / "datasets"

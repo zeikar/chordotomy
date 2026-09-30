@@ -17,6 +17,8 @@ htmlcov/
 .hyperclaude/
 .claude/worktrees/
 .playwright-mcp/
+# Evaluation datasets, downloaded on demand (CC BY 4.0, never committed)
+datasets/
 
 # Editor
 .idea/

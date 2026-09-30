@@ -85,7 +85,7 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. Both datasets are CC BY 4.0 and land in the pooch cache (`~/Library/Caches/chordotomy` on macOS; delete it to re-download), never in the repo. The default test run never touches the network. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. The scores are numbers for development only.
 
 ## License
 
