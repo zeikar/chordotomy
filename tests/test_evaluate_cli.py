@@ -44,7 +44,7 @@ def _overall(output):
     row = next(line for line in output.splitlines() if line.startswith("overall"))
     return dict(
         zip(
-            ["root", "majmin", "sevenths", "majmin_inv", "n_est", "n_ref"],
+            ["root", "majmin", "sevenths", "tetrads", "majmin_inv", "n_est", "n_ref"],
             map(float, row.split()[1:]),
             strict=True,
         )

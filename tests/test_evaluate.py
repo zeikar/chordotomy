@@ -7,7 +7,7 @@ pytest.importorskip("mir_eval")
 
 from chordotomy import evaluate  # noqa: E402
 
-METRICS = ("root", "majmin", "sevenths", "majmin_inv")
+METRICS = ("root", "majmin", "sevenths", "tetrads", "majmin_inv")
 
 
 def _score(ref, est, est_bass_missing=None):
@@ -104,6 +104,18 @@ def test_power_chord_reference_is_excluded_from_majmin() -> None:
     assert track["root"][0].tolist() == [1.0]
 
 
+def test_tetrads_needs_the_full_pitch_set() -> None:
+    def scores(ref, est):
+        track = _score([(0, 1, ref)], [(0, 1, est)])
+        return [track[m][0].tolist() for m in ("root", "majmin", "sevenths", "tetrads")]
+
+    assert scores("C:min", "C:hdim7") == [[1.0], [0.0], [0.0], [0.0]]
+    assert scores("C:hdim7", "C:min") == [[1.0], [-1.0], [-1.0], [0.0]]
+    assert scores("C:sus4", "C:sus4") == [[1.0], [-1.0], [-1.0], [1.0]]
+    assert scores("C:maj7", "C:maj7") == [[1.0], [1.0], [1.0], [1.0]]
+    assert scores("C:min6", "C:min") == [[1.0], [1.0], [-1.0], [0.0]]
+
+
 def test_seventh_reference_counts_in_majmin_but_not_sevenths() -> None:
     track = _score([(0, 1, "C:maj7")], [(0, 1, "C:maj")])
 
@@ -114,7 +126,7 @@ def test_seventh_reference_counts_in_majmin_but_not_sevenths() -> None:
 def test_inversion_fails_only_majmin_inv() -> None:
     track = _score([(0, 1, "C:maj/3")], [(0, 1, "C:maj")])
 
-    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [0.0]]
+    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [1.0], [0.0]]
 
 
 def test_missing_bass_flags_follow_the_segments() -> None:
@@ -132,7 +144,7 @@ def test_missing_bass_flags_follow_the_segments() -> None:
 def test_missing_bass_misses_an_inverted_reference_only_in_majmin_inv() -> None:
     track = _score([(0, 1, "C:maj/3")], [(0, 1, "C:maj")], [True])
 
-    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [0.0]]
+    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [1.0], [0.0]]
 
 
 def test_root_bass_and_correct_bass_against_an_inverted_reference() -> None:
@@ -146,7 +158,7 @@ def test_root_bass_and_correct_bass_against_an_inverted_reference() -> None:
 def test_missing_bass_misses_a_root_position_reference_too() -> None:
     track = _score([(0, 1, "C:maj")], [(0, 1, "C:maj")], [True])
 
-    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [0.0]]
+    assert [track[m][0].tolist() for m in METRICS] == [[1.0], [1.0], [1.0], [1.0], [0.0]]
 
 
 def test_missing_bass_keeps_an_excluded_interval_excluded() -> None:

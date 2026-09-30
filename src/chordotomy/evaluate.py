@@ -17,7 +17,7 @@ import numpy as np
 from . import timeline
 from .chords import ROOTS
 
-METRICS = ("root", "majmin", "sevenths", "majmin_inv")
+METRICS = ("root", "majmin", "sevenths", "tetrads", "majmin_inv")
 
 # Scale degree of the bass above the chord root, by semitone offset 1..11, as mir_eval reads it.
 DEGREES = ("b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7")

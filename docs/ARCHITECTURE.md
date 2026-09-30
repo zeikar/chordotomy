@@ -169,23 +169,24 @@ Scoring is `mir_eval`, and the table is per track with an `overall` row weighted
 
 - `majmin` reduces sevenths and sixths to the triad. It leaves out power chords, sus and diminished chords, so those intervals are not counted at all.
 - `N` against `N` counts as correct. A track the analyzer calls all `N` is scored right wherever the reference is also `N`, so `N_est` and `N_ref`, the shares of duration labeled `N`, are printed beside the scores.
+- `tetrads` needs the root and the whole pitch set to match. It is the metric that checks the full pitch set of a half-diminished, diminished-seventh, minor-sixth or sus4 reference: `root` scores only their roots, `majmin` leaves out half-diminished, diminished-seventh and sus4 references (it compares a minor-sixth one by its minor triad), and `sevenths` leaves out all four.
 - `sevenths` needs the seventh to match, and `majmin_inv` compares the bass as a scale degree above the root, so a right chord over the wrong bass, or over no detected bass (`bass` null), fails it.
 
 Baseline, front end at `b70fb50`:
 
-| | root | majmin | sevenths | majmin_inv | N_est | N_ref |
-|---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks) | 0.773 | 0.738 | 0.725 | 0.653 | 0.123 | 0.015 |
-| GuitarSet (180 takes) | 0.485 | 0.519 | 0.460 | 0.335 | 0.450 | 0.000 |
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref |
+|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks) | 0.773 | 0.738 | 0.725 | — | 0.653 | 0.123 | 0.015 |
+| GuitarSet (180 takes) | 0.485 | 0.519 | 0.460 | — | 0.335 | 0.450 | 0.000 |
 
 On Tiny AAM the analyzer calls 12% of the duration `N` against 1.5% in the reference, and most of that is two tracks: 2720 (77% `N`) and 2990 (56%).
 
-Whitened front end, at the commit that adds these rows. The decode constants were tuned on Tiny AAM; GuitarSet was held out. `BASS_WEIGHT`, `BASS_TONE`, `TEMPERATURE` and `CHORD_SECONDS` are the best Tiny AAM majmin among the values that keep the default test suite green. The suite is a hard constraint: two-beat chord changes and first-inversion chords must survive. Without it the best Tiny AAM majmin was about 0.823. The 0.788 below is the price of that constraint, chosen deliberately. Vocabulary expansion (v4) is the next stage.
+Whitened front end, at the commit that adds these rows. The root, majmin, sevenths and majmin_inv values reproduce the ones printed before `tetrads` existed. The decode constants were tuned on Tiny AAM; GuitarSet was held out. `BASS_WEIGHT`, `BASS_TONE`, `TEMPERATURE` and `CHORD_SECONDS` are the best Tiny AAM majmin among the values that keep the default test suite green. The suite is a hard constraint: two-beat chord changes and first-inversion chords must survive. Without it the best Tiny AAM majmin was about 0.823. The 0.788 below is the price of that constraint, chosen deliberately. Vocabulary expansion (v4) is the next stage.
 
-| | root | majmin | sevenths | majmin_inv | N_est | N_ref |
-|---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks) | 0.848 | 0.788 | 0.760 | 0.691 | 0.011 | 0.015 |
-| GuitarSet (180 takes) | 0.688 | 0.619 | 0.492 | 0.373 | 0.007 | 0.000 |
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref |
+|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks) | 0.848 | 0.788 | 0.760 | 0.760 | 0.691 | 0.011 | 0.015 |
+| GuitarSet (180 takes) | 0.688 | 0.619 | 0.492 | 0.317 | 0.373 | 0.007 | 0.000 |
 
 ## Design decisions
 
