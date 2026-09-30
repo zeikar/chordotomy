@@ -94,7 +94,7 @@ def _states(*labels: str) -> np.ndarray:
 def test_segment_merges_runs_and_tiles_beats() -> None:
     states = _states("C:maj", "C:maj", "C:min", "C:min", "C:min", "N")
 
-    segments = segment(states, _sims({}))
+    segments = segment(states, _sims({}), np.zeros((84, 6)))
 
     assert [(s["start_beat"], s["end_beat"], s["chord"]) for s in segments] == [
         (0, 2, "C:maj"),
@@ -113,15 +113,52 @@ def test_segment_candidates_lead_with_chosen_label_then_best_means() -> None:
     sims[LABELS.index("F:maj")] = 0.8  # clear third place, below both C chords
     states = _states(*["C:maj"] * 6)
 
-    (only,) = segment(states, sims)
+    (only,) = segment(states, sims, np.zeros((84, 6)))
 
     assert only["candidates"] == ["C:maj", "C:7", "F:maj"]
-    assert set(only) == {"start_beat", "end_beat", "chord", "candidates"}
+    assert set(only) == {"start_beat", "end_beat", "chord", "candidates", "bass"}
     json.dumps(only)
     assert type(only["start_beat"]) is int
     assert type(only["end_beat"]) is int
     assert type(only["chord"]) is str
     assert all(type(c) is str for c in only["candidates"])
+
+
+def _cqt(beats: list) -> np.ndarray:
+    """(84, n) matrix: per beat None (zero column), a bin, or a (bin, amplitude) pair."""
+    cqt = np.zeros((84, len(beats)))
+    for beat, entry in enumerate(beats):
+        if entry is not None:
+            bin_, amplitude = entry if isinstance(entry, tuple) else (entry, 1.0)
+            cqt[bin_, beat] = amplitude
+    return cqt
+
+
+def test_segment_bass_is_none_for_no_chord() -> None:
+    states = _states("C:maj", "C:maj", "C:maj", "N", "N", "N")
+
+    chord, no_chord = segment(states, _sims({}), _cqt([12] * 6))
+
+    assert chord["bass"] == "C"
+    assert no_chord["bass"] is None
+
+
+@pytest.mark.parametrize(
+    ("bins", "expected"),
+    [
+        ([12, 16, 12], "C"),
+        ([16, 12], "E"),
+        ([None, 12], "C"),
+        ([None] * 3, None),
+    ],
+)
+def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> None:
+    states = _states(*["C:maj"] * len(bins))
+    sims = _sims({})[:, : len(bins)]
+
+    (only,) = segment(states, sims, _cqt(bins))
+
+    assert only["bass"] == expected
 
 
 @pytest.mark.parametrize(

@@ -1,14 +1,14 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v2)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v3)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from . import __version__, harmony
-from .chords import match, segment, smooth
+from .chords import inversion, match, segment, smooth
 from .features import SR, beat_chroma, load_audio
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def analyze(path: Path, key: str | None = None) -> dict:
@@ -16,7 +16,7 @@ def analyze(path: Path, key: str | None = None) -> dict:
     y = load_audio(path)
     beat_times, chroma, cqt = beat_chroma(y)
     sims = match(chroma)
-    segments = segment(smooth(sims), sims)
+    segments = segment(smooth(sims), sims, cqt)
 
     progression = [(s["chord"], s["end_beat"] - s["start_beat"]) for s in segments]
     key_info, analyses = harmony.analyze(progression, key)
@@ -38,6 +38,8 @@ def analyze(path: Path, key: str | None = None) -> dict:
                 "end_time": duration if s["end_beat"] == len(beats) else beats[s["end_beat"]],
                 "chord": s["chord"],
                 "candidates": s["candidates"],
+                "bass": s["bass"],
+                "inversion": inversion(s["chord"], s["bass"]),
                 **a,
             }
             for s, a in zip(segments, analyses, strict=True)
