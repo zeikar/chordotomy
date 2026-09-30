@@ -166,6 +166,13 @@ Baseline, front end at `b70fb50`:
 
 On Tiny AAM the analyzer calls 12% of the duration `N` against 1.5% in the reference, and most of that is two tracks: 2720 (77% `N`) and 2990 (56%).
 
+Whitened front end, at the commit that adds these rows. The decode constants were tuned on Tiny AAM; GuitarSet was held out:
+
+| | root | majmin | sevenths | majmin_inv | N_est | N_ref |
+|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks) | 0.848 | 0.788 | 0.760 | 0.707 | 0.011 | 0.015 |
+| GuitarSet (180 takes) | 0.688 | 0.619 | 0.492 | 0.374 | 0.007 | 0.000 |
+
 ## Design decisions
 
 ### An analyzer, not a transcriber
