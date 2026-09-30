@@ -95,6 +95,7 @@
     audio.hidden = false;
     $("no-audio").hidden = true;
     $("listen").hidden = false;
+    for (const hint of document.querySelectorAll(".needs-recording")) hint.hidden = false;
     showName("audio-name", file.name);
   }
 
@@ -350,11 +351,11 @@
     }
   }
 
-  // Squared, so the slider sounds even. Measured on a mastered track, the default (70) sits about
-  // 8 dB under the recording, and the top reaches its level for listening to the chords alone
-  // with peaks still short of clipping.
+  // Squared, so the slider sounds even. Measured on a mastered track, the default (80) sits about
+  // 9 dB under the recording; at the top, a seventh chord with every wave in phase stays short of
+  // clipping.
   function chordGain() {
-    return 1.4 * (Number($("chord-volume").value) / 100) ** 2;
+    return (Number($("chord-volume").value) / 100) ** 2;
   }
 
   // First called from the toggle, a user gesture, so the autoplay policy lets the context run.
@@ -371,8 +372,13 @@
     }
   }
 
+  // The recording's clock is moving: not paused, not mid-seek, not stalled waiting for data.
+  function clockRunning() {
+    return !audio.paused && !audio.seeking && audio.readyState >= audio.HAVE_FUTURE_DATA;
+  }
+
   function startChords() {
-    if (ticker || !hearChords || !timeline || !audioUrl || audio.paused) return;
+    if (ticker || !hearChords || !timeline || !audioUrl || !clockRunning()) return;
     ensureContext();
     session = new GainNode(context);
     session.connect(chordBus);
@@ -395,18 +401,20 @@
   }
 
   function scheduleChords() {
-    if (context.state !== "running") return;
-    const media = audio.currentTime;
+    // pause() and seeks stop the clock at once but send their events later: skip that gap.
+    if (context.state !== "running" || !clockRunning()) return;
     const now = context.currentTime;
-    const rate = audio.playbackRate;
-    while (
-      nextStrike < chordStrikes.length &&
-      chordStrikes[nextStrike].time < media + LOOKAHEAD * rate
-    ) {
-      const strike = chordStrikes[nextStrike++];
-      if (strike.end <= media) continue; // already over: late is better skipped than stacked
-      const start = now + Math.max(0, strike.time - media) / rate;
-      strikeChord(chordVoicings[strike.segment], start, now + (strike.end - media) / rate);
+    const { due, next } = Core.dueStrikes(chordStrikes, nextStrike, {
+      media: audio.currentTime,
+      rate: audio.playbackRate,
+      lookahead: LOOKAHEAD,
+      // A note scheduled now is heard this much later, while the recording's currentTime already
+      // allows for its own output delay. outputLatency is missing in some browsers.
+      lag: (context.baseLatency || 0) + (context.outputLatency || 0),
+    });
+    nextStrike = next;
+    for (const strike of due) {
+      strikeChord(chordVoicings[strike.segment], now + strike.start, now + strike.end);
     }
   }
 
@@ -423,15 +431,18 @@
       envelope.gain.setTargetAtTime(0, release, RELEASE);
       envelope.connect(session);
       const frequency = 440 * 2 ** ((note - 69) / 12);
-      for (const [type, detune] of [
+      const oscillators = [
         ["triangle", -4],
         ["sine", 4],
-      ]) {
+      ].map(([type, detune]) => {
         const oscillator = new OscillatorNode(context, { type, frequency, detune });
         oscillator.connect(envelope);
         oscillator.start(start);
         oscillator.stop(release + RELEASE * 8);
-      }
+        return oscillator;
+      });
+      // Both stop together; unhooking the envelope then keeps a long song from piling up nodes.
+      oscillators[0].onended = () => envelope.disconnect();
     }
   }
 
@@ -443,7 +454,17 @@
       startChords();
     } else {
       stopChords();
+      // Idle, the context would keep the audio device busy. Suspend once the fade is done.
+      setTimeout(() => {
+        if (!hearChords) context.suspend();
+      }, 200);
     }
+  }
+
+  // After a mouse click, focus leaves the button, so Space goes back to playing and pausing.
+  // A keyboard click (detail 0) keeps it there.
+  function releaseFocus(event) {
+    if (event.detail > 0) event.currentTarget.blur();
   }
 
   function toggleMute() {
@@ -451,7 +472,10 @@
   }
 
   for (const button of document.querySelectorAll(".open-files")) {
-    button.addEventListener("click", () => picker.click());
+    button.addEventListener("click", (event) => {
+      releaseFocus(event);
+      picker.click();
+    });
   }
   $("dismiss").addEventListener("click", clearMessages);
   picker.addEventListener("change", () => {
@@ -464,11 +488,19 @@
     if (button) seek(Number(button.dataset.index));
   });
 
-  $("hear-chords").addEventListener("click", () => setHearChords(!hearChords));
-  $("mute-recording").addEventListener("click", toggleMute);
+  $("hear-chords").addEventListener("click", (event) => {
+    releaseFocus(event);
+    setHearChords(!hearChords);
+  });
+  $("mute-recording").addEventListener("click", (event) => {
+    releaseFocus(event);
+    toggleMute();
+  });
   $("chord-volume").addEventListener("input", () => {
     if (chordBus) chordBus.gain.setTargetAtTime(chordGain(), context.currentTime, 0.02);
   });
+  // Dragged with the mouse, the slider lets go of focus too; from the keyboard it keeps it.
+  $("chord-volume").addEventListener("pointerup", (event) => event.currentTarget.blur());
   // The native controls can mute too, so the button follows the element rather than a flag.
   audio.addEventListener("volumechange", () => {
     $("mute-recording").setAttribute("aria-pressed", String(audio.muted));
@@ -488,23 +520,28 @@
 
   document.addEventListener("keydown", (event) => {
     if (!timeline || event.altKey || event.ctrlKey || event.metaKey) return;
-    // Letter shortcuts work from any control; none of them takes letters.
-    const letter = event.key.toLowerCase();
+    const target = event.target;
+    // Letter shortcuts work from any control; none of them takes letters. The physical key is the
+    // fallback, so they also work with a non-Latin layout on (Korean input sends "ㅗ" for H).
+    const letter = /^[a-z]$/i.test(event.key)
+      ? event.key.toLowerCase()
+      : { KeyH: "h", KeyM: "m" }[event.code];
     if ((letter === "h" || letter === "m") && audioUrl) {
+      event.preventDefault();
       if (!event.repeat) {
         if (letter === "h") setHearChords(!hearChords);
         else toggleMute();
       }
       return;
     }
-    // Other controls keep their own keys. On a chord button Space plays rather than seeks. The
-    // audio element toggles on Space by itself (preventDefault doesn't stop it), but its arrows
-    // step chords here like everywhere else.
-    if (event.target.closest("button:not(.segment), input, a")) return;
-    if (event.key === " " && event.target !== audio) {
+    if (event.key === " ") {
+      // Buttons and links keep Space (on a chord button it plays rather than seeks). The audio
+      // element toggles on Space by itself, as preventDefault doesn't stop it.
+      if (target === audio || target.closest("button:not(.segment), a")) return;
       event.preventDefault();
       togglePlay();
     } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      if (target.closest("input")) return; // the volume slider's own arrows
       event.preventDefault();
       const step = event.key === "ArrowRight" ? 1 : -1;
       const index = Math.min(buttons.length - 1, Math.max(0, currentIndex() + step));

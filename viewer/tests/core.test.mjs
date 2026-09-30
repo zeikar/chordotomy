@@ -160,6 +160,15 @@ test("only schema version 3 is accepted", () => {
   assert.match(Core.timelineProblem({ schema_version: 3 }), /no beats or segments/);
 });
 
+test("chord and bass labels outside the schema are refused, not half-rendered", () => {
+  const timeline = (segment) => ({ schema_version: 3, beats: [0], segments: [segment] });
+  const ok = { chord: "C#:7", bass: "G#" };
+  assert.equal(Core.timelineProblem(timeline(ok)), null);
+  assert.equal(Core.timelineProblem(timeline({ chord: "N", bass: null })), null);
+  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:min7" })), /chord C:min7/);
+  assert.match(Core.timelineProblem(timeline({ ...ok, bass: "Db" })), /bass Db/);
+});
+
 test("times format as m:ss", () => {
   assert.equal(formatTime(0), "0:00");
   assert.equal(formatTime(65.9), "1:05");
@@ -210,6 +219,14 @@ test("segments get voicings in order, a bass below them, and silence for N", () 
   assert.ok(e.bass < Math.min(...e.notes));
 });
 
+test("the bass takes the octave nearest the last one, so a stepwise line stays stepwise", () => {
+  const line = ["G", "F#", "F", "E", "D#", "D", "C#", "C", "B", "A#"];
+  const basses = Core.voicings(line.map((root) => ({ chord: `${root}:maj`, bass: null }))).map(
+    (voicing) => voicing.bass,
+  );
+  assert.deepEqual(basses, [43, 42, 41, 40, 39, 38, 37, 36, 47, 46]); // wraps only at C2
+});
+
 test("every beat of a chord strikes it, and N stays silent", () => {
   const timeline = {
     beats: [0.5, 1, 1.5, 2, 2.5],
@@ -238,4 +255,30 @@ test("the strike to start from is the one still sounding, else the next", () => 
   assert.equal(Core.strikeIndexAt(strikes, 1.5), 1);
   assert.equal(Core.strikeIndexAt(strikes, 2.5), 2);
   assert.equal(Core.strikeIndexAt(strikes, 9), 3);
+});
+
+test("due strikes are scheduled as audio-clock offsets from now", () => {
+  const list = [
+    { time: 1, end: 1.5, segment: 0 },
+    { time: 1.5, end: 2, segment: 0 },
+    { time: 2, end: 2.5, segment: 1 },
+  ];
+  const at = (media, options = {}) =>
+    Core.dueStrikes(list, 0, { media, rate: 1, lookahead: 0.15, lag: 0, ...options });
+  const round = ({ due, next }) => ({
+    due: due.map((d) => [d.segment, +d.start.toFixed(3), +d.end.toFixed(3)]),
+    next,
+  });
+
+  // Mid-beat: the chord under way starts now with what's left of it; the next isn't due yet.
+  assert.deepEqual(round(at(1.2)), { due: [[0, 0, 0.3]], next: 1 });
+  // Twice the speed: offsets halve, and the window reaches twice as far into the recording.
+  assert.deepEqual(round(at(1.3, { rate: 2 })), { due: [[0, 0, 0.1], [0, 0.1, 0.35]], next: 2 });
+  // Output latency: notes go out `lag` early, and the window widens by as much.
+  assert.deepEqual(round(at(1.3, { lag: 0.1 })), { due: [[0, 0, 0.1], [0, 0.1, 0.6]], next: 2 });
+  // A strike with under 80 ms left is skipped, not played as a blip; one that ended is too.
+  assert.deepEqual(round(at(1.45)), { due: [[0, 0.05, 0.55]], next: 2 });
+  assert.deepEqual(round(at(1.5)), { due: [[0, 0, 0.5]], next: 2 });
+  // A stopped clock schedules nothing.
+  assert.deepEqual(round(at(1.2, { rate: 0 })), { due: [], next: 0 });
 });

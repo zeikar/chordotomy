@@ -102,20 +102,25 @@
         <audio id="audio" controls preload="auto" hidden></audio>
         <p class="no-audio" id="no-audio">Open the recording too to play along.</p>
         <div class="listen" id="listen" hidden>
-          <button type="button" class="button toggle" id="hear-chords" aria-pressed="false">
-            Hear chords
-          </button>
-          <label class="volume">
-            Chord volume
-            <input type="range" id="chord-volume" min="0" max="100" value="70" />
-          </label>
           <button type="button" class="button toggle" id="mute-recording" aria-pressed="false">
             Mute recording
           </button>
+          <div class="listen-chords">
+            <button type="button" class="button toggle" id="hear-chords" aria-pressed="false">
+              Hear chords
+            </button>
+            <label class="volume">
+              Chord volume
+              <input type="range" id="chord-volume" min="0" max="100" value="80" />
+            </label>
+          </div>
         </div>
         <p class="keys">
-          <kbd>Space</kbd> play or pause <kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous or next
-          chord <kbd>H</kbd> hear chords <kbd>M</kbd> mute recording. Click a chord to jump to it.
+          <span><kbd>Space</kbd> play or pause</span>
+          <span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous or next chord</span>
+          <span class="needs-recording" hidden><kbd>H</kbd> hear chords</span>
+          <span class="needs-recording" hidden><kbd>M</kbd> mute recording</span>
+          <span>Click a chord to jump to it.</span>
         </p>
       </section>
     </main>

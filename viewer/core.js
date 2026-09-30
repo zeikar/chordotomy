@@ -1,5 +1,6 @@
-// The viewer's pure logic: spelling, chord names, numerals with figured bass, segment lookup and
-// file validation. No DOM, so Node's test runner covers it (viewer/tests/).
+// The viewer's pure logic: spelling, chord names, numerals with figured bass, segment lookup, file
+// validation, and what the chord sound plays when (voicings, strikes, the scheduling window). No
+// DOM or audio, so Node's test runner covers it (viewer/tests/).
 //
 // A classic script, not an ES module: Chrome and Firefox refuse module scripts on file:// pages,
 // and the viewer must also work opened straight from disk. In the browser it defines the global
@@ -9,6 +10,7 @@
 const Core = (() => {
   const SCHEMA_VERSION = 3;
   const SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const CHORD_LABEL = /^[A-G]#?:(maj|min|7)$/;
   const LETTERS = "CDEFGAB";
   const NATURAL = [0, 2, 4, 5, 7, 9, 11];
   const GLYPH = { "-1": "♭", 0: "", 1: "♯" };
@@ -165,6 +167,15 @@ const Core = (() => {
     if (!Array.isArray(data.segments) || !Array.isArray(data.beats)) {
       return "This timeline has no beats or segments list.";
     }
+    // Everything downstream (names, numerals, the chord sound) assumes the schema's vocabulary.
+    for (const { chord, bass } of data.segments) {
+      if (chord !== "N" && !CHORD_LABEL.test(chord)) {
+        return `This timeline has a chord chordotomy doesn't write: chord ${chord}.`;
+      }
+      if (bass !== null && !SHARPS.includes(bass)) {
+        return `This timeline has a note chordotomy doesn't write: bass ${bass}.`;
+      }
+    }
     return null;
   }
 
@@ -173,9 +184,12 @@ const Core = (() => {
   const INTERVALS = { maj: [0, 4, 7], min: [0, 3, 7], 7: [0, 4, 7, 10] };
   const MIDDLE_C = 60;
   // The lowest upper voice stays in G3–F♯4, one candidate per inversion, so a long progression
-  // can't creep up or down the keyboard; the bass sits in E2–D♯3, always below it.
+  // can't creep up or down the keyboard. The bass stays in C2–E3, always below it.
   const LOWEST_VOICE = 55;
-  const LOWEST_BASS = 40;
+  const BASS_RANGE = [36, 52];
+  const FIRST_BASS = 43; // G2, the middle of the bass range
+  // A strike already under way with less than this left would only be a blip.
+  const SHORTEST = 0.08;
 
   function pitchClasses(chord) {
     if (chord === "N") return [];
@@ -214,17 +228,29 @@ const Core = (() => {
     return inversions(pcs).reduce((best, notes) => (cost(notes) < cost(best) ? notes : best));
   }
 
+  // The octave of bass pitch class `pc` nearest the previous bass note (ties go lower), so a
+  // stepwise bass line doesn't leap a seventh at an octave boundary.
+  function closestBass(pc, previous) {
+    let best = null;
+    for (let note = BASS_RANGE[0]; note <= BASS_RANGE[1]; note++) {
+      if (note % 12 !== pc) continue;
+      if (best === null || Math.abs(note - previous) < Math.abs(best - previous)) best = note;
+    }
+    return best;
+  }
+
   // One voicing per segment in timeline order, each led from the last chord heard (across any N),
   // so it doesn't depend on where playback starts. The bass is the segment's bass note, else the
   // root, so slash chords and inversions can be heard. N is null: silence.
   function voicings(segments) {
     let previous = null;
+    let bass = FIRST_BASS;
     return segments.map((segment) => {
       if (segment.chord === "N") return null;
       const pcs = pitchClasses(segment.chord);
       previous = closestVoicing(pcs, previous);
-      const bass = segment.bass ? SHARPS.indexOf(segment.bass) : pcs[0];
-      return { notes: previous, bass: LOWEST_BASS + mod(bass - LOWEST_BASS, 12) };
+      bass = closestBass(segment.bass ? SHARPS.indexOf(segment.bass) : pcs[0], bass);
+      return { notes: previous, bass };
     });
   }
 
@@ -254,6 +280,25 @@ const Core = (() => {
     return lo;
   }
 
+  // The strikes to schedule on one pass, from `index` on: those starting within `lookahead`
+  // seconds of the recording's position `media`, as start and end offsets from now in audio-clock
+  // seconds. Notes are heard `lag` seconds after they are scheduled (the audio output's latency),
+  // so they go out that much early. A strike already under way starts at once with what's left.
+  // Returns them with the index to continue from.
+  function dueStrikes(list, index, { media, rate, lookahead, lag }) {
+    const due = [];
+    let next = index;
+    if (!(rate > 0)) return { due, next };
+    while (next < list.length && list[next].time < media + (lookahead + lag) * rate) {
+      const strike = list[next++];
+      const end = (strike.end - media) / rate - lag;
+      if (end < SHORTEST) continue;
+      const start = Math.max(0, (strike.time - media) / rate - lag);
+      due.push({ segment: strike.segment, start, end });
+    }
+    return { due, next };
+  }
+
   function formatTime(seconds) {
     const s = Math.max(0, Math.floor(seconds));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -264,6 +309,7 @@ const Core = (() => {
     bassName,
     chordName,
     closestVoicing,
+    dueStrikes,
     formatTime,
     keyName,
     numeralParts,

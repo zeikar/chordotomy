@@ -105,9 +105,10 @@ kbd {
   cursor: pointer;
 }
 
+/* Hover is a light tint on every button: a filled ink face means a toggle that is on, nothing
+   else. */
 .button:hover {
-  background: var(--ink);
-  color: var(--paper);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
 /* Header */
@@ -566,9 +567,11 @@ body:has(#empty:not([hidden])) .status {
   padding: 16px 32px 24px;
 }
 
+/* The player keeps room for a usable seek bar; the controls beside it wrap below before it
+   shrinks that far. */
 .transport audio {
   flex: 1 1 24rem;
-  min-width: 16rem;
+  min-width: min(100%, 34rem);
   /* The focus ring follows the rounded player instead of boxing it. */
   border-radius: 28px;
 }
@@ -582,15 +585,22 @@ body:has(#empty:not([hidden])) .status {
   flex: 1 1 28rem;
 }
 
+/* Mute recording sits by the player it acts on; the chord controls form a group of their own. */
 .listen {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 20px;
+  gap: 10px 32px;
 }
 
-/* A toggle shows its state with a dot, hollow when off and filled when on, and a filled face;
-   hovering doesn't fill it, so hover never looks like on. */
+.listen-chords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+/* A toggle shows its state with a dot, hollow when off and filled when on, and a filled face. */
 .toggle::before {
   content: "";
   display: inline-block;
@@ -603,14 +613,13 @@ body:has(#empty:not([hidden])) .status {
   border-radius: 50%;
 }
 
-.toggle:hover {
-  background: var(--cell);
-  color: var(--ink);
-}
-
 .toggle[aria-pressed="true"] {
   background: var(--ink);
   color: var(--paper);
+}
+
+.toggle[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--ink) 85%, var(--paper));
 }
 
 .toggle[aria-pressed="true"]::before {
@@ -625,15 +634,28 @@ body:has(#empty:not([hidden])) .status {
   color: var(--pencil);
 }
 
+/* Still adjustable while the chords are off, but it shouldn't be the heaviest mark in the row. */
+.listen:has(#hear-chords[aria-pressed="false"]) .volume {
+  opacity: 0.55;
+}
+
 .volume input {
   width: 7rem;
   margin: 0;
   accent-color: var(--ink);
 }
 
-.keys {
+/* One key and what it does never break apart; the gaps separate the pairs. */
+.transport .keys {
+  display: flex;
   flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 4px 18px;
   font-size: 13px;
+}
+
+.keys span {
+  white-space: nowrap;
 }
 
 .dropzone {
