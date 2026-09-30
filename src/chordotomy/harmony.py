@@ -12,6 +12,21 @@ SCALE = {"maj": {0, 2, 4, 5, 7, 9, 11}, "min": {0, 2, 3, 5, 7, 8, 10}}
 # The tonic outweighs IV and V, which outweigh the other degrees (1; a chord that is not diatonic
 # weighs 0), so time spent on I, IV and V decides between keys that share most of their triads.
 DEGREE_WEIGHT = {0: 3, 5: 2, 7: 2}
+# Accidentals are relative to the key's own scale, so minor spells its natural-minor degrees plain.
+NUMERALS = {
+    "maj": ("I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"),
+    "min": ("I", "bII", "II", "III", "#III", "IV", "#IV", "V", "VI", "#VI", "VII", "#VII"),
+}
+# Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
+FUNCTIONS = {
+    "I": "tonic",
+    "II": "predominant",
+    "III": "tonic",
+    "IV": "predominant",
+    "V": "dominant",
+    "VI": "tonic",
+    "VII": "dominant",
+}
 
 
 def parse_key(text: str) -> str:
@@ -56,3 +71,25 @@ def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
 
     # sorted is stable, also with reverse=True, so KEYS order is the final tie-break.
     return sorted(KEYS, key=rank, reverse=True)
+
+
+def numeral(offset: int, quality: str, mode: str) -> str:
+    text = NUMERALS[mode][offset]
+    if quality == "min":
+        text = text.lower()
+    return text + "7" if quality == "7" else text
+
+
+def analyze_chord(label: str, key: str) -> dict[str, str | None]:
+    """Classify one chord against a key: numeral, role, function and target."""
+    if label == "N":
+        return {"numeral": None, "role": None, "function": None, "target": None}
+    tonic, mode = key.split(":")
+    root, quality = label.split(":")
+    offset = (ROOTS.index(root) - ROOTS.index(tonic)) % 12
+    text = numeral(offset, quality, mode)
+    if _is_diatonic(offset, quality, mode):
+        # Diatonic numerals carry no accidental, so case and the 7 are all to strip.
+        function = FUNCTIONS[text.upper().removesuffix("7")]
+        return {"numeral": text, "role": "diatonic", "function": function, "target": None}
+    return {"numeral": text, "role": "chromatic", "function": None, "target": None}

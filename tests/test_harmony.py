@@ -1,6 +1,6 @@
 import pytest
 
-from chordotomy.harmony import estimate_key, parse_key
+from chordotomy.harmony import analyze_chord, estimate_key, parse_key
 
 
 @pytest.mark.parametrize(
@@ -51,3 +51,43 @@ def test_estimate_key_ranks_all_keys() -> None:
     assert len(ranked) == 24
     assert len(set(ranked)) == 24
     assert all(key.split(":")[1] in ("maj", "min") for key in ranked)
+
+
+@pytest.mark.parametrize(
+    ("label", "key", "numeral", "function"),
+    [
+        ("C:maj", "C:maj", "I", "tonic"),
+        ("D:min", "C:maj", "ii", "predominant"),
+        ("E:min", "C:maj", "iii", "tonic"),
+        ("F:maj", "C:maj", "IV", "predominant"),
+        ("G:maj", "C:maj", "V", "dominant"),
+        ("G:7", "C:maj", "V7", "dominant"),
+        ("A:min", "C:maj", "vi", "tonic"),
+        ("A:min", "A:min", "i", "tonic"),
+        ("C:maj", "A:min", "III", "tonic"),
+        ("D:min", "A:min", "iv", "predominant"),
+        ("E:min", "A:min", "v", "dominant"),
+        ("E:maj", "A:min", "V", "dominant"),
+        ("E:7", "A:min", "V7", "dominant"),
+        ("F:maj", "A:min", "VI", "tonic"),
+        ("G:maj", "A:min", "VII", "dominant"),
+        ("G:7", "A:min", "VII7", "dominant"),
+        ("F#:maj", "B:maj", "V", "dominant"),
+    ],
+)
+def test_analyze_chord_diatonic(label: str, key: str, numeral: str, function: str) -> None:
+    assert analyze_chord(label, key) == {
+        "numeral": numeral,
+        "role": "diatonic",
+        "function": function,
+        "target": None,
+    }
+
+
+def test_analyze_chord_n() -> None:
+    assert analyze_chord("N", "C:maj") == {
+        "numeral": None,
+        "role": None,
+        "function": None,
+        "target": None,
+    }
