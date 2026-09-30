@@ -30,7 +30,7 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 1
+    assert result["schema_version"] == 2
     assert result["generator"] == {"name": "chordotomy", "version": __version__}
     assert result["source"]["path"] == str(path)
     duration = result["source"]["duration"]
@@ -51,6 +51,7 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
         assert s["end_time"] == end
         assert len(set(s["candidates"])) == 3
         assert s["candidates"][0] == s["chord"]
+        assert {"numeral", "role", "function", "target"} <= s.keys()
     assert [s["chord"] for s in segments] == ["C:maj", "C:7", "F:maj", "G:7", "A:min", "C:maj"]
 
     labels = [s["chord"] for s in segments for _ in range(s["start_beat"], s["end_beat"])]
@@ -68,6 +69,27 @@ def test_silence_between_chords_is_n(synth, tmp_path) -> None:
     assert abs(segments[1]["start_time"] - 2.0) <= 0.3
     assert abs(segments[1]["end_time"] - 4.0) <= 0.3
     assert segments[-1]["end_time"] == result["source"]["duration"]
+    fields = ("numeral", "role", "function", "target")
+    assert all(segments[1][f] is None for f in fields)
+    assert all(segments[i][f] is not None for i in (0, 2) for f in ("numeral", "role"))
+
+
+def test_analyze_labels_the_progression(synth, tmp_path) -> None:
+    progression = [("C:maj", 2), ("A:min", 2), ("D:7", 2), ("G:7", 2), ("C:maj", 2)]
+
+    result = analyze(_write(tmp_path, synth(progression)))
+
+    json.dumps(result)
+    key = result["key"]
+    assert key["label"] == "C:maj"
+    assert key["source"] == "estimated"
+    assert key["candidates"][0] == "C:maj"
+    assert len(set(key["candidates"])) == 3
+    segments = result["segments"]
+    assert [s["numeral"] for s in segments] == ["I", "vi", "V7/V", "V7", "I"]
+    assert segments[2]["role"] == "secondary_dominant"
+    assert segments[2]["target"] == "V"
+    assert segments[3]["function"] == "dominant"
 
 
 def test_edge_silence_is_n(synth, tmp_path) -> None:
