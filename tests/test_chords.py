@@ -2,8 +2,9 @@ import json
 from itertools import pairwise
 
 import numpy as np
+import pytest
 
-from chordotomy.chords import LABELS, match, segment, smooth
+from chordotomy.chords import LABELS, inversion, match, pick_bass, segment, smooth
 
 # Literal music-theory ground truth, deliberately not imported from the module.
 ROOT_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -121,3 +122,48 @@ def test_segment_candidates_lead_with_chosen_label_then_best_means() -> None:
     assert type(only["end_beat"]) is int
     assert type(only["chord"]) is str
     assert all(type(c) is str for c in only["candidates"])
+
+
+@pytest.mark.parametrize(
+    ("label", "bass", "expected"),
+    [
+        ("C:maj", "C", "root"),
+        ("C:maj", "E", "first"),
+        ("C:maj", "G", "second"),
+        ("C:7", "A#", "third"),
+        ("A:min", "C", "first"),
+        ("F#:7", "E", "third"),
+        ("C:maj", "D", "non_chord"),
+        ("C:maj", "A#", "non_chord"),
+        ("N", "C", None),
+        ("C:maj", None, None),
+    ],
+)
+def test_inversion(label: str, bass: str | None, expected: str | None) -> None:
+    assert inversion(label, bass) == expected
+
+
+def _profile(**bins: float) -> np.ndarray:
+    profile = np.zeros(84)
+    for name, value in bins.items():
+        profile[int(name.removeprefix("b"))] = value
+    return profile
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        (_profile(), None),
+        (_profile(b15=0.55, b16=1.0, b17=0.55), "E"),
+        (_profile(b12=1.0, b4=0.4), "C"),
+        (_profile(b14=0.6, b24=1.0), "D"),
+        (_profile(b0=1.0), "C"),
+        (_profile(b36=1.0, b35=0.5, b34=0.1), None),
+        (_profile(b16=1.0, b40=3.0), "E"),
+        (_profile(b35=1.0), "B"),
+    ],
+)
+def test_pick_bass(profile: np.ndarray, expected: str | None) -> None:
+    result = pick_bass(profile)
+    assert result == expected
+    assert result is None or isinstance(result, str)

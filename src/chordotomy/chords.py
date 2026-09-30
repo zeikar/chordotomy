@@ -69,3 +69,39 @@ def segment(states: np.ndarray, sims: np.ndarray) -> list[dict]:
             }
         )
     return segments
+
+
+# The bass register: C1-B3, the three lowest octaves of the CQT that beat_chroma returns.
+BASS_BINS = 36
+# Leakage into a neighbouring bin is 0.5-0.6 of a peak but is never a local maximum, so a bin
+# needs to be both a local maximum and at least this fraction of the register's strongest.
+BASS_SALIENCE = 0.5
+# Position names index a quality's QUALITIES intervals in order.
+INVERSIONS = ("root", "first", "second", "third")
+
+
+def pick_bass(profile: np.ndarray) -> str | None:
+    """Name the lowest salient note in a beat's CQT profile, or None if the register is silent.
+
+    The profile has one bin per semitone with bin 0 = C1, as beat_chroma returns it. Only the
+    first BASS_BINS bins are candidates; the bins above are context for the local-maximum test.
+    """
+    reference = profile[:BASS_BINS].max()
+    if reference == 0:
+        return None
+    padded = np.pad(profile, 1)
+    is_peak = (profile >= padded[:-2]) & (profile >= padded[2:])
+    for b in range(BASS_BINS):
+        if is_peak[b] and profile[b] >= BASS_SALIENCE * reference:
+            return ROOTS[b % 12]
+    return None
+
+
+def inversion(label: str, bass: str | None) -> str | None:
+    """Position of the bass note within a chord label: root/first/second/third or non_chord."""
+    if label == "N" or bass is None:
+        return None
+    root, quality = label.split(":")
+    offset = (ROOTS.index(bass) - ROOTS.index(root)) % 12
+    intervals = QUALITIES[quality]
+    return INVERSIONS[intervals.index(offset)] if offset in intervals else "non_chord"
