@@ -15,6 +15,8 @@ dist/
 .coverage
 htmlcov/
 .hyperclaude/
+.claude/worktrees/
+.playwright-mcp/
 
 # Editor
 .idea/
