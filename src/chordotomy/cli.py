@@ -14,7 +14,7 @@ from typing import Annotated
 import soundfile
 import typer
 
-from . import __version__, harmony, timeline
+from . import __version__, harmony, model, timeline
 from . import evaluate as evaluation
 from .features import NoBeatsError
 
@@ -22,6 +22,12 @@ from .features import NoBeatsError
 class Dataset(StrEnum):
     TINY_AAM = "tiny-aam"
     GUITARSET = "guitarset"
+
+
+class Engine(StrEnum):
+    AUTO = "auto"
+    MODEL = "model"
+    DSP = "dsp"
 
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -50,6 +56,33 @@ def _parse_key(value: str | None) -> str | None:
         return harmony.parse_key(value)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+def _resolve_engine(value: Engine) -> Engine:
+    # available() only looks for lv_chordia, so deciding never imports torch.
+    if value is Engine.AUTO:
+        return Engine.MODEL if model.available() else Engine.DSP
+    if value is Engine.MODEL and not model.available():
+        raise typer.BadParameter(
+            "lv-chordia is not installed; install the model extra with `uv sync --extra model`"
+        )
+    return value
+
+
+EngineOption = Annotated[
+    Engine,
+    typer.Option(
+        "--engine",
+        callback=_resolve_engine,
+        help="auto: lv-chordia when installed, else the DSP.",
+    ),
+]
+
+
+def _announce(engine: Engine) -> None:
+    # The model takes seconds to minutes, most of it before any output.
+    if engine is Engine.MODEL:
+        typer.echo(f"engine: {model.NAME} {model.version()}", err=True)
 
 
 def _fail(message: str) -> typer.Exit:
@@ -105,6 +138,7 @@ def analyze(
             ),
         ),
     ] = None,
+    engine: EngineOption = Engine.AUTO,
 ) -> None:
     """Analyze AUDIO into a beat-aligned chord-timeline JSON."""
     if output is None:
@@ -116,10 +150,13 @@ def analyze(
     if output.exists() and not force:
         raise _exists(output)
 
+    _announce(engine)
     try:
-        result = timeline.analyze(audio, key=key)
+        result = timeline.analyze(audio, key=key, engine=engine.value)
     except (soundfile.LibsndfileError, NoBeatsError) as exc:
         raise _fail(f"{audio}: {exc}") from exc
+    except model.EngineError as exc:
+        raise _fail(str(exc)) from exc
 
     # UTF-8 characters, not \u escapes, so a numeral's ø or ° and a non-ASCII path read as
     # themselves in the file, whatever the locale. A path that was not UTF-8 to begin with holds a
@@ -151,6 +188,7 @@ def evaluate(
     limit: Annotated[
         int | None, typer.Option("--limit", min=1, help="Score only the first N tracks.")
     ] = None,
+    engine: EngineOption = Engine.AUTO,
 ) -> None:
     """Score the chord front end on a public dataset (opt-in, downloads on first use)."""
     # Check the extra before anything can download.
@@ -162,7 +200,10 @@ def evaluate(
                 raise
             raise _fail("the evaluation needs the eval extra: uv sync --extra eval") from exc
 
+    _announce(engine)
     try:
-        evaluation.run(dataset.value, limit)
+        evaluation.run(dataset.value, limit, engine.value)
     except evaluation.DatasetError as exc:
         raise _fail(f"{dataset.value}: {exc}") from exc
+    except model.EngineError as exc:
+        raise _fail(str(exc)) from exc

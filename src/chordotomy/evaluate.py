@@ -11,6 +11,7 @@ import json
 import re
 import zipfile
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
@@ -265,12 +266,12 @@ def _read_reference(dataset: str, path: Path, duration: float) -> tuple[np.ndarr
         raise DatasetError(f"{path}: {exc}") from exc
 
 
-def run(dataset: str, limit: int | None) -> dict[str, dict]:
+def run(dataset: str, limit: int | None, engine: Literal["dsp", "model"]) -> dict[str, dict]:
     """Analyze and score every track of `dataset`, print the table, and return the summary."""
     tracks = tiny_aam_tracks(limit) if dataset == "tiny-aam" else guitarset_tracks(limit)
     scored = {}
     for name, audio, annotation in tracks:
-        result = timeline.analyze(audio)
+        result = timeline.analyze(audio, engine=engine)
         ref_intervals, ref_labels = _read_reference(
             dataset, annotation, result["source"]["duration"]
         )

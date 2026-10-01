@@ -2,19 +2,31 @@
 
 import importlib.metadata
 import importlib.util
+import json
 import re
 
 import pytest
 import soundfile
+from typer.testing import CliRunner
 
-from chordotomy import model
+from chordotomy import evaluate, model
 from chordotomy.chords import LABELS
+from chordotomy.cli import app
 from chordotomy.features import HOP, SR
 from chordotomy.timeline import analyze
 
 # find_spec rather than importorskip: collecting the file then imports neither lv_chordia nor torch.
 if importlib.util.find_spec("lv_chordia") is None:
     pytest.skip("the model extra is not installed", allow_module_level=True)
+
+# Bound at import, before conftest's dsp_engine replaces model.available in each test.
+REAL_AVAILABLE = model.available
+
+
+@pytest.fixture(autouse=True)
+def model_engine(monkeypatch):
+    """Undo conftest's dsp_engine: here the CLI sees the installed model."""
+    monkeypatch.setattr(model, "available", REAL_AVAILABLE)
 
 
 def _write(tmp_path, y):
@@ -127,3 +139,34 @@ def test_the_nets_run_on_the_cpu_even_when_cuda_is_reported(
     for interface in model._networks():
         assert interface.net.use_gpu is False
         assert {p.device.type for p in interface.net.parameters()} == {"cpu"}
+
+
+def test_analyze_with_the_model_engine_says_which_engine_runs(synth, tmp_path) -> None:
+    clip = _write(tmp_path, synth([("C:maj", 8)]))
+    out = tmp_path / "out.json"
+    installed = importlib.metadata.version("lv-chordia")
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "model"])
+
+    assert result.exit_code == 0, result.output
+    assert f"engine: lv-chordia {installed}" in result.stderr
+    assert json.loads(out.read_text())["generator"]["engine"] == {
+        "name": "lv-chordia",
+        "version": installed,
+    }
+
+
+def test_evaluate_with_the_model_engine_prints_a_row(synth, tmp_path, monkeypatch) -> None:
+    pytest.importorskip("mir_eval")
+    pytest.importorskip("pooch")
+    clip = _write(tmp_path, synth([("C:maj", 8)]))
+    arff = tmp_path / "0001_beatinfo.arff"
+    arff.write_text("".join(f"{i * 0.5},1,{i % 4 + 1},'Cmaj'\n" for i in range(8)))
+    # One synthesized track in place of the dataset, so nothing is downloaded.
+    monkeypatch.setattr(evaluate, "tiny_aam_tracks", lambda limit: [("0001", clip, arff)])
+
+    result = CliRunner().invoke(app, ["evaluate", "tiny-aam", "--engine", "model"])
+
+    assert result.exit_code == 0, result.output
+    assert "engine: lv-chordia" in result.stderr
+    assert any(line.startswith("0001") for line in result.stdout.splitlines())

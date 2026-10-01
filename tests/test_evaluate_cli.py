@@ -12,7 +12,7 @@ pytest.importorskip("pooch")
 import pooch  # noqa: E402
 import requests  # noqa: E402
 
-from chordotomy import evaluate  # noqa: E402
+from chordotomy import evaluate, model  # noqa: E402
 from chordotomy.cli import app  # noqa: E402
 from chordotomy.features import SR  # noqa: E402
 
@@ -163,7 +163,7 @@ def test_unreadable_annotation_names_the_path(monkeypatch, tmp_path, track) -> N
 
 
 def test_analysis_failures_keep_their_traceback(monkeypatch, track) -> None:
-    def boom(path):
+    def boom(path, engine=None):
         raise RuntimeError("analysis broke")
 
     monkeypatch.setattr(evaluate, "tiny_aam_tracks", lambda limit: [track])
@@ -173,6 +173,36 @@ def test_analysis_failures_keep_their_traceback(monkeypatch, track) -> None:
 
     assert isinstance(result.exception, RuntimeError)
     assert "error:" not in result.stderr
+
+
+def test_a_broken_model_is_one_error_line(monkeypatch, track) -> None:
+    message = "lv_chordia cannot be imported; `uv sync --extra model`, or pass --engine dsp"
+    engines = []
+
+    def broken(path, engine=None):
+        engines.append(engine)
+        raise model.EngineError(message)
+
+    monkeypatch.setattr(evaluate, "tiny_aam_tracks", lambda limit: [track])
+    monkeypatch.setattr(model, "available", lambda: True)
+    monkeypatch.setattr(model, "version", lambda: "9.9.9")
+    monkeypatch.setattr("chordotomy.timeline.analyze", broken)
+
+    result = _run("tiny-aam")
+
+    assert result.exit_code == 1
+    assert engines == ["model"]
+    assert "engine: lv-chordia 9.9.9" in result.stderr
+    assert f"error: {message}" in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_the_model_engine_without_the_extra_is_a_usage_error(no_network) -> None:
+    result = _run("tiny-aam", "--engine", "model")
+
+    assert result.exit_code == 2
+    assert "--engine" in result.stderr
+    assert "uv sync --extra model" in result.stderr
 
 
 @pytest.fixture

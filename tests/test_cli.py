@@ -2,16 +2,25 @@ import json
 import os
 import subprocess
 import sys
+import types
 
 import numpy as np
 import pytest
 import soundfile
 from typer.testing import CliRunner
 
+import chordotomy.model
 import chordotomy.timeline
 from chordotomy import __version__
 from chordotomy.cli import app
 from chordotomy.features import SR
+
+# Bound at import, before conftest's dsp_engine replaces chordotomy.model.available in each test.
+REAL_AVAILABLE = chordotomy.model.available
+ENGINE_FAILURE = (
+    "lv_chordia cannot be imported (No module named 'audioop'); install the model extra with "
+    "`uv sync --extra model`, or pass --engine dsp"
+)
 
 
 @pytest.fixture
@@ -99,7 +108,7 @@ def test_default_output_is_not_overwritten_without_force(clip, tmp_path) -> None
 def test_file_appearing_during_analysis_is_not_overwritten(clip, tmp_path, monkeypatch) -> None:
     out = tmp_path / "out.json"
 
-    def stub(path, key=None):
+    def stub(path, key=None, engine=None):
         out.write_text("sentinel")
         return {"schema_version": 1}
 
@@ -122,7 +131,7 @@ def test_timeline_is_written_as_utf8(clip, tmp_path, monkeypatch, force) -> None
         "source": {"path": "노래.wav"},
         "segments": [{"numeral": "viiø7/V"}, {"numeral": "vii°7/ii"}],
     }
-    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None: data)
+    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: data)
 
     args = ["analyze", str(clip), "-o", str(out)] + (["--force"] if force else [])
     result = CliRunner().invoke(app, args)
@@ -140,7 +149,7 @@ def test_an_undecodable_path_is_written_as_an_escape(clip, tmp_path, monkeypatch
     # A filename that is not UTF-8 decodes with a surrogate on Linux, and UTF-8 cannot encode it.
     out = tmp_path / "out.json"
     data = {"source": {"path": "caf\udce9.wav"}}
-    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None: data)
+    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: data)
 
     args = ["analyze", str(clip), "-o", str(out)] + (["--force"] if force else [])
     result = CliRunner().invoke(app, args)
@@ -229,7 +238,7 @@ def test_forced_write_does_not_follow_a_link_made_during_analysis(
     before = clip.read_bytes()
     out = tmp_path / "out.json"
 
-    def stub(path, key=None):
+    def stub(path, key=None, engine=None):
         os.link(clip, out)
         return {"schema_version": 1}
 
@@ -266,15 +275,98 @@ def test_forced_write_keeps_the_existing_mode(clip, tmp_path) -> None:
     assert json.loads(out.read_text())["schema_version"] == 6
 
 
+@pytest.mark.parametrize("args", [[], ["--engine", "dsp"]], ids=["default", "dsp"])
+def test_without_the_model_the_dsp_writes_the_chords(clip, tmp_path, args) -> None:
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), *args])
+
+    assert result.exit_code == 0
+    assert "engine:" not in result.stderr
+    assert json.loads(out.read_text())["generator"]["engine"] == {
+        "name": "dsp",
+        "version": __version__,
+    }
+
+
+def test_the_model_engine_without_the_extra_is_a_usage_error(clip, tmp_path, monkeypatch):
+    # The real check, on an interpreter where lv_chordia cannot be found.
+    monkeypatch.setattr(chordotomy.model, "available", REAL_AVAILABLE)
+    monkeypatch.setitem(sys.modules, "lv_chordia", None)
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "model"])
+
+    assert result.exit_code == 2
+    assert "--engine" in result.stderr
+    assert "uv sync --extra model" in result.stderr
+    assert not out.exists()
+
+
+def test_the_default_is_the_model_when_it_is_installed(clip, tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out.json"
+    engines = []
+
+    def stub(path, key=None, engine=None):
+        engines.append(engine)
+        return {"schema_version": 6}
+
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
+    monkeypatch.setattr(chordotomy.timeline, "analyze", stub)
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out)])
+
+    assert result.exit_code == 0
+    assert engines == ["model"]
+    # A model run takes seconds to minutes; it says so before it starts.
+    assert "engine: lv-chordia 9.9.9" in result.stderr
+
+
+def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out.json"
+
+    def broken(y):
+        raise chordotomy.model.EngineError(ENGINE_FAILURE)
+
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
+    monkeypatch.setattr(chordotomy.model, "recognize", broken)
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "model"])
+
+    assert result.exit_code == 1
+    assert f"error: {ENGINE_FAILURE}" in result.stderr
+    assert "Traceback" not in result.output
+    assert not out.exists()
+
+
+def test_the_dsp_engine_touches_no_torch(clip, tmp_path, monkeypatch) -> None:
+    class Fake(types.ModuleType):
+        def __getattr__(self, name):
+            raise AssertionError(f"{self.__name__}.{name} used by the DSP")
+
+    for name in ("torch", "lv_chordia"):
+        monkeypatch.setitem(sys.modules, name, Fake(name))
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "dsp"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(out.read_text())["generator"]["engine"]["name"] == "dsp"
+
+
 def test_importing_the_cli_touches_no_librosa() -> None:
-    # A fresh interpreter with a stand-in librosa whose every attribute raises, so no real librosa
-    # (and no numba) is loaded, and an eager note_to_midi or cq_to_chroma at import would fail.
+    # A fresh interpreter with stand-ins for librosa, torch and lv_chordia whose every attribute
+    # raises, so none of them (nor numba) is really loaded, and an eager note_to_midi or
+    # cq_to_chroma, or any torch use, at import would fail.
     code = (
         "import sys, types\n"
         "class Fake(types.ModuleType):\n"
         "    def __getattr__(self, name):\n"
-        "        raise AssertionError(f'librosa.{name} used at import')\n"
-        "sys.modules['librosa'] = Fake('librosa')\n"
+        "        raise AssertionError(f'{self.__name__}.{name} used at import')\n"
+        "for name in ('librosa', 'torch', 'lv_chordia'):\n"
+        "    sys.modules[name] = Fake(name)\n"
         "import chordotomy.cli\n"
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

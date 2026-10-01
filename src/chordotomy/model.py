@@ -40,7 +40,10 @@ DICTIONARY = "submission"
 # trained on than a whole song.
 CHUNK_SECONDS = 60
 OVERLAP_SECONDS = 5
-_REINSTALL = "reinstall lv-chordia with `uv sync --extra model --reinstall-package lv-chordia`"
+_REINSTALL = (
+    "reinstall lv-chordia with `uv sync --extra model --reinstall-package lv-chordia`, "
+    "or pass --engine dsp"
+)
 # The dictionary's qualities, the slash dropped, to v4's; nothing maps to min6.
 QUALITY = {
     "maj": "maj",

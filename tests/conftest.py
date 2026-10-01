@@ -13,7 +13,19 @@ import numpy as np
 import pytest
 from scipy.signal import fftconvolve
 
+import chordotomy.model
 from chordotomy.features import SR
+
+
+@pytest.fixture(autouse=True)
+def dsp_engine(monkeypatch):
+    """The default suite runs the DSP whether or not the model extra is installed.
+
+    `--engine auto` then resolves to the DSP and `--engine model` is unavailable;
+    test_model_engine.py opts back in.
+    """
+    monkeypatch.setattr(chordotomy.model, "available", lambda: False)
+
 
 BPM = 120
 BEAT = 60 / BPM
