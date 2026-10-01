@@ -121,6 +121,14 @@ kbd {
   background: color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
+/* Greyed, hover included. Still focusable: see setButton in app.js. */
+.button[aria-disabled="true"] {
+  color: var(--pencil);
+  border-color: var(--rule);
+  background: transparent;
+  cursor: default;
+}
+
 /* Header */
 
 .bar {
@@ -420,6 +428,10 @@ body:has(#empty:not([hidden])) .status {
   font: 400 35.5px/1.15 var(--serif);
 }
 
+.key-select {
+  margin: 4px 0 14px;
+}
+
 .key-source {
   margin: 0 0 18px;
 }
@@ -448,8 +460,9 @@ body:has(#empty:not([hidden])) .status {
   color: var(--pencil);
 }
 
-/* Drawn like the buttons beside them, with the browser's own menu and arrow. */
-.pick select {
+/* Drawn like the buttons, with the browser's own menu and arrow. */
+.pick select,
+.key-select {
   font: 15px/1.5 var(--sans);
   color: var(--ink);
   background-color: transparent;
@@ -459,8 +472,16 @@ body:has(#empty:not([hidden])) .status {
   cursor: pointer;
 }
 
-.pick select:hover {
+.pick select:hover,
+.key-select:hover {
   background-color: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+/* Split, merge, delete, undo and redo: one wrapping row after the pickers. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* Timeline */
@@ -851,6 +872,21 @@ body:has(#empty:not([hidden])) .status {
     display: grid;
     grid-template-columns: 8rem minmax(0, 1fr);
     gap: 0;
+  }
+
+  /* Two rows of three equal columns under the pickers, at every width below 760px. */
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 8px;
+  }
+
+  .actions .button {
+    padding-inline: 8px;
+  }
+
+  .key-select {
+    width: 100%;
   }
 
   .privacy {

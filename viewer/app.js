@@ -153,12 +153,18 @@
     chordStrikes = Core.strikes(timeline);
     chordVoicings = Core.voicings(timeline.segments);
     // Mid-play, the strike under way starts again at once with what is left of it, so an edit to
-    // the chord sounding now is heard right away.
+    // the chord sounding now is heard right away. Paused, a chord still sounding from a click or
+    // an edit is the old timeline's, so it stops; commitEdit and stepHistory sound the new one.
     stopChords();
+    if (audition) fadeOut(audition);
+    audition = null;
     startChords();
     renderKey();
     const focused = strip.contains(document.activeElement);
     renderTimeline();
+    // The pin lasts only while a picker select has focus. A touch that scrolls the page from a
+    // select pins it without focusing it, and an edit can move the segments under a stale pin.
+    if (!document.activeElement.closest(".pick")) pinned = null;
     current = null;
     update();
     if (focused && buttons[current]) buttons[current].focus({ preventScroll: true });
@@ -173,6 +179,65 @@
     history = Edit.commit(history, next);
     refreshView(announcement);
     auditionChord(current);
+  }
+
+  // Undo (Edit.undo) or redo (Edit.redo), announced as `verb` with the chord now under the
+  // playhead. With nothing to step to, nothing changes. Paused with the chords on, that chord
+  // sounds once, as after an edit.
+  function stepHistory(move, verb) {
+    const next = move(history);
+    if (next === history) return;
+    history = next;
+    refreshView();
+    const segment = timeline.segments[current];
+    $("announce").textContent = segment ? `${verb}: ${nameOf(segment)}` : verb;
+    auditionChord(current);
+  }
+
+  // A segment's chord as the strip names it, in the key in force.
+  function nameOf(segment) {
+    return Core.chordName(segment.chord, keyLabel, segment.bass, segment.inversion);
+  }
+
+  // The beat under the playhead at time `t`, when it lies strictly inside the chord there: the
+  // one place a split can go. Null on a chord's first beat, before the first beat, and in a
+  // one-beat chord.
+  function splitPoint(t = now()) {
+    const index = currentIndex(t);
+    const segment = timeline.segments[index];
+    const beat = Core.beatIndexAt(timeline.beats, t);
+    if (!segment || beat <= segment.start_beat || beat >= segment.end_beat) return null;
+    return { index, beat };
+  }
+
+  function splitAt(t) {
+    const point = splitPoint(t);
+    if (!point) return;
+    const name = nameOf(timeline.segments[point.index]);
+    const next = Edit.split(timeline, point.index, point.beat);
+    commitEdit(next, `Split ${name} at beat ${point.beat + 1}`);
+  }
+
+  // The chord at `index` merged with the one before (`step` -1) or after (1); the chord at `index`
+  // keeps its chord and bass over both spans.
+  function mergeWith(index, step) {
+    const survivor = timeline.segments[index];
+    const other = timeline.segments[index + step];
+    if (!survivor || !other) return;
+    const next = Edit.merge(timeline, index, index + step);
+    commitEdit(next, `Merged ${nameOf(survivor)} with ${nameOf(other)}`);
+  }
+
+  function deleteAt(index) {
+    const segment = timeline.segments[index];
+    if (segment) commitEdit(Edit.remove(timeline, index), `Deleted ${nameOf(segment)}`);
+  }
+
+  // The key select: a label fixes the key, "" (Estimated) estimates it again.
+  function setKey(label) {
+    const next = Edit.setKey(timeline, label || null);
+    const name = next.key ? Core.keyName(next.key.label) : "none";
+    commitEdit(next, label ? `Key set to ${name}` : `Key estimated: ${name}`);
   }
 
   // A segment's chord and bass, as the picker or a candidate sets them.
@@ -217,19 +282,25 @@
     }
   }
 
+  // The key, given (by --key or the select) or estimated. `candidates` is the estimator's ranking
+  // either way, so its first is what choosing Estimated gives; it is empty with no chord.
   function renderKey() {
     const key = timeline.key;
-    $("key-name").textContent = key ? Core.keyName(key.label) : "None";
-    if (key && key.source === "given") {
-      const flag = document.createElement("code");
-      flag.textContent = "--key";
-      $("key-source").replaceChildren("Given with ", flag, ".");
-    } else {
-      $("key-source").textContent = key ? "Estimated from the chords." : "The timeline has no chords.";
-    }
     const candidates = key ? key.candidates : [];
-    $("key-candidates-label").textContent =
-      key && key.source === "given" ? "The chords suggest" : "Ranked candidates";
+    const given = key?.source === "given";
+    $("key-name").textContent = key ? Core.keyName(key.label) : "None";
+    const select = $("key-select");
+    const estimate = candidates.length ? Core.keyName(candidates[0]) : "no chords";
+    select.options[0].textContent = `Estimated (${estimate})`;
+    select.value = given ? key.label : "";
+    // Given, the candidates' heading says so; the line above them is for the other cases.
+    $("key-source").hidden = given && candidates.length > 0;
+    $("key-source").textContent = candidates.length
+      ? "Estimated from the chords."
+      : "The timeline has no chords.";
+    $("key-candidates-label").textContent = given
+      ? "Given; the chords suggest:"
+      : "Ranked candidates";
     $("key-candidates-label").hidden = candidates.length === 0;
     $("key-candidates").replaceChildren(
       ...candidates.map((label) => {
@@ -479,10 +550,10 @@
     return audioUrl ? audio.currentTime : idleTime;
   }
 
-  function currentIndex() {
+  function currentIndex(t = now()) {
     // The head before the first beat is shorter than a beat, so it shows the first chord rather
     // than nothing.
-    return Math.max(0, Core.segmentIndexAt(timeline.segments, now()));
+    return Math.max(0, Core.segmentIndexAt(timeline.segments, t));
   }
 
   function update() {
@@ -492,6 +563,47 @@
     const index = currentIndex();
     if (index !== current) show(index);
     follow(x);
+    refreshEditor();
+  }
+
+  // What the edit buttons can do from here. Split depends on the beat under the playhead, not just
+  // the chord, so this runs on every update, not only when the chord changes.
+  function refreshEditor() {
+    const { segments } = timeline;
+    const segment = segments[current];
+    const splittable = splitPoint() !== null;
+    let splitTitle = "Split this chord at the beat under the playhead";
+    if (!splittable && segment && segment.end_beat - segment.start_beat === 1) {
+      splitTitle = "This chord is one beat long; there is nowhere inside it to split";
+    } else if (!splittable) {
+      splitTitle = "Step to a beat inside this chord to split it there (Shift+← or Shift+→)";
+    }
+    setButton("split", splittable, splitTitle);
+    setButton("merge-before", segments[current - 1] !== undefined);
+    setButton("merge-after", segments[current + 1] !== undefined);
+    const lone = segments.length < 2;
+    setButton(
+      "delete",
+      !lone,
+      lone
+        ? "The only chord can't be deleted; set it to No chord instead"
+        : `Delete this chord; the chord ${current === 0 ? "after" : "before"} takes its beats`,
+    );
+    setButton("undo", history.past.length > 0);
+    setButton("redo", history.future.length > 0);
+  }
+
+  // aria-disabled rather than disabled, so a button stays focusable: a keyboard click that rules
+  // out its own next use (Split after a split, Undo at the oldest step) keeps the focus there,
+  // and the title saying why can still be reached. Each action does nothing where it doesn't
+  // apply. This runs every frame, so only a change touches the DOM and the accessibility tree.
+  function setButton(id, enabled, title) {
+    const button = $(id);
+    const disabled = String(!enabled);
+    if (button.getAttribute("aria-disabled") !== disabled) {
+      button.setAttribute("aria-disabled", disabled);
+    }
+    if (title !== undefined && button.title !== title) button.title = title;
   }
 
   // Turn the page when the playhead leaves the view, instead of scrolling every frame: the chords
@@ -513,13 +625,25 @@
     if (looping) requestAnimationFrame(frame);
   }
 
+  function seekTime(t) {
+    if (audioUrl) audio.currentTime = t + SEEK_NUDGE;
+    else idleTime = t;
+    update();
+  }
+
   function seek(index) {
     const segment = timeline.segments[index];
     if (!segment) return;
-    if (audioUrl) audio.currentTime = segment.start_time + SEEK_NUDGE;
-    else idleTime = segment.start_time;
-    update();
+    seekTime(segment.start_time);
     auditionChord(index);
+  }
+
+  // Shift+← and Shift+→: to the beat before or after the one under the playhead, so a split point
+  // can be reached without a mouse, and with no recording open.
+  function stepBeat(step) {
+    const { beats } = timeline;
+    const beat = Core.beatIndexAt(beats, now()) + step;
+    if (beat >= 0 && beat < beats.length) seekTime(beats[beat]);
   }
 
   function togglePlay() {
@@ -713,12 +837,61 @@
       pinned = null;
       show(current);
     });
+    // A touch that scrolls the page from the select pins it but never focuses it, so no blur
+    // lets go.
+    select.addEventListener("pointercancel", () => {
+      if (document.activeElement === select) return;
+      pinned = null;
+      show(current);
+    });
     select.addEventListener("keydown", () => (pointerPick = false));
     select.addEventListener("change", (event) => {
       applyPicker(event);
       if (pointerPick) select.blur();
     });
   }
+
+  // The key select lists the 24 keys after Estimated, in the analyzer's order, named as the page
+  // names keys. It lets go of focus after a mouse pick as the picker's selects do.
+  const keySelect = $("key-select");
+  keySelect.append(...Harmony.KEYS.map((label) => new Option(Core.keyName(label), label)));
+  keySelect.addEventListener("pointerdown", () => (pointerPick = true));
+  keySelect.addEventListener("keydown", () => (pointerPick = false));
+  keySelect.addEventListener("change", () => {
+    setKey(keySelect.value);
+    if (pointerPick) keySelect.blur();
+  });
+
+  // An edit button acts on the moment its press began: during playback the click comes a moment
+  // later, maybe on the next beat or chord. A click with no press of its own (from assistive
+  // technology) acts on the moment of the click.
+  let pressedAt = null;
+  const actions = {
+    split: splitAt,
+    "merge-before": (t) => mergeWith(currentIndex(t), -1),
+    "merge-after": (t) => mergeWith(currentIndex(t), 1),
+    delete: (t) => deleteAt(currentIndex(t)),
+    undo: () => stepHistory(Edit.undo, "Undo"),
+    redo: () => stepHistory(Edit.redo, "Redo"),
+  };
+  for (const [id, action] of Object.entries(actions)) {
+    const button = $(id);
+    const press = () => (pressedAt = now());
+    button.addEventListener("pointerdown", press);
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") press();
+    });
+    button.addEventListener("click", (event) => {
+      const t = pressedAt ?? now();
+      pressedAt = null;
+      releaseFocus(event);
+      action(t);
+    });
+  }
+  // A press that ends without a click on its button (released off it, or a touch that turned
+  // into a scroll) ends here, after any button's own click handler has run.
+  document.addEventListener("click", () => (pressedAt = null));
+  document.addEventListener("pointercancel", () => (pressedAt = null));
 
   $("play-chords").addEventListener("click", (event) => {
     releaseFocus(event);
@@ -751,17 +924,47 @@
   });
 
   document.addEventListener("keydown", (event) => {
-    if (!timeline || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!timeline || event.altKey) return;
     const target = event.target;
     // A select (or a text field) keeps every key: letters pick by name, Space opens it, arrows
-    // step through it.
-    if (target.closest("select, input[type=text]")) return;
+    // step through it, and an undo there would pull the chord it picks for out from under it.
+    // A select has no use for Backspace, but a WebKit that still goes back a page on it would
+    // leave the edits behind, and a keyboard pick keeps the focus on the select.
+    if (target.closest("select")) {
+      if (event.key === "Backspace") event.preventDefault();
+      return;
+    }
+    if (target.closest("input[type=text]")) return;
     // Letter shortcuts work from every other control; none of them takes letters. The physical
     // key is the fallback, so they also work with a non-Latin layout on (Korean input sends "ㅊ"
     // for C).
     const letter = /^[a-z]$/i.test(event.key)
       ? event.key.toLowerCase()
-      : { KeyC: "c", KeyM: "m" }[event.code];
+      : { KeyC: "c", KeyM: "m", KeyS: "s", KeyY: "y", KeyZ: "z" }[event.code];
+    if (event.ctrlKey || event.metaKey) {
+      // Ctrl+Z or ⌘Z undoes and adds Shift to redo; Ctrl+Y redoes too, as on Windows (⌘Y is the
+      // browser's history on a Mac). Every other combination is the browser's.
+      const redo = (letter === "z" && event.shiftKey) || (letter === "y" && !event.metaKey);
+      if (letter !== "z" && !redo) return;
+      event.preventDefault();
+      // Held down, an edit key acts once, as C and M do: a held Delete would take several chords.
+      if (event.repeat) return;
+      if (redo) stepHistory(Edit.redo, "Redo");
+      else stepHistory(Edit.undo, "Undo");
+      return;
+    }
+    if (letter === "s") {
+      event.preventDefault();
+      if (!event.repeat) splitAt(now());
+      return;
+    }
+    // Backspace too, as a Mac keyboard has no Delete key; preventDefault keeps it from going back
+    // a page in browsers that still do that.
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      if (!event.repeat) deleteAt(current);
+      return;
+    }
     if ((letter === "c" || letter === "m") && audioUrl) {
       event.preventDefault();
       if (event.repeat) return;
@@ -785,10 +988,17 @@
       // The volume slider's and the player's own arrows (on the player, both would seek).
       if (target === audio || target.closest("input")) return;
       event.preventDefault();
-      const index = Core.stepIndex(timeline.segments, now(), event.key === "ArrowRight" ? 1 : -1);
-      if (index < 0) return;
-      seek(index);
-      if (strip.contains(document.activeElement)) buttons[index].focus({ preventScroll: true });
+      const step = event.key === "ArrowRight" ? 1 : -1;
+      if (event.shiftKey) {
+        stepBeat(step);
+      } else {
+        const index = Core.stepIndex(timeline.segments, now(), step);
+        if (index < 0) return;
+        seek(index);
+      }
+      if (strip.contains(document.activeElement) && buttons[current]) {
+        buttons[current].focus({ preventScroll: true });
+      }
     }
   });
 

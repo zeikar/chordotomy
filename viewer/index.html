@@ -78,6 +78,10 @@
         <aside class="key" aria-label="Key">
           <p class="key-label">Key</p>
           <p class="key-name" id="key-name"></p>
+          <!-- app.js adds the 24 keys and names the estimate. -->
+          <select class="key-select" id="key-select" aria-label="Set the key">
+            <option value="">Estimated</option>
+          </select>
           <p class="key-source" id="key-source"></p>
           <p class="key-label" id="key-candidates-label"></p>
           <ol class="key-candidates" id="key-candidates"></ol>
@@ -137,6 +141,30 @@
             <option value="none">None</option>
           </select>
         </label>
+        <div class="actions">
+          <button type="button" class="button" id="split">Split at beat</button>
+          <button
+            type="button"
+            class="button"
+            id="merge-before"
+            aria-label="Merge with the chord before"
+            title="Merge with the chord before"
+          >
+            Merge &larr;
+          </button>
+          <button
+            type="button"
+            class="button"
+            id="merge-after"
+            aria-label="Merge with the chord after"
+            title="Merge with the chord after"
+          >
+            Merge &rarr;
+          </button>
+          <button type="button" class="button" id="delete">Delete</button>
+          <button type="button" class="button" id="undo">Undo</button>
+          <button type="button" class="button" id="redo">Redo</button>
+        </div>
       </section>
 
       <section class="timeline" aria-label="Chord timeline">
@@ -191,9 +219,14 @@
         <p class="keys">
           <span><kbd>Space</kbd> play or pause</span>
           <span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> back or forward a chord</span>
+          <span><kbd>Shift</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> back or forward a beat</span>
           <span class="needs-recording" hidden><kbd>C</kbd> play chords</span>
           <span class="needs-recording" hidden><kbd>M</kbd> mute recording</span>
           <span>click a chord to jump to it</span>
+          <span><kbd>S</kbd> split at the beat</span>
+          <span><kbd>Delete</kbd> delete the chord</span>
+          <span><kbd>Ctrl/⌘</kbd> <kbd>Z</kbd> undo</span>
+          <span><kbd>Ctrl/⌘</kbd> <kbd>Shift</kbd> <kbd>Z</kbd> redo</span>
         </p>
         <p class="visually-hidden" id="announce" aria-live="polite"></p>
       </section>
