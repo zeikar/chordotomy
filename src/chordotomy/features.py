@@ -98,6 +98,12 @@ class Features(NamedTuple):
     cqt: (84, n) CQT magnitude, bin k is k semitones above C1, the median per beat; beats with a
         silent bass register are all-zero columns.
     level: (n,) the median RMS per beat in dB relative to the 95th-percentile beat.
+    onset: (n,) the beat's peak onset strength in units of the track's median frame; where that
+        median is 0, as on a mostly silent clip, inf on a beat with any flux and 0 on one without.
+    flatness: (n,) the median spectral flatness per beat of the harmonic signal: near 0 for tones,
+        1 for digital silence.
+    harmonic: (n,) the share of the beat's energy in the harmonic signal, the lower of its share
+        summed over the beat and its median per frame; 0 on a beat with none.
     """
 
     times: np.ndarray
@@ -106,6 +112,9 @@ class Features(NamedTuple):
     bass: np.ndarray
     cqt: np.ndarray
     level: np.ndarray
+    onset: np.ndarray
+    flatness: np.ndarray
+    harmonic: np.ndarray
 
 
 class NoBeatsError(Exception):
@@ -240,9 +249,9 @@ def _too_slow(treble: np.ndarray, bass: np.ndarray, durations: np.ndarray, parit
     is never halved: it loses no chord, since CHORD_SECONDS is in seconds, while halving a grid
     could merge real two-beat chords.
     """
-    # No beat is gated: the check asks where the chords change, the level belongs to the grid that
-    # is kept, and digital silence's flat chroma decodes as N without the gate.
-    states = smooth(match(treble, bass), np.zeros(treble.shape[1]), durations)
+    # No beat is gated: the check asks where the chords change, the gate's evidence belongs to the
+    # grid that is kept, and digital silence's flat chroma decodes as N without the gate.
+    states = smooth(match(treble, bass), np.zeros(treble.shape[1], dtype=bool), durations)
     return _changes_between(states, parity)
 
 
@@ -252,10 +261,12 @@ def beat_features(y: np.ndarray) -> Features:
     # grid the tracker gives it on its own. Its global tempo is the one the tracker uses.
     onset = librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP, aggregate=np.median)
     tempo = float(librosa.feature.tempo(onset_envelope=onset, sr=SR, hop_length=HOP)[0])
-    # The tempo rule reads the mean over bands, the research's envelope. Measured on Tiny AAM, the
-    # tracker's median one switched the constant-tempo 2395 (CMLt .97 to .52) and gained less
-    # overall: CMLt +1.9 pp against +9.9.
-    curve = _tempo_curve(librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP))
+    # The tempo rule and the N gate read the mean over bands, the research's envelope. Measured on
+    # Tiny AAM, the tracker's median one switched the constant-tempo 2395 (CMLt .97 to .52) and
+    # gained less overall: CMLt +1.9 pp against +9.9. And at -50 dB only a few mel bands rise, so
+    # their median is 0 where the mean still shows the strike.
+    flux = librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP)
+    curve = _tempo_curve(flux)
     # The default trim dropped the last two real beats of a synthesized clip.
     _, beat_frames = librosa.beat.beat_track(
         onset_envelope=onset, sr=SR, hop_length=HOP, trim=False, bpm=curve
@@ -311,12 +322,35 @@ def beat_features(y: np.ndarray) -> Features:
         boundaries = list(beat_frames) + [n_frames]
         treble, bass, beat_cqt = _sync(boundaries, whitened, cqt)
 
-    rms = librosa.util.sync(
-        librosa.feature.rms(y=harmonic, hop_length=HOP), boundaries, aggregate=np.median, pad=False
-    )[0]
+    harmonic_rms = librosa.feature.rms(y=harmonic, hop_length=HOP)
+    rms = librosa.util.sync(harmonic_rms, boundaries, aggregate=np.median, pad=False)[0]
     # Relative to a high percentile rather than the maximum, so one loud hit cannot push a quiet
     # intro under the N gate. Digital silence lands at librosa's -80 dB floor.
     level = librosa.amplitude_to_db(rms, ref=np.percentile(rms, 95))
+    peak = librosa.util.sync(flux[None], boundaries, aggregate=np.max, pad=False)[0]
+    flux_median = np.median(flux)
+    struck = peak / flux_median if flux_median > 0 else np.where(peak > 0, np.inf, 0.0)
+    flatness = librosa.util.sync(
+        librosa.feature.spectral_flatness(y=harmonic, hop_length=HOP),
+        boundaries,
+        aggregate=np.median,
+        pad=False,
+    )[0]
+    mix_rms = librosa.feature.rms(y=y, hop_length=HOP)
+    energy = librosa.util.sync(
+        np.vstack([harmonic_rms, mix_rms]) ** 2, boundaries, aggregate=np.sum, pad=False
+    )
+    summed = np.divide(energy[0], energy[1], out=np.zeros(len(beat_frames)), where=energy[1] > 0)
+    per_frame = np.divide(
+        harmonic_rms**2, mix_rms**2, out=np.zeros_like(mix_rms), where=mix_rms > 0
+    )
+    median = librosa.util.sync(per_frame, boundaries, aggregate=np.median, pad=False)[0]
+    # Harmonic only where both agree. The sum is set by the beat's loudest frames, so a drum hit
+    # outweighs the cymbal sustain HPSS keeps as harmonic (the median Tiny AAM drum stem decodes
+    # 81 % N with the summed share, 53 % with the median one). The median is set by most of its
+    # frames, so a beat that is mostly silence reads 0 though its first frames carry the last
+    # chord or a cut's click, or its last frame the next strike.
+    share = np.minimum(summed, median)
     return Features(
         times=librosa.frames_to_time(beat_frames, sr=SR, hop_length=HOP),
         frames=beat_frames,
@@ -324,4 +358,7 @@ def beat_features(y: np.ndarray) -> Features:
         bass=bass,
         cqt=beat_cqt,
         level=level,
+        onset=struck,
+        flatness=flatness,
+        harmonic=share,
     )

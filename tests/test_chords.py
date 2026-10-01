@@ -8,12 +8,12 @@ import pytest
 from chordotomy.chords import (
     CHORD_SECONDS,
     LABELS,
-    N_GATE_DB,
     N_SCORE,
     QUALITY_OFFSET,
     TEMPERATURE,
     inversion,
     match,
+    no_chord,
     pick_bass,
     resolve_twins,
     segment,
@@ -164,13 +164,13 @@ def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
 
 
 def _labels(
-    scores: np.ndarray, level: np.ndarray | None = None, durations: np.ndarray | None = None
+    scores: np.ndarray, forced: np.ndarray | None = None, durations: np.ndarray | None = None
 ) -> list[str]:
-    if level is None:
-        level = np.zeros(scores.shape[1])
+    if forced is None:
+        forced = np.zeros(scores.shape[1], dtype=bool)
     if durations is None:
         durations = np.full(scores.shape[1] - 1, 0.5)
-    return [LABELS[i] for i in smooth(scores, level, durations)]
+    return [LABELS[i] for i in smooth(scores, forced, durations)]
 
 
 # With 0.5 s beats the self-loop is about 0.84 and the rest is spread over 108 other labels, so a
@@ -198,10 +198,32 @@ def test_smooth_keeps_one_beat_distant_change() -> None:
 
 
 def test_a_gated_beat_is_n() -> None:
-    level = np.zeros(6)
-    level[2:4] = -60.0
+    forced = np.zeros(6, dtype=bool)
+    forced[2:4] = True
 
-    assert _labels(_scores({}), level) == ["C:maj", "C:maj", "N", "N", "C:maj", "C:maj"]
+    assert _labels(_scores({}), forced) == ["C:maj", "C:maj", "N", "N", "C:maj", "C:maj"]
+
+
+@pytest.mark.parametrize(
+    ("level", "onset", "flatness", "harmonic", "forced"),
+    [
+        (-60, 0, 0.0, 0.9, False),  # a quiet held chord: tonal, so never forced
+        (-50, 0, 0.0007, 0.98, False),  # a ring-out above the flatness floor
+        (-60, 3.0, 0.0, 0.9, False),  # a quiet strike
+        (-60, 0, 0.5, 0.9, True),  # quiet noise with nothing struck
+        (-60, 3.0, 0.5, 0.9, False),  # quiet noise with onsets: the scores decide
+        (0, 5, 0.3, 0.02, True),  # drums
+        (0, 5, 0.13, 0.55, False),  # the mix fixture's numbers
+        (0, 5, 0.0, 0.05, False),  # a percussive strum: tonal, at full level
+        (-45, 5, 0.001, 0.0, True),  # a drum beat beside a chord: HPSS lends it the chord's tones
+        (-77, 9, 1.0, 0.0, True),  # silence after a cut: the click is struck, nothing is harmonic
+        (-80, 0, 1.0, 0.0, True),  # digital silence
+    ],
+)
+def test_no_chord_conditions(level, onset, flatness, harmonic, forced) -> None:
+    beat = (np.array([value], dtype=float) for value in (level, onset, flatness, harmonic))
+
+    assert no_chord(*beat).tolist() == [forced]
 
 
 def test_no_chord_above_the_n_score_is_n() -> None:
@@ -221,14 +243,14 @@ def test_smooth_matches_librosa_on_a_constant_grid(seed: int, seconds: float) ->
     rng = np.random.default_rng(seed)
     # In tenths, so many labels tie and the path depends on taking the first index on ties.
     scores = rng.integers(0, 11, (len(LABELS), 40)) / 10
-    level = np.zeros(40)
-    level[[0, 7, 8, 23]] = -2 * N_GATE_DB
+    forced = np.zeros(40, dtype=bool)
+    forced[[0, 7, 8, 23]] = True
     likelihood = np.exp((scores - scores.max(axis=0, keepdims=True)) / TEMPERATURE)
-    likelihood[:-1, level < -N_GATE_DB] = 0.0
+    likelihood[:-1, forced] = 0.0
     transition = librosa.sequence.transition_loop(len(LABELS), np.exp(-seconds / CHORD_SECONDS))
 
     np.testing.assert_array_equal(
-        smooth(scores, level, np.full(39, seconds)),
+        smooth(scores, forced, np.full(39, seconds)),
         librosa.sequence.viterbi(likelihood, transition),
     )
 

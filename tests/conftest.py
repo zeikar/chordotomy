@@ -3,8 +3,8 @@
 A progression entry is (label, n_beats), (label, n_beats, bass_midi) or (label, n_beats,
 bass_midi, melody_midi); the bass is an extra tone under the chord, the melody an extra tone
 struck with it at a chord tone's level. `synth` also takes a `chord_midi` register for the chord
-tones and a `bpm`; `chord_at` assumes the default. Keep clips at least 8 beats: `chroma_cqt`
-warns on shorter ones, which fails under `-W error::UserWarning`.
+tones, a `bpm` and an envelope `decay`; `chord_at` assumes the default tempo. Keep clips at least
+8 beats: `chroma_cqt` warns on shorter ones, which fails under `-W error::UserWarning`.
 """
 
 from collections.abc import Callable
@@ -53,13 +53,15 @@ def _strike(
     chord_midi: int = 48,
     melody: int | None = None,
     beat: float = BEAT,
+    decay: float = 0.25,
 ) -> np.ndarray:
     """One beat of a chord struck at the downbeat, or silence for N; beat is its length in seconds.
 
     A bass sits at MIDI 36-47 under a chord at 48: the bass register ends at B3, so the bass tone
     is the lowest note by construction and the ground truth is exact. chord_midi=60 voices the
     chord above the register for the no-bass cases. A melody note is one more tone, as loud as
-    each chord tone.
+    each chord tone. decay is the envelope's time constant in seconds: a long beat with a long
+    decay is a chord struck once and held.
     """
     n = int(round(beat * SR))
     if label == "N":
@@ -76,19 +78,23 @@ def _strike(
         freq = 440.0 * 2 ** ((note - 69) / 12)
         for h in range(1, 5):
             tone += np.sin(2 * np.pi * h * freq * t) / h
-    envelope = np.minimum(t / 0.005, 1.0) * np.exp(-t / 0.25)
+    envelope = np.minimum(t / 0.005, 1.0) * np.exp(-t / decay)
     return tone * envelope
 
 
 @pytest.fixture
 def synth() -> Callable[..., np.ndarray]:
-    def make(progression: Progression, chord_midi: int = 48, bpm: float = BPM) -> np.ndarray:
+    def make(
+        progression: Progression, chord_midi: int = 48, bpm: float = BPM, decay: float = 0.25
+    ) -> np.ndarray:
         # Each beat is re-struck and decays: a sustained chord has no onsets for the beat
         # tracker to lock onto.
         beats = []
         for label, n_beats, *rest in progression:
             bass, melody = (*rest, None, None)[:2]  # both optional, in that order
-            beats += [_strike(label, bass, chord_midi, melody, 60 / bpm) for _ in range(n_beats)]
+            beats += [
+                _strike(label, bass, chord_midi, melody, 60 / bpm, decay) for _ in range(n_beats)
+            ]
         y = np.concatenate(beats)
         peak = np.abs(y).max()
         if peak > 0:
@@ -143,6 +149,31 @@ def half_locked() -> Callable[[list[tuple[str, int]], float], np.ndarray]:
             beat[: len(kick)] += kick
             hat = _hat(rng)
             beat[: len(hat)] += hat
+        y = np.concatenate(beats)
+        return (y / np.abs(y).max() * 0.5).astype(np.float32)
+
+    return make
+
+
+@pytest.fixture
+def drums() -> Callable[[int], np.ndarray]:
+    """n_beats of a kick on each beat and a hat on each eighth at the fixture tempo, no tones.
+
+    Normalised like `synth`. Seeded, so the clip is identical on every run.
+    """
+    rng = np.random.default_rng(0)
+
+    def make(n_beats: int) -> np.ndarray:
+        n = int(round(BEAT * SR))
+        kick = _kick()
+        beats = []
+        for _ in range(n_beats):
+            beat = np.zeros(n)
+            beat[: len(kick)] += kick
+            for offset in (0, n // 2):
+                hat = _hat(rng)
+                beat[offset : offset + len(hat)] += hat
+            beats.append(beat)
         y = np.concatenate(beats)
         return (y / np.abs(y).max() * 0.5).astype(np.float32)
 

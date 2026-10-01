@@ -92,9 +92,23 @@ TEMPERATURE = 0.03
 # The expected chord length in seconds, not beats, so a tracker locked at half or double tempo
 # does not halve or double it (research pitfall 3).
 CHORD_SECONDS = 2.8
-# A beat this far below the track's loud beats is no chord. Whitening is scale-free, so without
-# the gate a silent beat's residual ringing would whiten into a chord.
+# One of no_chord's conditions: a beat this far below the track's loud beats is quiet. Whitening
+# is scale-free, so without the gate a silent beat's residual ringing would whiten into a chord.
 N_GATE_DB = 40
+# A beat whose harmonic part has a median spectral flatness over this is noise-like. Measured: 1 of
+# about 17,000 chord beats of Tiny AAM and GuitarSet is over 0.02, against 61 % of the beats of
+# Tiny AAM's drum stems.
+N_FLATNESS = 0.02
+# "Nothing struck": the beat's peak onset strength at or under this many times the track's median
+# frame. The research's onset-aware gate: a -45 dB intro went from 100 % N to 0-6 %.
+ONSET_FRACTION = 0.5
+# Under this share of the beat's energy, the harmonic part is too little to be a chord, if the beat
+# is noise-like or quiet: 93 % of drum-stem beats are under 0.3, the 1st percentile of Tiny AAM's
+# chord beats is 0.42. Flatness alone cannot be the rule: the suite's mix fixture, white noise at
+# a few dB SNR, measures 0.08-0.2, flatter than most real drums, and its share of 0.47-0.64 is what
+# keeps its chords. Nor can the share alone: GuitarSet's percussive strums dip under 0.1 on 1.7 %
+# of beats, with zero flatness and at full level, so they are never forced.
+N_HARMONIC_SHARE = 0.3
 # Added to every label of a quality, so a tetrad or a sus has to beat its triad by evidence.
 # match reads it on each call, so a sweep can assign entries.
 QUALITY_OFFSET = {
@@ -149,11 +163,30 @@ def match(treble: np.ndarray, bass: np.ndarray) -> np.ndarray:
     return np.vstack([chords + offset[:, None], np.full((1, treble.shape[1]), N_SCORE)])
 
 
-def smooth(scores: np.ndarray, level: np.ndarray, durations: np.ndarray) -> np.ndarray:
+def no_chord(
+    level: np.ndarray, onset: np.ndarray, flatness: np.ndarray, harmonic: np.ndarray
+) -> np.ndarray:
+    """The beats that can only be N: (n,) bool from the per-beat evidence of Features.
+
+    N is no tonal content of the beat's own: under N_HARMONIC_SHARE of its energy harmonic in a
+    beat that is noise-like (flatness over N_FLATNESS) or quiet (level under -N_GATE_DB), or a
+    noise-like quiet beat with nothing struck (onset at or under ONSET_FRACTION). A tonal beat with
+    harmonic energy of its own is a chord however quiet: a held chord has no onset on most of its
+    beats, and its harmonic evidence is what says it is a chord. A quiet beat that looks tonal but
+    whose harmonic part is a sliver is not: HPSS spreads a neighbouring chord's tones into the
+    first and last beats of a drum break.
+    """
+    noisy = flatness > N_FLATNESS
+    quiet = level < -N_GATE_DB
+    sliver = harmonic < N_HARMONIC_SHARE
+    return (sliver & (noisy | quiet)) | (noisy & quiet & (onset <= ONSET_FRACTION))
+
+
+def smooth(scores: np.ndarray, forced: np.ndarray, durations: np.ndarray) -> np.ndarray:
     """Viterbi-decode (109, n) scores into one label index per beat.
 
-    level is each beat's loudness in dB relative to the track's loud beats; a beat below
-    -N_GATE_DB can only be N. durations is (n - 1,) seconds, the gap from each beat to the next.
+    forced is (n,) bool, the beats that can only be N (no_chord). durations is (n - 1,) seconds,
+    the gap from each beat to the next.
 
     This is librosa.sequence.viterbi with one self-loop matrix per transition instead of one per
     track, and its arithmetic step for step (the log of each likelihood and transition plus tiny,
@@ -161,7 +194,7 @@ def smooth(scores: np.ndarray, level: np.ndarray, durations: np.ndarray) -> np.n
     """
     # Shifting a column by its maximum leaves the path unchanged and keeps every value in (0, 1].
     likelihood = np.exp((scores - scores.max(axis=0, keepdims=True)) / TEMPERATURE)
-    likelihood[:-1, level < -N_GATE_DB] = 0.0  # every chord row; N is the last
+    likelihood[:-1, forced] = 0.0  # every chord row; N is the last
     tiny = np.finfo(float).tiny
     log_likelihood = np.log(likelihood + tiny)
     # The chance that chord changes, arriving every CHORD_SECONDS on average, fire none within

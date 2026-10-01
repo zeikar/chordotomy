@@ -4,7 +4,7 @@ import pytest
 import soundfile
 
 from chordotomy import features
-from chordotomy.chords import LABELS, N_GATE_DB, match, pick_bass
+from chordotomy.chords import LABELS, N_GATE_DB, ONSET_FRACTION, match, pick_bass
 from chordotomy.features import (
     HOP,
     SR,
@@ -60,6 +60,36 @@ def test_silent_beats_mid_track_fall_below_the_n_gate(synth) -> None:
     assert np.all(f.level[~silent] > -N_GATE_DB)
 
 
+def test_the_n_evidence_tells_silence_and_drums_from_chords(synth, drums) -> None:
+    f = beat_features(synth([("C:maj", 4), ("N", 4), ("F:maj", 4)]))
+    # The same window as the level's silence test. Its first beat carries the cut-off chord's last
+    # frames and its last the next strike's first, which the per-frame median outvotes.
+    silent = (f.times >= 1.75) & (f.times < 3.75)
+
+    assert f.onset.shape == f.flatness.shape == f.harmonic.shape == (len(f.times),)
+    assert np.all(f.flatness[silent] > 0.9)
+    assert np.all(f.harmonic[silent] == 0)
+    assert np.all(f.flatness[~silent] < 0.01)
+    assert np.all(f.harmonic[~silent] > 0.5)
+    assert np.all(f.onset[~silent] > ONSET_FRACTION)
+
+    burst = drums(8)
+    f = beat_features(burst)
+
+    # Measured: a share of 0.002 at most. Flatness does not tell these beats: the kick's harmonic
+    # residue is low and narrow, 0.002-0.04.
+    assert np.all(f.harmonic < 0.1), f.harmonic
+
+    f = beat_features(np.concatenate([synth([("C:maj", 4)]), burst, synth([("F:maj", 4)])]))
+    between = (f.times >= 1.75) & (f.times < 5.75)
+
+    # Beside chords the drum beats are quiet, which is what makes them N even where HPSS lends
+    # the first and last of them the chords' tones (flatness 0.0004-0.001). Measured: -45 to -61 dB.
+    assert between.sum() == 8
+    assert np.all(f.level[between] < -N_GATE_DB), f.level[between]
+    assert np.all(f.harmonic[between] < 0.1), f.harmonic[between]
+
+
 def test_grid_extends_through_edge_silence(synth) -> None:
     y = synth([("C:maj", 4), ("N", 6)])
     f = beat_features(y)
@@ -96,6 +126,7 @@ def test_a_single_beat_extends_the_grid_at_the_tempo_period(synth, monkeypatch) 
     assert f.bass.shape[1] == len(f.times)
     assert f.cqt.shape[1] == len(f.times)
     assert f.level.shape == (len(f.times),)
+    assert f.onset.shape == f.flatness.shape == f.harmonic.shape == (len(f.times),)
     assert np.allclose(np.diff(f.times), 0.5, atol=0.02)
     assert f.times[0] < 0.5
     assert len(y) / SR - f.times[-1] <= 1.0

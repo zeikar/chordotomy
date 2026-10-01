@@ -9,7 +9,7 @@ from typing import Literal
 import numpy as np
 
 from . import __version__, harmony, model
-from .chords import inversion, match, resolve_twins, segment, smooth
+from .chords import inversion, match, no_chord, resolve_twins, segment, smooth
 from .features import SR, beat_features, load_audio
 
 SCHEMA_VERSION = 6
@@ -42,7 +42,7 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
     if engine == "model":
         # The model replaces only the per-beat chord states and scores. The beat grid, the bass
         # and inversions, the segmentation, the twin resolution and the harmony stay the DSP's.
-        # The DSP's level gate is not applied: the model labels N itself.
+        # The DSP's N gate is not applied: the model labels N itself.
         frame_states, frame_scores = model.recognize(y)
         boundaries = [*f.frames, len(frame_states)]
         states = model.beat_states(frame_states, boundaries)
@@ -50,7 +50,8 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
         recognizer = {"name": model.NAME, "version": model.version()}
     else:
         scores = match(f.treble, f.bass)
-        states = smooth(scores, f.level, np.diff(f.times))
+        forced = no_chord(f.level, f.onset, f.flatness, f.harmonic)
+        states = smooth(scores, forced, np.diff(f.times))
         recognizer = {"name": "dsp", "version": __version__}
     segments = resolve_twins(segment(states, scores, f.cqt))
 

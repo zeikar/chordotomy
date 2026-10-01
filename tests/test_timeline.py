@@ -351,6 +351,69 @@ def test_edge_silence_is_n(synth, tmp_path) -> None:
     assert abs(segments[1]["start_time"] - 2.0) <= 0.3
 
 
+def _runs(result: dict) -> list[tuple[str, float, float]]:
+    """(chord, start time, end time) of each chord run: a bass cut does not split a chord here."""
+    return [
+        (run[0]["chord"], run[0]["start_time"], run[-1]["end_time"])
+        for run in timeline.chord_runs(result["segments"])
+    ]
+
+
+QUIET = 10 ** (-50 / 20)
+
+
+def test_a_quiet_struck_passage_keeps_its_chords(synth, tmp_path) -> None:
+    y = np.concatenate(
+        [synth([("C:maj", 4), ("F:maj", 4)]), synth([("G:maj", 4), ("A:min", 4)]) * QUIET]
+    )
+
+    runs = _runs(analyze(_write(tmp_path, y)))
+
+    # The quiet chords' bass may be None: their register is under SILENCE_FLOOR.
+    assert [chord for chord, _, _ in runs] == ["C:maj", "F:maj", "G:maj", "A:min"]
+
+
+def test_a_quiet_held_chord_keeps_its_chord(synth, tmp_path) -> None:
+    # One strike held 4 s, from -43 to -54 dB: no onset after its first beat, but tonal throughout.
+    held = synth([("G:maj", 1)], bpm=15, decay=3.0) * QUIET
+    y = np.concatenate([synth([("C:maj", 4), ("F:maj", 4)]), held, synth([("N", 4)])])
+
+    runs = _runs(analyze(_write(tmp_path, y)))
+
+    assert [chord for chord, _, _ in runs] == ["C:maj", "F:maj", "G:maj", "N"]
+    _, start, end = runs[2]
+    # Measured: G:maj on all eight quiet beats.
+    assert end - start >= 3.5, (start, end)
+    assert abs(runs[3][1] - 8.0) <= 0.3, runs[3]
+
+
+def test_drum_bursts_without_harmony_are_n(synth, drums, tmp_path) -> None:
+    y = np.concatenate([synth([("C:maj", 4)]), drums(8), synth([("F:maj", 4)])])
+
+    runs = _runs(analyze(_write(tmp_path, y)))
+
+    assert [chord for chord, _, _ in runs] == ["C:maj", "N", "F:maj"]
+    _, start, end = runs[1]
+    assert abs(start - 2.0) <= 0.3, start
+    assert abs(end - 6.0) <= 0.3, end
+
+
+def test_a_decaying_chord_tail_ends_as_n(synth, tmp_path) -> None:
+    # Four strikes, one more left to ring 3 s, then 3 s of digital silence.
+    ring = synth([("C:maj", 1)], bpm=20)
+    y = np.concatenate([synth([("C:maj", 4)]), ring, synth([("N", 6)])])
+
+    result = analyze(_write(tmp_path, y))
+    runs = _runs(result)
+
+    assert [chord for chord, _, _ in runs] == ["C:maj", "N"]
+    # Measured for the plan: the ring stays tonal to -73 dB at 4.1 s and turns N at 4.6 s; the
+    # silence from 5.0 s is N whatever the floor.
+    _, start, end = runs[1]
+    assert 4.0 <= start <= 5.3, start
+    assert end == result["source"]["duration"]
+
+
 CYCLE = ("C:maj", "F:maj", "G:maj", "A:min", "D:min", "E:min")
 
 
