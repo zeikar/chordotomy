@@ -12,6 +12,20 @@ from .features import SR, beat_features, load_audio
 SCHEMA_VERSION = 4
 
 
+def chord_runs(segments: list[dict]) -> list[list[dict]]:
+    """Group consecutive segments with one chord into runs.
+
+    Harmony runs on chord runs, not segments: the key weights and the secondary-dominant
+    look-ahead are defined on chords, and a bass change does not end a chord.
+    """
+    return [list(run) for _, run in groupby(segments, key=lambda s: s["chord"])]
+
+
+def progression(runs: list[list[dict]]) -> list[tuple[str, int]]:
+    """Each run's chord and its length in beats, the input of `harmony.analyze`."""
+    return [(run[0]["chord"], run[-1]["end_beat"] - run[0]["start_beat"]) for run in runs]
+
+
 def analyze(path: Path, key: str | None = None) -> dict:
     """Analyze an audio file into a chord-timeline dict of plain, JSON-serialisable types."""
     y = load_audio(path)
@@ -19,11 +33,8 @@ def analyze(path: Path, key: str | None = None) -> dict:
     scores = match(f.treble, f.bass)
     segments = resolve_twins(segment(smooth(scores, f.level, f.period), scores, f.cqt))
 
-    # Harmony runs on chord runs, not segments: the key weights and the secondary-dominant
-    # look-ahead are defined on chords, and a bass change does not end a chord.
-    runs = [list(run) for _, run in groupby(segments, key=lambda s: s["chord"])]
-    progression = [(run[0]["chord"], run[-1]["end_beat"] - run[0]["start_beat"]) for run in runs]
-    key_info, run_analyses = harmony.analyze(progression, key)
+    runs = chord_runs(segments)
+    key_info, run_analyses = harmony.analyze(progression(runs), key)
     analyses = [a for run, a in zip(runs, run_analyses, strict=True) for _ in run]
 
     duration = round(len(y) / SR, 3)

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import soundfile
 
-from chordotomy import __version__
+from chordotomy import __version__, timeline
 from chordotomy.features import SR, NoBeatsError
 from chordotomy.timeline import analyze
 
@@ -14,6 +14,20 @@ def _write(tmp_path, y):
     path = tmp_path / "clip.wav"
     soundfile.write(path, y, SR)
     return path
+
+
+def test_chord_runs_join_a_chord_split_by_the_bass() -> None:
+    segments = [
+        {"chord": "A:maj", "start_beat": 0, "end_beat": 2},
+        {"chord": "A:maj", "start_beat": 2, "end_beat": 4},
+        {"chord": "N", "start_beat": 4, "end_beat": 5},
+        {"chord": "D:min", "start_beat": 5, "end_beat": 8},
+    ]
+
+    runs = timeline.chord_runs(segments)
+
+    assert [len(run) for run in runs] == [2, 1, 1]
+    assert timeline.progression(runs) == [("A:maj", 4), ("N", 1), ("D:min", 3)]
 
 
 def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
