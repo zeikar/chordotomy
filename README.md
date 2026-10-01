@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. The model engine's chords are major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; the DSP engine also recognizes minor 6th. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The DSP engine keeps a quiet passage's chords and calls most beats of drums alone `N` (81 % of them for the median drum stem). When the beat tracker locks at half tempo with the chord changes falling between its beats, the beat grid is doubled; a half-tempo grid whose beats fall on the chord changes is left as it is, since it costs no chord. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. The model engine's chords are major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th, sus4, augmented, diminished triad and sus2, with `N` for no chord; the DSP engine recognizes the same except sus2, and also minor 6th. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The DSP engine keeps a quiet passage's chords and calls most beats of drums alone `N` (81 % of them for the median drum stem). When the beat tracker locks at half tempo with the chord changes falling between its beats, the beat grid is doubled; a half-tempo grid whose beats fall on the chord changes is left as it is, since it costs no chord. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 
@@ -20,7 +20,7 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 
 ## Roadmap
 
-- [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th / major 7th / minor 7th / minor 6th / half-diminished 7th / diminished 7th / sus4)
+- [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th / major 7th / minor 7th / minor 6th / half-diminished 7th / diminished 7th / sus4 / augmented / diminished triad / sus2; the DSP does not call sus2, which comes from the model or a manual edit)
 - [x] A pretrained model as the recognizer when installed (`uv sync --extra model`)
 - [x] Roman-numeral analysis, with highlights for secondary dominants and borrowed chords
 - [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
