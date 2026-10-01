@@ -1,4 +1,4 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v4)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v5)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from . import __version__, harmony
 from .chords import inversion, match, resolve_twins, segment, smooth
 from .features import SR, beat_features, load_audio
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def chord_runs(segments: list[dict]) -> list[list[dict]]:
@@ -57,6 +57,9 @@ def analyze(path: Path, key: str | None = None) -> dict:
                 "bass": s["bass"],
                 "inversion": inversion(s["chord"], s["bass"]),
                 **a,
+                # The viewer sets this when the user changes a chord; `candidates` then stays
+                # what the analyzer heard.
+                "edited": False,
             }
             for s, a in zip(segments, analyses, strict=True)
         ],

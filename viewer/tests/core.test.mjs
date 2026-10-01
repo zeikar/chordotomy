@@ -241,11 +241,12 @@ test("left goes to the start of the chord, then to the one before; right to the 
   assert.equal(stepIndex([], 1, -1), -1);
 });
 
-test("only schema version 4 is accepted", () => {
-  const ok = { schema_version: 4, beats: [], segments: [] };
+test("schema versions 4 and 5 are accepted", () => {
+  const ok = { schema_version: 5, beats: [], segments: [] };
   assert.equal(Core.timelineProblem(ok), null);
   assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 5 }), /newer chordotomy/);
+  assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 6 }), /newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
   assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);

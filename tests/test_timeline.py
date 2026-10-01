@@ -44,7 +44,7 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 4
+    assert result["schema_version"] == 5
     assert result["generator"] == {"name": "chordotomy", "version": __version__}
     assert result["source"]["path"] == str(path)
     duration = result["source"]["duration"]
@@ -65,7 +65,8 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
         assert s["end_time"] == end
         assert len(set(s["candidates"])) == 3
         assert s["candidates"][0] == s["chord"]
-        assert {"bass", "inversion", "numeral", "role", "function", "target"} <= s.keys()
+        assert {"bass", "inversion", "numeral", "role", "function", "target", "edited"} <= s.keys()
+        assert s["edited"] is False
     assert [s["chord"] for s in segments] == ["C:maj", "C:7", "F:maj", "G:7", "A:min", "C:maj"]
 
     labels = [s["chord"] for s in segments for _ in range(s["start_beat"], s["end_beat"])]

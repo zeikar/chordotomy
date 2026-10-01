@@ -9,7 +9,9 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  const SCHEMA_VERSION = 4;
+  // The viewer reads 4 and 5 and writes 5; a 4 is upgraded in memory (edited: false on every segment).
+  const MIN_SCHEMA_VERSION = 4;
+  const SCHEMA_VERSION = 5;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
   // and, if its numeral suffix is new, in NUMERAL_SUFFIX and numeralParts' pattern.
@@ -262,12 +264,12 @@ const Core = ((Harmony) => {
       return "This isn't a chordotomy timeline: it has no schema_version.";
     }
     const version = data.schema_version;
-    if (version !== SCHEMA_VERSION) {
+    if (!Number.isInteger(version) || version < MIN_SCHEMA_VERSION || version > SCHEMA_VERSION) {
       const fix =
-        version < SCHEMA_VERSION
+        version < MIN_SCHEMA_VERSION
           ? "Run chordotomy analyze again to write a current one."
           : "It was written by a newer chordotomy than this viewer.";
-      return `This timeline uses schema version ${version}; the viewer reads version ${SCHEMA_VERSION}. ${fix}`;
+      return `This timeline uses schema version ${version}; the viewer reads versions ${MIN_SCHEMA_VERSION} and ${SCHEMA_VERSION}. ${fix}`;
     }
     if (!Array.isArray(data.segments) || !Array.isArray(data.beats)) {
       return "This timeline has no beats or segments list.";

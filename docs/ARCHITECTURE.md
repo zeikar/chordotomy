@@ -123,11 +123,11 @@ The function is set for diatonic chords only, by the degree, whatever the qualit
 
 ## The chord-timeline JSON
 
-This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 4.
+This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 5.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schema_version` | int, `4` | schema version of this file |
+| `schema_version` | int, `5` | schema version of this file |
 | `generator.name` | `"chordotomy"` | |
 | `generator.version` | str | the chordotomy version that wrote the file |
 | `source.path` | str | the audio path as given on the command line |
@@ -135,20 +135,21 @@ This is the project's public seam. It carries beat positions, not just seconds, 
 | `beats` | list of float seconds, 3 decimals, ascending | beat index = list position |
 | `key` | object or `null` | the key the numerals are relative to; `null` only when the timeline has no chord and no `--key` was given |
 | `key.label` | str | `<root>:maj` or `<root>:min`, sharps only, e.g. `C:maj`, `A:min` |
-| `key.source` | `"estimated"` or `"given"` | `given` when `--key` was passed |
+| `key.source` | `"estimated"` or `"given"` | `given` when `--key` was passed or the user chose the key in the viewer |
 | `key.candidates` | list of up to 3 str | the estimator's ranking, best first, no scores; `candidates[0] == label` when `source` is `estimated`; `[]` when the timeline has no chord |
 | `segments[].start_beat` | int | inclusive |
 | `segments[].end_beat` | int | exclusive; may equal `len(beats)`, meaning the segment runs to the end of the audio |
 | `segments[].start_time` | float | `beats[start_beat]` |
 | `segments[].end_time` | float | `beats[end_beat]`, or `source.duration` when `end_beat == len(beats)` |
 | `segments[].chord` | str | Harte label or `N`; always the root-position label; consecutive segments may repeat it when the bass changes under one chord |
-| `segments[].candidates` | list of 3 str | best first, `candidates[0] == chord`, no scores; when a diminished chord was respelled by where it leads, `candidates[1]` is the recognizer's label for the same notes |
+| `segments[].candidates` | list of 3 str | best first, no scores; `candidates[0] == chord` when `edited` is false, and the analyzer's ranking for the span the segment came from when it is true; when a diminished chord was respelled by where it leads, `candidates[1]` is the recognizer's label for the same notes |
 | `segments[].bass` | str or `null` | the segment's held bass, sharps only (`C` to `B`): the per-beat bass (the lowest note sounding in the bass register) that holds for at least 2 beats under the chord; when no value holds that long (a one-beat chord, a bass moving every beat), the most frequent per-beat value, silence included, ties to a note and then to the earliest; a bass move shorter than 2 beats under an unchanged chord (a passing tone, an alternating C–E or C–G accompaniment) is not reported; `null` for `N` and when no beat has a note in the bass register |
 | `segments[].inversion` | `"root"`, `"first"`, `"second"`, `"third"`, `"non_chord"`, or `null` | `chord` over `bass`, by the bass's place among the chord's tones from the root up: `root`; `first`, the third, or the fourth of a `sus4`; `second`, the fifth; `third`, the seventh of a `7`, `maj7`, `min7`, `hdim7` or `dim7`, or the added sixth of a `min6`; `non_chord` when it is not a chord tone; `null` whenever `bass` is `null` |
 | `segments[].numeral` | str or `null` | Roman numeral of the root-position chord relative to `key`, `<accidental><roman><suffix>[/<target>]` (grammar above), e.g. `bVII`, `ii7`, `IVmaj7`, `#i°7`, `viiø7/V`; `ø` and `°` are written as characters; `null` for `N` |
 | `segments[].role` | `"diatonic"`, `"secondary_dominant"`, `"borrowed"`, `"chromatic"`, or `null` | how the chord relates to the key; `secondary_dominant` includes secondary leading-tone chords; `null` for `N` |
 | `segments[].function` | `"tonic"`, `"predominant"`, `"dominant"`, or `null` | harmonic function; set only for `diatonic` chords |
 | `segments[].target` | str or `null` | for `secondary_dominant`, the numeral of the chord it tonicizes (`V7/V` → `V`, `vii°7/ii` → `ii`); `null` otherwise |
+| `segments[].edited` | bool | `false`: `chord` and `bass` are the analyzer's. `true`: they are the user's, set in the viewer. A split or merge of segments does not set it, since the chord is still what the analyzer heard |
 
 A chord label is `<root>:<quality>` in Harte syntax. The root is one of `C C# D D# E F F# G G# A A# B`, spelled with sharps only, and the quality is one of `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7` and `sus4`. `N` means no chord. A key label is the label of its tonic triad, `<root>:maj` or `<root>:min`, sharps only. `bass` is spelled the same way, as a bare root.
 
@@ -158,11 +159,11 @@ Segments are contiguous: each `start_beat` equals the previous `end_beat`, and t
 
 The file is UTF-8, and non-ASCII characters are written as themselves rather than as `\u` escapes: the numerals' `ø` and `°`, and a non-ASCII `source.path`. A path that is not valid UTF-8 keeps `\u` escapes for the bytes that don't decode.
 
-The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`. Schema 4 kept schema 3's fields and widened what they hold: the chord qualities, the numerals, what `third` means in `inversion`, which chords `secondary_dominant` covers, and what `candidates[1]` means after a respelling.
+The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`. Schema 4 kept schema 3's fields and widened what they hold: the chord qualities, the numerals, what `third` means in `inversion`, which chords `secondary_dominant` covers, and what `candidates[1]` means after a respelling. Schema 5 added `segments[].edited`, so a corrected chord is told apart from a heard one. The viewer reads 4 and 5, and fills in `edited: false` on a 4 before it saves it as 5.
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "generator": {"name": "chordotomy", "version": "0.0.0"},
   "source": {"path": "song.mp3", "duration": 5.0},
   "key": {"label": "C:maj", "source": "estimated", "candidates": ["C:maj", "F:maj", "G:maj"]},
@@ -172,31 +173,31 @@ The schema is stable. Any change to the documented schema, an added field includ
       "start_beat": 0, "end_beat": 2, "start_time": 0.023, "end_time": 1.045,
       "chord": "C:maj", "candidates": ["C:maj", "C:7", "C:maj7"],
       "bass": "C", "inversion": "root",
-      "numeral": "I", "role": "diatonic", "function": "tonic", "target": null
+      "numeral": "I", "role": "diatonic", "function": "tonic", "target": null, "edited": false
     },
     {
       "start_beat": 2, "end_beat": 4, "start_time": 1.045, "end_time": 2.043,
       "chord": "C:maj", "candidates": ["C:maj", "C:7", "A:min7"],
       "bass": "E", "inversion": "first",
-      "numeral": "I", "role": "diatonic", "function": "tonic", "target": null
+      "numeral": "I", "role": "diatonic", "function": "tonic", "target": null, "edited": false
     },
     {
       "start_beat": 4, "end_beat": 6, "start_time": 2.043, "end_time": 3.042,
       "chord": "F:maj7", "candidates": ["F:maj7", "F:maj", "F:7"],
       "bass": "F", "inversion": "root",
-      "numeral": "IVmaj7", "role": "diatonic", "function": "predominant", "target": null
+      "numeral": "IVmaj7", "role": "diatonic", "function": "predominant", "target": null, "edited": false
     },
     {
       "start_beat": 6, "end_beat": 8, "start_time": 3.042, "end_time": 4.04,
       "chord": "F#:hdim7", "candidates": ["F#:hdim7", "A:min6", "A:min"],
       "bass": "F#", "inversion": "root",
-      "numeral": "viiø7/V", "role": "secondary_dominant", "function": null, "target": "V"
+      "numeral": "viiø7/V", "role": "secondary_dominant", "function": null, "target": "V", "edited": false
     },
     {
       "start_beat": 8, "end_beat": 10, "start_time": 4.04, "end_time": 5.0,
       "chord": "G:7", "candidates": ["G:7", "G:maj", "E:min"],
       "bass": "B", "inversion": "first",
-      "numeral": "V7", "role": "diatonic", "function": "dominant", "target": null
+      "numeral": "V7", "role": "diatonic", "function": "dominant", "target": null, "edited": false
     }
   ]
 }
