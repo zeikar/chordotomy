@@ -313,8 +313,15 @@ def _leading_twin(label: str, following: str) -> str | None:
     return None
 
 
+def _dominant_twin(label: str, following: str) -> str | None:
+    """The aug on label's pitch set rooted a fifth above following's root, if any."""
+    dominant = ROOTS[(ROOTS.index(following.split(":")[0]) + 7) % 12]
+    twin = f"{dominant}:aug"
+    return twin if _pitch_classes(twin) == _pitch_classes(label) else None
+
+
 def resolve_twins(segments: list[dict]) -> list[dict]:
-    """Respell a diminished chord run as the twin that leads into the next chord.
+    """Respell a diminished or augmented chord run as the twin that leads into the next chord.
 
     Pitch-set twins score exactly alike without a bass on one of their roots, so LABELS order picks
     one (a min6 over its hdim7, a dim7's lowest root), which says nothing about the music. A
@@ -327,8 +334,17 @@ def resolve_twins(segments: list[dict]) -> list[dict]:
     its root (C#°7 over E decodes as E:dim7 and becomes C#:dim7 in first inversion before D:min).
     For the same reason a dim7 run followed by a dim7 on its set is that chord over a moved bass,
     and takes the following run's label. A min6 and its hdim7 are different chords on one set,
-    and a bass on the min6's root is the evidence for the m6 reading, so that run is left. A run
-    with no leading twin keeps the recognizer's reading, as does a run before N or at the end. A
+    and a bass on the min6's root is the evidence for the m6 reading, so that run is left.
+
+    An aug is spelled by the dominant resolution, the one strong convention for an augmented
+    triad (V+ to I): a run becomes the aug a fifth above the next chord's root, when its pitch
+    set has one. A bass-less D#:aug before C:maj is G:aug, and a C:aug before A:min is E:aug. Like
+    a min6, an aug is left when a bass sits on its decoded root (C:aug over C before A:min stays):
+    that is the evidence for the reading, and label order says nothing. A sus2 and its sus4 are
+    never respelled: a suspension resolves on its own root, so the next chord's root is no
+    evidence, and the bass, which decodes them, is.
+
+    A run with no such twin keeps the recognizer's reading, as does a run before N or at the end. A
     run split by the bass is one chord and one decision. The candidates lead with the new label,
     then the recognizer's.
     """
@@ -341,10 +357,13 @@ def resolve_twins(segments: list[dict]) -> list[dict]:
     for run in reversed(runs):
         label = run[0]["chord"]
         root, _, quality = label.partition(":")
+        # A dim7's bass is its inversion; a min6's and an aug's is its root.
         bass_decided = quality != "dim7" and any(s["bass"] == root for s in run)
         if label != "N" and following not in (None, "N") and not bass_decided:
             if quality == "dim7" and _pitch_classes(following) == _pitch_classes(label):
                 twin = following
+            elif quality == "aug":
+                twin = _dominant_twin(label, following)
             else:
                 twin = _leading_twin(label, following)
             if twin is not None and twin != label:

@@ -119,6 +119,19 @@ def test_twins_tie_break_on_label_order(no_offsets) -> None:
     for label in ("D#:dim7", "F#:dim7", "A:dim7"):
         assert scores[LABELS.index(label)] == scores[LABELS.index("C:dim7")]
 
+    # C D G is G:sus4 or C:sus2; sus4 is the earlier label.
+    scores = match(_chroma("C", "D", "G"), np.zeros((12, 1)))[:, 0]
+
+    assert LABELS[scores.argmax()] == "G:sus4"
+    assert scores[LABELS.index("C:sus2")] == scores[LABELS.index("G:sus4")]
+
+    # C E G# is the aug on any of its three tones.
+    scores = match(_chroma("C", "E", "G#"), np.zeros((12, 1)))[:, 0]
+
+    assert LABELS[scores.argmax()] == "C:aug"
+    for label in ("E:aug", "G#:aug"):
+        assert scores[LABELS.index(label)] == scores[LABELS.index("C:aug")]
+
 
 @pytest.mark.parametrize(
     ("notes", "bass", "expected"),
@@ -127,6 +140,10 @@ def test_twins_tie_break_on_label_order(no_offsets) -> None:
         (("G", "A#", "D", "E"), "G", "G:min6"),
         (("C", "D#", "F#", "A"), "A", "A:dim7"),
         (("C", "D#", "F#", "A"), "F#", "F#:dim7"),
+        (("C", "D", "G"), "C", "C:sus2"),
+        (("C", "D", "G"), "G", "G:sus4"),
+        (("C", "E", "G#"), "E", "E:aug"),
+        (("C", "E", "G#"), "G#", "G#:aug"),
     ],
 )
 def test_bass_tells_the_twins_apart(no_offsets, notes, bass, expected) -> None:
@@ -156,6 +173,7 @@ def test_offsets_apply_per_quality(monkeypatch) -> None:
 def test_twins_share_one_offset() -> None:
     # Otherwise the offset, not the bass, would tell G:min6 from E:hdim7.
     assert QUALITY_OFFSET["min6"] == QUALITY_OFFSET["hdim7"]
+    assert QUALITY_OFFSET["sus2"] == QUALITY_OFFSET["sus4"]
 
 
 def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
@@ -366,9 +384,24 @@ def _runs(*entries: tuple[str, str | None]) -> list[dict]:
         ("C:maj", None, "C#:maj", "C:maj"),
         ("C:dim7", None, "N", "C:dim7"),
         ("C:dim7", None, None, "C:dim7"),
+        # An aug is spelled as the V+ of the next chord: the twin a fifth above its root.
+        ("D#:aug", None, "C:maj", "G:aug"),
+        ("C:aug", None, "A:min", "E:aug"),
+        # A bass on the decoded root is evidence for it; off the root it is none.
+        ("C:aug", "C", "A:min", "C:aug"),
+        ("C:aug", "E", "A:min", "E:aug"),
+        ("C:aug", None, "F:maj", "C:aug"),
+        # No aug on C:aug's set is rooted a fifth above G.
+        ("C:aug", None, "G:maj", "C:aug"),
+        ("C:aug", None, "N", "C:aug"),
+        ("C:aug", None, None, "C:aug"),
+        # A suspension resolves on its own root, so sus chords are never respelled.
+        ("G:sus4", None, "C:maj", "G:sus4"),
+        ("C:sus2", None, "G:maj", "C:sus2"),
+        ("B:dim", None, "C:maj", "B:dim"),
     ],
 )
-def test_resolve_twins_spells_a_diminished_chord_by_where_it_leads(
+def test_resolve_twins_spells_a_diminished_or_augmented_chord_by_where_it_leads(
     label: str, bass: str | None, following: str | None, expected: str
 ) -> None:
     entries = [(label, bass)] + ([] if following is None else [(following, None)])
@@ -392,6 +425,15 @@ def test_resolve_twins_relabels_a_run_split_by_the_bass_as_a_whole() -> None:
     resolved = resolve_twins(_runs(("A:min6", None), ("A:min6", "A"), ("G:maj", "G")))
 
     assert [s["chord"] for s in resolved] == ["A:min6", "A:min6", "G:maj"]
+
+    # So does one on an aug's root, though the run is split by the bass.
+    resolved = resolve_twins(_runs(("C:aug", "E"), ("C:aug", "C"), ("A:min", "A")))
+
+    assert [s["chord"] for s in resolved] == ["C:aug", "C:aug", "A:min"]
+
+    resolved = resolve_twins(_runs(("C:aug", "E"), ("C:aug", "G#"), ("A:min", "A")))
+
+    assert [s["chord"] for s in resolved] == ["E:aug", "E:aug", "A:min"]
 
 
 def test_resolve_twins_spells_a_dim7_over_a_moving_bass_as_one_chord() -> None:
@@ -431,6 +473,11 @@ def test_resolve_twins_reorders_the_tie_in_the_candidates() -> None:
 
     assert resolve_twins([dim7, following])[0]["candidates"] == ["F#:dim7", "C:dim7", "D#:dim7"]
     assert resolve_twins([min6, following])[0]["candidates"] == ["F#:hdim7", "A:min6", "A:min7"]
+
+    aug, tonic = _runs(("D#:aug", None), ("C:maj", "C"))
+    aug["candidates"] = ["D#:aug", "G:aug", "B:aug"]
+
+    assert resolve_twins([aug, tonic])[0]["candidates"] == ["G:aug", "D#:aug", "B:aug"]
 
 
 def _cqt(beats: list) -> np.ndarray:
