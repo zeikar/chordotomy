@@ -116,10 +116,11 @@ def tiny_aam_reference(text: str, duration: float) -> Reference:
         starts.append(float(start))
         labels.append(label)
     # The annotation stops at the last played beat. Stretching that beat over the silent tail
-    # would reward calling the tail a chord, so it lasts one period and the rest is N.
+    # would reward calling the tail a chord, so it lasts as long as the gap before it (a median
+    # would misjudge a final tempo change) and the rest is N.
     end = duration
     if len(starts) > 1:
-        end = min(starts[-1] + float(np.median(np.diff(starts))), duration)
+        end = min(starts[-1] + (starts[-1] - starts[-2]), duration)
     intervals = np.column_stack([starts, [*starts[1:], end]]).astype(float)
     if end < duration:
         intervals = np.vstack([intervals, [end, duration]])

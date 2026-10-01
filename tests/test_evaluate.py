@@ -71,6 +71,14 @@ def test_tiny_aam_reference_caps_the_last_beat_at_the_duration() -> None:
     assert reference.labels[-1] == "A:min"
 
 
+def test_tiny_aam_reference_ends_the_last_beat_after_the_final_gap() -> None:
+    arff = "0.0,1,1,'Cmaj'\n1.0,1,2,'Cmaj'\n2.0,1,3,'Cmaj'\n2.25,1,4,'Cmaj'\n"
+    reference = evaluate.tiny_aam_reference(arff, 5.0)
+
+    assert reference.intervals.tolist()[-2:] == [[2.25, 2.5], [2.5, 5.0]]
+    assert reference.labels[-1] == "N"
+
+
 def test_tiny_aam_reference_with_one_beat_runs_it_to_the_end() -> None:
     reference = evaluate.tiny_aam_reference("0.5,1,1,'Cmaj'\n", 3.0)
 

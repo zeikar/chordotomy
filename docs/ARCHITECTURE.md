@@ -283,7 +283,7 @@ A batch of dropped or picked files opens whole or not at all, so the recording a
 
 `chordotomy evaluate {tiny-aam,guitarset} [--limit N] [--engine auto|model|dsp]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.
 
-- **Tiny AAM**: 20 mixed tracks with one chord per beat, reduced to major, minor and `N`. Its annotation has no bass, so its `majmin_inv` assumes every reference chord is in root position; read it as bass agreement with that assumption, not as inversion accuracy. The annotation stops at the last played beat. The reference gives that beat one median beat period and labels the rest of the file `N`. Until stage II it ran the last chord to the end of the file, which called the silent tail a chord, so an analyzer that called the tail `N` lost about 1 pp of every chord metric ("Corrected Tiny AAM reference" below).
+- **Tiny AAM**: 20 mixed tracks with one chord per beat, reduced to major, minor and `N`. Its annotation has no bass, so its `majmin_inv` assumes every reference chord is in root position; read it as bass agreement with that assumption, not as inversion accuracy. The annotation stops at the last played beat. The reference gives that beat the length of the gap before it, so a tempo change at the end is respected, and labels the rest of the file `N`. Until stage II it ran the last chord to the end of the file, which called the silent tail a chord, so an analyzer that called the tail `N` lost about 1 pp of every chord metric ("Corrected Tiny AAM reference" below).
 - **GuitarSet**: the 180 accompaniment takes (`_comp`, mono mic), scored against the performed chord annotation, which carries the bass.
 
 Scoring is `mir_eval`, and the table is per track with an `overall` row weighted by duration. These things matter when reading it:
@@ -368,9 +368,9 @@ Corrected Tiny AAM reference, before the stage-II analyzer changes, at the commi
 
 | | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks), `dsp` | 0.848 | 0.802 | 0.758 | 0.758 | 0.700 | 0.011 | 0.032 | 0.951 | 0.325 | 0.826 | 0.686 | 0.766 | 0.999 |
+| Tiny AAM (20 tracks), `dsp` | 0.848 | 0.802 | 0.758 | 0.758 | 0.700 | 0.011 | 0.032 | 0.951 | 0.324 | 0.826 | 0.686 | 0.766 | 0.999 |
 | GuitarSet (180 takes), `dsp` | 0.720 | 0.661 | 0.531 | 0.347 | 0.395 | 0.007 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
-| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.965 | 0.443 | 0.826 | 0.686 | 0.766 | 0.999 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.965 | 0.442 | 0.826 | 0.686 | 0.766 | 0.999 |
 | GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
 
 With the analyzer unchanged, the Tiny AAM rows rise by the tail alone: the DSP's root, majmin and sevenths from the v4 row's 0.839, 0.793 and 0.748 to 0.848, 0.802 and 0.758, and the model's from 0.927, 0.913 and 0.845 to 0.939, 0.924 and 0.857. GuitarSet's reference did not change, and its chord and `N_est` columns equal the v4 and model rows above.
@@ -379,17 +379,17 @@ The period ratio and majmin on this grid of Tiny AAM's multi-tempo tracks:
 
 | | period | majmin, `dsp` | majmin, `model` |
 |---|---|---|---|
-| 0080 | 2.018 | 0.569 | 0.600 |
-| 0192 | 0.978 | 0.956 | 0.960 |
+| 0080 | 2.018 | 0.570 | 0.602 |
+| 0192 | 0.978 | 0.959 | 0.963 |
 | 0620 | 1.000 | 0.907 | 0.959 |
 | 1014 | 0.985 | 0.910 | 0.960 |
-| 1050 | 1.505 | 0.849 | 0.888 |
+| 1050 | 1.505 | 0.848 | 0.887 |
 | 1711 | 1.009 | 0.804 | 0.985 |
 | 1941 | 0.657 | 0.802 | 0.897 |
 | 2462 | 0.488 | 0.905 | 0.981 |
-| 2720 | 1.013 | 0.576 | 0.859 |
-| 2828 | 1.008 | 0.391 | 0.831 |
-| 2990 | 1.013 | 0.626 | 0.896 |
+| 2720 | 1.013 | 0.575 | 0.858 |
+| 2828 | 1.008 | 0.391 | 0.829 |
+| 2990 | 1.013 | 0.626 | 0.895 |
 
 And of every GuitarSet take whose ratio is within 10 % of 2 (nine: eight jazz takes and one bossa nova) or of 0.5 (six):
 
@@ -415,116 +415,77 @@ The zeros say little. 03_Jazz1-200 and 05_Jazz1-200 have no reference chord that
 
 ### The octave check
 
-The octave check at the commit that adds these rows. That commit also had the tempo rule, which a later one removed ("Tempo changes are not followed"); this table records both. The check doubled no track: none of Tiny AAM's 20 (one, 0080, had a ratio within 10 % of 2 on the grid above) and none of GuitarSet's 180 (nine had). So there is no false trigger among the tracks whose ratio was within 10 % of 1 (16 and 104), and every overall row is the tempo rule's alone. The half- and double-tempo tracks of the tables above and Tiny AAM's multi-tempo tracks, each period and majmin cell reading: on the grid above / with the tempo rule / with the octave check. `changes` is the number of chord changes decoded on the doubled grid and `share` the share of them on inserted beats; the check doubles at 24 changes and 0.80. The model's columns are scored from its cached frames, which reproduce the CLI's rows within 0.001.
+The octave check at the commit that adds these rows. That commit also had a tempo rule, which a later one removed ("Tempo changes are not followed"); its cells are not kept here. The check doubled no track: none of Tiny AAM's 20 (one, 0080, had a ratio within 10 % of 2 on the grid above) and none of GuitarSet's 180 (nine had). So there is no false trigger among the tracks whose ratio was within 10 % of 1 (16 and 104), and every track's period and majmin are the grid's, above. The half- and double-tempo tracks of the tables above and Tiny AAM's multi-tempo tracks follow: `changes` is the number of chord changes decoded on the doubled grid and `share` the share of them on inserted beats; the check doubles at 24 changes and 0.80. The model's columns are scored from its cached frames, which reproduce the CLI's rows within 0.001.
 
 | | group | period | changes | share | majmin, `dsp` | majmin, `model` |
 |---|---|---|---|---|---|---|
-| 0080 | half tempo, multi-tempo | 2.018 / 1.513 / 1.513 | 78 | 0.19 | 0.569 / 0.552 / 0.552 | 0.600 / 0.599 / 0.599 |
-| 01_BN2-166-Ab_comp | half tempo | 1.992 / 1.992 / 1.992 | 16 | 0.19 | 0.528 / 0.528 / 0.528 | 0.500 / 0.500 / 0.500 |
-| 02_Jazz1-200-B_comp | half tempo | 2.013 / 2.013 / 2.013 | 6 | 0.67 | 0.900 / 0.900 / 0.900 | 0.900 / 0.900 / 0.900 |
-| 02_Jazz3-150-C_comp | half tempo | 1.975 / 1.975 / 1.975 | 18 | 0.67 | 0.601 / 0.601 / 0.601 | 0.623 / 0.623 / 0.623 |
-| 03_Jazz1-200-B_comp | half tempo | 1.897 / 1.897 / 1.897 | 14 | 0.57 | 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 |
-| 03_Jazz3-137-Eb_comp | half tempo | 1.961 / 1.379 / 1.379 | 35 | 0.49 | 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 |
-| 04_Jazz1-200-B_comp | half tempo | 1.937 / 1.937 / 1.937 | 22 | 0.41 | 0.445 / 0.445 / 0.445 | 0.803 / 0.803 / 0.803 |
-| 04_Jazz2-187-F#_comp | half tempo | 1.954 / 1.954 / 1.954 | 30 | 0.33 | 0.395 / 0.395 / 0.395 | 0.612 / 0.612 / 0.612 |
-| 04_Jazz3-150-C_comp | half tempo | 2.030 / 2.030 / 2.030 | 40 | 0.60 | 0.490 / 0.490 / 0.490 | 0.604 / 0.604 / 0.604 |
-| 05_Jazz1-200-B_comp | half tempo | 1.937 / 1.937 / 1.937 | 20 | 0.65 | 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 |
-| 2462 | double tempo, multi-tempo | 0.488 / 0.488 / 0.488 | 91 | 0.08 | 0.905 / 0.905 / 0.905 | 0.981 / 0.981 / 0.981 |
-| 02_SS1-68-E_comp | double tempo | 0.500 / 0.500 / 0.500 | 10 | 0.50 | 0.976 / 0.981 / 0.981 | 0.989 / 0.985 / 0.985 |
-| 04_SS1-68-E_comp | double tempo | 0.500 / 0.500 / 0.500 | 6 | 0.50 | 0.997 / 0.997 / 0.997 | 0.993 / 0.993 / 0.993 |
-| 03_Funk3-98-A_comp | double tempo | 0.493 / 0.493 / 0.493 | 53 | 0.53 | 0.634 / 0.634 / 0.634 | 0.693 / 0.693 / 0.693 |
-| 04_Funk3-98-A_comp | double tempo | 0.493 / 0.493 / 0.493 | 64 | 0.56 | 0.230 / 0.230 / 0.230 | 0.522 / 0.522 / 0.522 |
-| 05_Funk3-98-A_comp | double tempo | 0.493 / 0.493 / 0.493 | 46 | 0.46 | 0.189 / 0.189 / 0.189 | 0.407 / 0.407 / 0.407 |
-| 04_Rock2-85-F_comp | double tempo | 0.493 / 0.493 / 0.493 | 34 | 0.35 | 0.923 / 0.923 / 0.923 | 0.989 / 0.989 / 0.989 |
-| 0192 | multi-tempo | 0.978 / 1.029 / 1.029 | 51 | 0.29 | 0.956 / 0.950 / 0.950 | 0.960 / 0.960 / 0.960 |
-| 0620 | multi-tempo | 1.000 / 0.998 / 0.998 | 117 | 0.16 | 0.907 / 0.923 / 0.923 | 0.959 / 0.970 / 0.970 |
-| 1014 | multi-tempo | 0.985 / 0.987 / 0.987 | 108 | 0.11 | 0.910 / 0.905 / 0.905 | 0.960 / 0.962 / 0.962 |
-| 1050 | multi-tempo | 1.505 / 0.961 / 0.961 | 79 | 0.27 | 0.849 / 0.970 / 0.970 | 0.888 / 0.970 / 0.970 |
-| 1711 | multi-tempo | 1.009 / 1.009 / 1.009 | 81 | 0.21 | 0.804 / 0.804 / 0.804 | 0.985 / 0.985 / 0.985 |
-| 1941 | multi-tempo | 0.657 / 0.657 / 0.657 | 153 | 0.15 | 0.802 / 0.793 / 0.793 | 0.897 / 0.885 / 0.885 |
-| 2720 | multi-tempo | 1.013 / 1.012 / 1.012 | 250 | 0.30 | 0.576 / 0.569 / 0.569 | 0.859 / 0.868 / 0.868 |
-| 2828 | multi-tempo | 1.008 / 0.683 / 0.683 | 130 | 0.49 | 0.391 / 0.395 / 0.395 | 0.831 / 0.840 / 0.840 |
-| 2990 | multi-tempo | 1.013 / 1.012 / 1.012 | 223 | 0.29 | 0.626 / 0.635 / 0.635 | 0.896 / 0.901 / 0.901 |
+| 0080 | half tempo, multi-tempo | 2.018 | 78 | 0.19 | 0.570 | 0.602 |
+| 01_BN2-166-Ab_comp | half tempo | 1.992 | 16 | 0.19 | 0.528 | 0.500 |
+| 02_Jazz1-200-B_comp | half tempo | 2.013 | 6 | 0.67 | 0.900 | 0.900 |
+| 02_Jazz3-150-C_comp | half tempo | 1.975 | 18 | 0.67 | 0.601 | 0.623 |
+| 03_Jazz1-200-B_comp | half tempo | 1.897 | 14 | 0.57 | 0.000 | 0.000 |
+| 03_Jazz3-137-Eb_comp | half tempo | 1.961 | 35 | 0.49 | 0.000 | 0.000 |
+| 04_Jazz1-200-B_comp | half tempo | 1.937 | 22 | 0.41 | 0.445 | 0.803 |
+| 04_Jazz2-187-F#_comp | half tempo | 1.954 | 30 | 0.33 | 0.395 | 0.612 |
+| 04_Jazz3-150-C_comp | half tempo | 2.030 | 40 | 0.60 | 0.490 | 0.604 |
+| 05_Jazz1-200-B_comp | half tempo | 1.937 | 20 | 0.65 | 0.000 | 0.000 |
+| 2462 | double tempo, multi-tempo | 0.488 | 91 | 0.08 | 0.905 | 0.981 |
+| 02_SS1-68-E_comp | double tempo | 0.500 | 10 | 0.50 | 0.976 | 0.989 |
+| 04_SS1-68-E_comp | double tempo | 0.500 | 6 | 0.50 | 0.997 | 0.993 |
+| 03_Funk3-98-A_comp | double tempo | 0.493 | 53 | 0.53 | 0.634 | 0.693 |
+| 04_Funk3-98-A_comp | double tempo | 0.493 | 64 | 0.56 | 0.230 | 0.522 |
+| 05_Funk3-98-A_comp | double tempo | 0.493 | 46 | 0.46 | 0.189 | 0.407 |
+| 04_Rock2-85-F_comp | double tempo | 0.493 | 34 | 0.35 | 0.923 | 0.989 |
+| 0192 | multi-tempo | 0.978 | 51 | 0.29 | 0.959 | 0.963 |
+| 0620 | multi-tempo | 1.000 | 117 | 0.16 | 0.907 | 0.959 |
+| 1014 | multi-tempo | 0.985 | 108 | 0.11 | 0.910 | 0.960 |
+| 1050 | multi-tempo | 1.505 | 79 | 0.27 | 0.848 | 0.887 |
+| 1711 | multi-tempo | 1.009 | 81 | 0.21 | 0.804 | 0.985 |
+| 1941 | multi-tempo | 0.657 | 153 | 0.15 | 0.802 | 0.897 |
+| 2720 | multi-tempo | 1.013 | 250 | 0.30 | 0.575 | 0.858 |
+| 2828 | multi-tempo | 1.008 | 130 | 0.49 | 0.391 | 0.829 |
+| 2990 | multi-tempo | 1.013 | 223 | 0.29 | 0.626 | 0.895 |
 
-The ten half-tempo tracks score 0.19 to 0.67: their halved grids sit in phase, or half in phase, with the chord changes, not between them, so the check leaves them, and their majmin with it equals their majmin with the tempo rule alone. Only 0080's majmin moved, with the tempo rule, which took its ratio from 2.018 to 1.513: 0.569 to 0.552 on the DSP and 0.600 to 0.599 on the model.
-
-The tempo rule changed five periods of this table by more than 0.01, and the octave check none. It took 0080 and 03_Jazz3-137 from a half lock to 1.513 and 1.379, neither the true level; 1050 from 1.505 to 0.961, which raised its DSP majmin from 0.849 to 0.970; 2828 from 1.008 to 0.683; and 0192 from 0.978 to 1.029. Without the rule, in "Current rows", every track's period is its first value here again, within 0.002.
+The ten half-tempo tracks score 0.19 to 0.67: their halved grids sit in phase, or half in phase, with the chord changes, not between them, so the check leaves them.
 
 ### Stage II
 
-The tempo rule, the octave check, the per-beat Viterbi and the `N` gate, at the commit that adds these rows, on the corrected reference. A later commit removed the tempo rule ("Tempo changes are not followed"), so this block, with its perturbation and margin tables and its runtime, is a record of that commit; "Current rows" has the rows without it.
+The octave check, the per-beat Viterbi and the `N` gate, with a tempo rule that a later commit removed ("Tempo changes are not followed"). The rows of the commit that had the rule are not kept: "Current rows" has the shipped ones, and the section after this has the rule's key numbers.
 
-| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks), `dsp` | 0.847 | 0.801 | 0.756 | 0.756 | 0.699 | 0.003 | 0.032 | 0.828 | 0.072 | 0.869 | 0.785 | 0.833 | 0.997 |
-| GuitarSet (180 takes), `dsp` | 0.722 | 0.660 | 0.530 | 0.346 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.520 | 0.410 | 0.566 | 1.005 |
-| Tiny AAM (20 tracks), `model` | 0.944 | 0.930 | 0.865 | 0.865 | 0.808 | 0.015 | 0.032 | 0.967 | 0.451 | 0.869 | 0.785 | 0.833 | 0.997 |
-| GuitarSet (180 takes), `model` | 0.826 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.520 | 0.410 | 0.566 | 1.005 |
-
-Every track's period equals its period in the octave check's run above, so the check doubled no track here either.
-
-Perturbations of the 20 Tiny AAM mixes, decoded by the `dsp` engine (the gate is the DSP's alone) at the corrected-reference rows' commit, before, and at this one, after. They are made locally from the dataset's mixes and drum stems and never committed. `N` is the share of the perturbed region's beats labeled `N`, pooled over tracks; for the drum stem alone (19 tracks have one) it is the median stem's share over the beats where the stem sounds. Agreement is the share of beats labeled as in the same commit's decode of the unperturbed mix: inside the region for the quiet intros, outside it for the prepended drums and the appended silence. A beat is in a region when its midpoint is.
-
-| case | `N`, before | `N`, after | agreement, before | agreement, after | bar |
-|---|---|---|---|---|---|
-| first 20 s at -45 dB | 0.992 | 0.001 | 0.008 | 0.854 | `N` ≤ 0.10, agreement ≥ 0.6 |
-| first 20 s at -55 dB | 0.993 | 0.001 | 0.007 | 0.852 | none |
-| the drum stem alone | 0.000 | 0.812 | — | — | `N` ≥ 0.70 |
-| 10 s of the drum stem prepended | 0.029 | 0.798 | 0.979 | 0.979 | `N` ≥ 0.70, agreement ≥ 0.95 |
-| 5 s of digital silence appended | 1.000 | 1.000 | 0.998 | 0.999 | `N` on every beat of every track |
-
-Before, with the level gate alone, a quiet intro was `N` almost throughout and a drum stem never was. With the gate on tonal evidence, 0.1 % of the quiet intros' beats are `N`, at -45 dB and at -55 dB, and 85 % carry the chord the loud mix decodes there. The median drum stem is 81 % `N`, and 10 s of drums before the mix are 80 % `N` while the rest of the mix agrees with its own decode as before. Appended silence stays `N`.
-
-The margin of the eight constants this stage adds, each one grid step either way with the others at the chosen point. The suite is the default suite with the constant assigned at session start. The Tiny AAM rows are `evaluate.run`'s for both engines, with the model's frames served from a cache (`model.recognize` reads the signal alone). The perturbation bars are the table's above. The model's floors are its corrected-reference row. The DSP's are its corrected-reference row less the tonal-tail price, `N_ref` times the fall of `N_rec` from that row, 0.8 pp at the chosen point and at every neighbour.
-
-| constant (chosen) | down, up | suite | `dsp` root / majmin, down; up | `model` root / majmin, down; up | CMLt, down; up | perturbation bars, down; up |
-|---|---|---|---|---|---|---|
-| chosen point | | green | 0.847 / 0.801 | 0.944 / 0.930 | 0.785 | held |
-| `TEMPO_WINDOW_SECONDS` (10) | 5, 15 | green, green | 0.846 / 0.800; 0.844 / 0.798 | 0.943 / 0.929; 0.943 / 0.928 | 0.769; 0.794 | appended silence 10 of 11 beats `N` on 0620; held |
-| `TEMPO_DEPARTURE` (0.10) | 0.05, 0.15 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
-| `TEMPO_HOLD_SECONDS` (16) | 12, 20 | green, green | 0.845 / 0.799; 0.846 / 0.800 | 0.943 / 0.928; 0.944 / 0.929 | 0.766; 0.800 | held; held |
-| `OCTAVE_INSERTED_SHARE` (0.80) | 0.75, 0.85 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
-| `OCTAVE_MIN_CHANGES` (24) | 20, 28 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
-| `ONSET_FRACTION` (0.5) | 0.25, 0.75 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
-| `N_FLATNESS` (0.02) | 0.01, 0.03 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held (drum stem 0.823); drum stem 0.663 |
-| `N_HARMONIC_SHARE` (0.3) | 0.2, 0.4 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held (drum stem 0.728); held (0.819) |
-
-The suite is green and both engines' Tiny AAM floors hold at all 16 neighbours, so no constant moved. The closest is `TEMPO_WINDOW_SECONDS` 15, 0.4 pp over the majmin floor on both engines. The octave constants' neighbours double no track: on Tiny AAM their rows are the chosen point's, and on GuitarSet the octave check's logged shares reach 0.708 among takes with 20 or more changes. The gate constants leave the grid and the model's rows alone, and `ONSET_FRACTION` changes nothing measured at either neighbour. Two neighbours miss a perturbation bar. At `N_FLATNESS` 0.03 the median drum stem is 0.663 `N` against the bar's 0.70. Stepping in to 0.01 would put 0.00 one step away, which costs GuitarSet 2.6 pp of majmin, so 0.03 is an allowed neighbour, bound by the drum-stem bar. At `TEMPO_WINDOW_SECONDS` 5 one of 0620's 11 appended-silence beats keeps the last chord: that window's grid starts the beat 0.23 s before the silence, and its midpoint falls 9 ms into it. Every beat that starts in the silence is `N`. The three tempo constants went with the rule.
+The margin of the five constants this stage adds, each one grid step either way with the others at the shipped point (no tempo rule), measured on the shipped analyzer. The default suite is green at all ten neighbours. The `dsp` engine's Tiny AAM rows come from `evaluate.run` (the gate is the DSP's alone, and the model's rows follow the grid, which the gate constants do not touch). The four octave neighbours (`OCTAVE_INSERTED_SHARE` 0.75 and 0.85, `OCTAVE_MIN_CHANGES` 20 and 28) and the four of `ONSET_FRACTION` (0.25, 0.75) and `N_HARMONIC_SHARE` (0.2, 0.4) leave every column of the shipped row unchanged. `N_FLATNESS` 0.03 does too, and 0.01 raises root and majmin by 0.007 and 0.008 pp (to 0.83944 and 0.79486). On GuitarSet the octave check's logged shares reach 0.708 among takes with 20 or more changes, under the loosest share, 0.75. One neighbour misses a perturbation bar: at `N_FLATNESS` 0.03 the median drum stem is 0.663 `N` against the bar's 0.70. Stepping in to 0.01 would put 0.00 one step away, which costs GuitarSet 2.6 pp of majmin, so 0.03 is an allowed neighbour, bound by the drums-alone bar.
 
 The octave constants were planned at 0.75 and 20 changes and moved inward to 0.80 and 24 before this run. At 0.70, a neighbour of 0.75, two correctly tracked GuitarSet takes would be doubled; they score 0.70 and 0.71. At 16 changes, a neighbour of 20, so would an 84 BPM take whose grid is right, which scores 0.84 on 19 changes.
 
-Runtime of `chordotomy analyze` on the runtime table's 3-minute mix, before the stage and at this commit, measured in one session (the mean of two runs after a warm-up, start-up included): `dsp` 2.32 and 2.39 s per audio minute, the model 4.12 and 4.23, with peak RSS 0.99 and 2.36 GB at both commits. Both commits run faster in this session than in the table above, on the same machine and clip, so the stage's cost is the difference: 0.07 and 0.10 s per audio minute.
-
 ### Tempo changes are not followed
 
-The tracker keeps one tempo per file. Two rules that followed a tempo change inside a file were built and measured, and both are out. The hybrid, the Stage II rows above: the tempogram's local tempo, median-filtered over 10 s, replaced the global tempo when it stayed more than 10 % off it, folded to the octave, for 16 s. It switched 9 Tiny AAM tracks and raised Tiny AAM's CMLt from 0.686 to 0.785. It also switched four of GuitarSet's 180 constant-tempo takes and an 86 BPM pop recording whose local tempo flickers between metrical levels (86, 112, 129 and 172 BPM): the median departs without any change, and following it gave the recording 668 beats of 0.30 to 0.88 s for the global tracker's 437 of 0.60 to 0.74 s. A gate that also required the departure to read one tempo (at least 0.75 of its unsmoothed frames within 10 % of its median) stopped all five and raised CMLt to 0.813, but a syncopated figure held over an unchanged pulse reads one tempo too. Synthesized at 74 to 105 BPM, 22 s of hats in 3-3-2 sixteenths or in quarter-note triplets after 22 s on the eighths switched 39 of 40 clips under both rules, hats at a tenth of the kick's level included. Seven of GuitarSet's 30 s takes already hold one steady off-tempo reading for 10 to 15.6 s, and with the gate, one step of the hybrid's window, departure or hold switched takes or the pop recording again. Tiny AAM's tempo changes are 4:3 and 3:2 metric modulations, the ratios syncopation reads, and nothing measured told them apart: not the tempogram's support for the global period inside the departure, not the global grid's onset strength there, and not a curve read from the harmonic part instead. Syncopation is everyday in pop and a tempo change inside a song is rare, so the beat grid stays on the pulse. `test_a_syncopated_constant_tempo_keeps_the_global_grid` holds it there.
+The tracker keeps one tempo per file. Two rules that followed a tempo change inside a file were built and measured, and both are out. The hybrid: the tempogram's local tempo, median-filtered over 10 s, replaced the global tempo when it stayed more than 10 % off it, folded to the octave, for 16 s. It switched 9 Tiny AAM tracks and raised Tiny AAM's CMLt from 0.686 to 0.785, +9.9 pp. It also switched four of GuitarSet's 180 constant-tempo takes and an 86 BPM pop recording whose local tempo flickers between metrical levels (86, 112, 129 and 172 BPM): the median departs without any change, and following it gave the recording 668 beats of 0.30 to 0.88 s for the global tracker's 437 of 0.60 to 0.74 s. A gate that also required the departure to read one tempo (at least 0.75 of its unsmoothed frames within 10 % of its median) stopped all five and raised CMLt to 0.813, +12.7 pp, but a syncopated figure held over an unchanged pulse reads one tempo too. Synthesized at 74 to 105 BPM, 22 s of hats in 3-3-2 sixteenths or in quarter-note triplets after 22 s on the eighths switched 39 of 40 clips under both rules, hats at a tenth of the kick's level included. Seven of GuitarSet's 30 s takes already hold one steady off-tempo reading for 10 to 15.6 s, and with the gate, one step of the hybrid's window, departure or hold switched takes or the pop recording again. Tiny AAM's tempo changes are 4:3 and 3:2 metric modulations, the ratios syncopation reads, and nothing measured told them apart: not the tempogram's support for the global period inside the departure, not the global grid's onset strength there, and not a curve read from the harmonic part instead. Syncopation is everyday in pop and a tempo change inside a song is rare, so the beat grid stays on the pulse. `test_a_syncopated_constant_tempo_keeps_the_global_grid` holds it there.
 
 ### Current rows
 
-`chordotomy evaluate`, at the commit that adds this section. The analyzer has not changed since the tempo rule was removed. That commit's own rows, scored by `evaluate.run` with the model's frames from a cache, are the same to every digit:
+`chordotomy evaluate`, at the commit that adds this section, on the final reference (the last beat lasts the gap before it). The analyzer has not changed since the tempo rule was removed. The rows were scored by `evaluate.run` with the model's frames from a cache, which reproduces the CLI's rows to every digit:
 
 | | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks), `dsp` | 0.839 | 0.795 | 0.750 | 0.750 | 0.692 | 0.003 | 0.032 | 0.819 | 0.072 | 0.827 | 0.686 | 0.766 | 0.999 |
+| Tiny AAM (20 tracks), `dsp` | 0.839 | 0.795 | 0.750 | 0.750 | 0.692 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 |
 | GuitarSet (180 takes), `dsp` | 0.721 | 0.662 | 0.531 | 0.347 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
-| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.449 | 0.827 | 0.686 | 0.766 | 0.999 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 |
 | GuitarSet (180 takes), `model` | 0.826 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
 
-The beat columns are the corrected-reference rows' again, within 0.001. Unrounded, the `dsp` Tiny AAM root is 0.83931 against its floor of 0.83942, the corrected-reference row's 0.84761 less the tonal-tail price of 0.00819: 0.01 pp under, accepted as a rounding-level miss. Its majmin, 0.79472, clears its floor of 0.79419. The model's 0.93895 and 0.92438 clear its corrected-reference row's 0.93877 and 0.92420. The octave check doubled no track on either dataset, at its chosen point or at any one-step neighbour of its two constants. The highest shares among tracks with 20 or more changes are 0.61 on Tiny AAM and 0.71 on GuitarSet.
+The pre-stage analyzer scores 0.848, 0.802, 0.758, 0.758, 0.700, 0.011, 0.032, 0.951, 0.324, 0.826, 0.686, 0.766 and 0.999 (`dsp`) and 0.939, 0.924, 0.857, 0.857, 0.800, 0.015, 0.032, 0.965, 0.442, 0.826, 0.686, 0.766 and 0.999 (`model`) on the same reference, which is what the floors start from. Unrounded, the `dsp` Tiny AAM root is 0.83937 against its floor of 0.83944, the pre-stage row's 0.84764 less the tonal-tail price of 0.00819: 0.007 pp under, accepted as a rounding-level miss. Its majmin, 0.79478, clears its floor of 0.79421. The model's 0.93886 and 0.92429 clear its pre-stage row's 0.93867 and 0.92411. The octave check doubled no track on either dataset, at its chosen point or at any one-step neighbour of its two constants. The highest shares among tracks with 20 or more changes are 0.61 on Tiny AAM and 0.71 on GuitarSet.
 
-Against the corrected-reference rows, the model's Tiny AAM root and majmin are within 0.02 pp: the grid is the same, and the per-beat Viterbi and the gate are the DSP's alone. The DSP's fall by 0.83 and 0.77 pp, and the tonal-tail price is 0.82 pp. That price is the reference `N` the gate now keeps as a chord, mostly ring-outs still tonal one period after the last annotated beat, which the level gate used to force to `N`. The rest of the stage nets to within 0.06 pp: the octave check doubled nothing, and the per-beat Viterbi reproduces librosa's path on a constant grid. Against the Stage II rows, the removal gave back what the tempo rule had gained on Tiny AAM, besides the CMLt above: 0.8 and 0.6 pp of the DSP's root and majmin, 0.5 and 0.6 pp of the model's. GuitarSet moved by at most 0.4 pp on any column.
+Against the pre-stage rows, the model's Tiny AAM root and majmin are within 0.02 pp: the grid is the same, and the per-beat Viterbi and the gate are the DSP's alone. The DSP's fall by 0.83 and 0.76 pp, and the tonal-tail price is 0.82 pp. That price is the reference `N` the gate now keeps as a chord, mostly ring-outs still tonal one beat after the last annotated beat, which the level gate used to force to `N`. The rest of the stage nets to within 0.06 pp: the octave check doubled nothing, and the per-beat Viterbi reproduces librosa's path on a constant grid. Against the commit that still had the tempo rule (Tiny AAM CMLt 0.785, `dsp` root and majmin 0.847 and 0.801, `model` 0.944 and 0.930, on the first version of the reference), the removal gave back what the rule had gained on Tiny AAM besides the CMLt: 0.8 and 0.6 pp of the DSP's root and majmin, 0.5 and 0.6 pp of the model's. GuitarSet moved by at most 0.4 pp on any column.
 
-Stage II's perturbations, decoded again at this commit and measured as in its table:
+The `N` gate's perturbations of the 20 Tiny AAM mixes, decoded by the `dsp` engine (the gate is the DSP's alone), with the level gate alone before the stage and the shipped analyzer after. They are made locally from the dataset's mixes and drum stems and never committed. `N` is the share of the perturbed region's beats labeled `N`, pooled over tracks; for the drum stem alone (19 tracks have one) it is the median stem's share over the beats where the stem sounds. Agreement is the share of beats labeled as in the same analyzer's decode of the unperturbed mix: inside the region for the quiet intros, outside it for the prepended drums and the appended silence. A beat is in a region when its midpoint is, except that the appended-silence bar reads beats by their start.
 
-| case | `N` | agreement | bar |
-|---|---|---|---|
-| first 20 s at -45 dB | 0.001 | 0.857 | held |
-| first 20 s at -55 dB | 0.001 | 0.855 | none |
-| the drum stem alone | 0.812 | — | held |
-| 10 s of the drum stem prepended | 0.791 | 0.978 | held |
-| 5 s of digital silence appended | 0.995 | 0.997 | `N` on 8 of 2720's 9 beats |
+| case | `N`, before | `N`, after | agreement, before | agreement, after | bar |
+|---|---|---|---|---|---|
+| first 20 s at -45 dB | 0.992 | 0.001 | 0.008 | 0.857 | `N` <= 0.10, agreement >= 0.6: held |
+| first 20 s at -55 dB | 0.993 | 0.001 | 0.007 | 0.855 | none |
+| the drum stem alone | 0.000 | 0.812 | — | — | `N` >= 0.70: held |
+| 10 s of the drum stem prepended | 0.029 | 0.791 | 0.979 | 0.978 | `N` >= 0.70, agreement >= 0.95: held |
+| 5 s of digital silence appended | 1.000 | 0.995 | 0.998 | 0.997 | every beat that starts in the silence is `N`: held, 174 of 174 |
 
-The appended-silence bar asks for `N` on every beat of every track. On 2720, the beat that starts 0.27 s before the silence has its midpoint 8 ms into it, and it keeps the last chord. Every beat that starts in the silence is `N`. It is the miss Stage II's margin table records at `TEMPO_WINDOW_SECONDS` 5, on another track. The lead accepted it as an artifact of assigning beats to regions by their midpoint: the beat starts while the last chord still sounds, so the bar now reads "every beat that starts in the appended silence is `N`", which holds on every track.
+Before, a quiet intro was `N` almost throughout and a drum stem never was. With the gate on tonal evidence, 0.1 % of the quiet intros' beats are `N`, at -45 dB and at -55 dB, and 86 % carry the chord the loud mix decodes there. The median drum stem is 81 % `N`, and 10 s of drums before the mix are 79 % `N` while the rest of the mix agrees with its own decode as before. In the appended silence 181 of the 182 beats whose midpoint is there are `N`; the one that is not, on 2720, starts 0.27 s before the silence and has its midpoint 8 ms into it, so it still sounds the last chord.
 
 ## Design decisions
 
@@ -584,7 +545,7 @@ A tonal beat with harmonic energy of its own is never forced, however quiet, bec
 
 Tiny AAM's N.C. over bass and drums stays a chord. The annotation means "no chord instrument", but to chordotomy a bass line is harmony, and its bass note is a product feature. On track 0080, whose reference is 39 % `N`, the DSP calls 0.1 % of the duration `N`.
 
-One known price: the corrected reference calls Tiny AAM's tails `N` from one period after the last annotated beat, and a ring-out still tonal there is now a chord. It costs the DSP about 0.8 pp of Tiny AAM root and majmin. So the DSP's Tiny AAM floor for the stage was its corrected-reference row less that price ("Current rows" under Evaluation).
+One known price: the corrected reference calls Tiny AAM's tails `N` from one beat after the last annotated beat, and a ring-out still tonal there is now a chord. It costs the DSP about 0.8 pp of Tiny AAM root and majmin. So the DSP's Tiny AAM floor for the stage was its corrected-reference row less that price ("Current rows" under Evaluation).
 
 ### One tempo per file, and a half-tempo grid doubled only against the chord changes
 
