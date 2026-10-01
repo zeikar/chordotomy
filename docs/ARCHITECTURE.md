@@ -436,6 +436,47 @@ The octave check at the commit that adds these rows. It doubled no track: none o
 
 The ten half-tempo tracks score 0.19 to 0.67: their halved grids sit in phase, or half in phase, with the chord changes, not between them, so the check leaves them, and their majmin with it equals their majmin with the tempo rule alone. Only 0080's majmin moved, with the tempo rule, which took its ratio from 2.018 to 1.513: 0.569 to 0.552 on the DSP and 0.600 to 0.599 on the model.
 
+### Stage II
+
+The tempo rule, the octave check, the per-beat Viterbi and the `N` gate, at the commit that adds these rows, on the corrected reference:
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.847 | 0.801 | 0.756 | 0.756 | 0.699 | 0.003 | 0.032 | 0.828 | 0.072 | 0.869 | 0.785 | 0.833 | 0.997 |
+| GuitarSet (180 takes), `dsp` | 0.722 | 0.660 | 0.530 | 0.346 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.520 | 0.410 | 0.566 | 1.005 |
+| Tiny AAM (20 tracks), `model` | 0.944 | 0.930 | 0.865 | 0.865 | 0.808 | 0.015 | 0.032 | 0.967 | 0.451 | 0.869 | 0.785 | 0.833 | 0.997 |
+| GuitarSet (180 takes), `model` | 0.826 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.520 | 0.410 | 0.566 | 1.005 |
+
+Every track's period equals its period in the octave check's run above, so the check doubled no track here either.
+
+Perturbations of the 20 Tiny AAM mixes, decoded by the `dsp` engine (the gate is the DSP's alone) at the corrected-reference rows' commit, before, and at this one, after. They are made locally from the dataset's mixes and drum stems and never committed. `N` is the share of the perturbed region's beats labeled `N`, pooled over tracks; for the drum stem alone (19 tracks have one) it is the median stem's share over the beats where the stem sounds. Agreement is the share of beats labeled as in the same commit's decode of the unperturbed mix: inside the region for the quiet intros, outside it for the prepended drums and the appended silence. A beat is in a region when its midpoint is.
+
+| case | `N`, before | `N`, after | agreement, before | agreement, after | bar |
+|---|---|---|---|---|---|
+| first 20 s at -45 dB | 0.992 | 0.001 | 0.008 | 0.854 | `N` ≤ 0.10, agreement ≥ 0.6 |
+| first 20 s at -55 dB | 0.993 | 0.001 | 0.007 | 0.852 | none |
+| the drum stem alone | 0.000 | 0.812 | — | — | `N` ≥ 0.70 |
+| 10 s of the drum stem prepended | 0.029 | 0.798 | 0.979 | 0.979 | `N` ≥ 0.70, agreement ≥ 0.95 |
+| 5 s of digital silence appended | 1.000 | 1.000 | 0.998 | 0.999 | `N` on every beat of every track |
+
+The margin of the eight constants this stage adds, each one grid step either way with the others at the chosen point. The suite is the default suite with the constant assigned at session start. The Tiny AAM rows are `evaluate.run`'s for both engines, with the model's frames served from a cache (`model.recognize` reads the signal alone). The perturbation bars are the table's above. The model's floors are its corrected-reference row. The DSP's are its corrected-reference row less the tonal-tail price, `N_ref` times the fall of `N_rec` from that row, 0.8 pp at the chosen point and at every neighbour.
+
+| constant (chosen) | down, up | suite | `dsp` root / majmin, down; up | `model` root / majmin, down; up | CMLt, down; up | perturbation bars, down; up |
+|---|---|---|---|---|---|---|
+| chosen point | | green | 0.847 / 0.801 | 0.944 / 0.930 | 0.785 | held |
+| `TEMPO_WINDOW_SECONDS` (10) | 5, 15 | green, green | 0.846 / 0.800; 0.844 / 0.798 | 0.943 / 0.929; 0.943 / 0.928 | 0.769; 0.794 | appended silence 10 of 11 beats `N` on 0620; held |
+| `TEMPO_DEPARTURE` (0.10) | 0.05, 0.15 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
+| `TEMPO_HOLD_SECONDS` (16) | 12, 20 | green, green | 0.845 / 0.799; 0.846 / 0.800 | 0.943 / 0.928; 0.944 / 0.929 | 0.766; 0.800 | held; held |
+| `OCTAVE_INSERTED_SHARE` (0.80) | 0.75, 0.85 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
+| `OCTAVE_MIN_CHANGES` (24) | 20, 28 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
+| `ONSET_FRACTION` (0.5) | 0.25, 0.75 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held; held |
+| `N_FLATNESS` (0.02) | 0.01, 0.03 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held (drum stem 0.823); drum stem 0.663 |
+| `N_HARMONIC_SHARE` (0.3) | 0.2, 0.4 | green, green | 0.847 / 0.801; 0.847 / 0.801 | 0.944 / 0.930; 0.944 / 0.930 | 0.785; 0.785 | held (drum stem 0.728); held (0.819) |
+
+The suite is green and both engines' Tiny AAM floors hold at all 16 neighbours, so no constant moved. The closest is `TEMPO_WINDOW_SECONDS` 15, 0.4 pp over the majmin floor on both engines. The octave constants' neighbours double no track: on Tiny AAM their rows are the chosen point's, and on GuitarSet the octave check's logged shares reach 0.708 among takes with 20 or more changes. The gate constants leave the grid and the model's rows alone, and `ONSET_FRACTION` changes nothing measured at either neighbour. Two neighbours miss a perturbation bar. At `N_FLATNESS` 0.03 the median drum stem is 0.663 `N` against the bar's 0.70. Stepping in to 0.01 would put 0.00 one step away, which costs GuitarSet 2.6 pp of majmin, so 0.03 is an allowed neighbour, bound by the drum-stem bar. At `TEMPO_WINDOW_SECONDS` 5 one of 0620's 11 appended-silence beats keeps the last chord: that window's grid starts the beat 0.23 s before the silence, and its midpoint falls 9 ms into it. Every beat that starts in the silence is `N`.
+
+Runtime of `chordotomy analyze` on the runtime table's 3-minute mix, before the stage and at this commit, measured in one session (the mean of two runs after a warm-up, start-up included): `dsp` 2.32 and 2.39 s per audio minute, the model 4.12 and 4.23, with peak RSS 0.99 and 2.36 GB at both commits. Both commits run faster in this session than in the table above, on the same machine and clip, so the stage's cost is the difference: 0.07 and 0.10 s per audio minute.
+
 ## Design decisions
 
 ### An analyzer, not a transcriber
