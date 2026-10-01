@@ -1,3 +1,5 @@
+import importlib.metadata
+import importlib.util
 import json
 import os
 import subprocess
@@ -372,3 +374,26 @@ def test_importing_the_cli_touches_no_librosa() -> None:
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
 
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("command", ["analyze", "evaluate"])
+def test_a_missing_package_version_is_an_error_not_a_traceback(
+    clip, tmp_path, monkeypatch, command
+) -> None:
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+    if command == "evaluate" and not all(
+        importlib.util.find_spec(name) for name in ("mir_eval", "pooch")
+    ):
+        pytest.skip("the eval extra is not installed")
+    args = [command, str(clip) if command == "analyze" else "tiny-aam", "--engine", "model"]
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "error:" in result.stderr
+    assert "uv sync --extra model" in result.stderr
+    assert "Traceback" not in result.output

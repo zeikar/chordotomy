@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. Its chords are major, minor, dominant 7th, major 7th, minor 7th, minor 6th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. The model engine's chords are major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; the DSP engine also recognizes minor 6th. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 

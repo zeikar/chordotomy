@@ -18,7 +18,7 @@ SUBMISSION_ON_EB = {
     "Eb:maj/b7": "D#:maj",
     "Eb:maj/2": "D#:maj",
     "Eb:sus4(b7)": "D#:sus4",
-    "Eb:sus2": "D#:maj",
+    "Eb:sus2": "A#:sus4",
     "Eb:sus4": "D#:sus4",
     "Eb:13": "D#:7",
     "Eb:11": "D#:7",
@@ -66,7 +66,7 @@ def test_every_dictionary_quality_is_mapped() -> None:
 
 
 def test_fold_sums_the_probability_of_every_name_on_a_label() -> None:
-    names = ["Eb:maj/3", "C:min9", "Eb:sus2"]
+    names = ["Eb:maj/3", "C:min9", "Eb:aug"]
     probability = np.array([[0.1, 0.2, 0.3], [0.4, 0.05, 0.01]])
 
     scores = fold(names, np.log(probability))

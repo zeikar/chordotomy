@@ -170,3 +170,10 @@ def test_evaluate_with_the_model_engine_prints_a_row(synth, tmp_path, monkeypatc
     assert result.exit_code == 0, result.output
     assert "engine: lv-chordia" in result.stderr
     assert any(line.startswith("0001") for line in result.stdout.splitlines())
+
+
+def test_a_missing_dictionary_is_an_engine_error(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(model.importlib.resources, "files", lambda package: tmp_path)
+
+    with pytest.raises(model.EngineError, match=r"_chord_list\.txt.*uv sync --extra model"):
+        model._decoder()

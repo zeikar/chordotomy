@@ -98,9 +98,9 @@ Each of the five nets has six heads, each a softmax per frame: the root and tria
 | `maj9` | `maj7` | the ninth |
 | `min9` | `min7` | the ninth |
 | `sus4(b7)` | `sus4` | the seventh |
-| `sus2` | `maj` | the suspension, a third where a second sounds; root and function stay |
-| `aug` | `maj` | the raised fifth; root and function stay |
-| `dim` | `dim7` | nothing, but it gains a diminished seventh: "dim" on a pop chart usually means the seventh chord, and a diatonic vii° in major then reads as a borrowed `vii°7` |
+| `X:sus2` | `sus4` on the root a fifth above X | nothing: the pitch set is the same (`C:sus2` is `G:sus4`), and the DSP bass shows it as an inversion when the bass is X |
+| `aug` | `maj` | the raised fifth; an approximation, root and function stay |
+| `dim` | `dim7` | an approximation: nothing is lost, but it gains a diminished seventh: "dim" on a pop chart usually means the seventh chord, and a diatonic vii° in major then reads as a borrowed `vii°7` |
 | `maj/3`, `maj/5`, `maj/b7`, `maj/2`, `min/b3`, `min/5`, `min/b7`, `min/2` | `maj`, `min` | the bass, which comes from `pick_bass` instead |
 
 On the two evaluation datasets the model emitted no `9`, `11`, `13`, `sus2`, `aug` or `sus4(b7)` at all. It emitted `dim` on 0.7 % of GuitarSet's duration, and a slash chord on 2.5 % of Tiny AAM's and 1.9 % of GuitarSet's. No quality maps to `min6`, so the model engine never calls one.

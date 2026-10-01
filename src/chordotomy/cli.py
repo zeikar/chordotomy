@@ -150,8 +150,8 @@ def analyze(
     if output.exists() and not force:
         raise _exists(output)
 
-    _announce(engine)
     try:
+        _announce(engine)
         result = timeline.analyze(audio, key=key, engine=engine.value)
     except (soundfile.LibsndfileError, NoBeatsError) as exc:
         raise _fail(f"{audio}: {exc}") from exc
@@ -200,8 +200,8 @@ def evaluate(
                 raise
             raise _fail("the evaluation needs the eval extra: uv sync --extra eval") from exc
 
-    _announce(engine)
     try:
+        _announce(engine)
         evaluation.run(dataset.value, limit, engine.value)
     except evaluation.DatasetError as exc:
         raise _fail(f"{dataset.value}: {exc}") from exc

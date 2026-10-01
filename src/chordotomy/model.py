@@ -25,7 +25,7 @@ import librosa
 import numpy as np
 from scipy.special import logsumexp
 
-from .chords import LABELS
+from .chords import LABELS, ROOTS
 from .features import HOP, SR
 from .harmony import FLATS
 
@@ -61,10 +61,10 @@ QUALITY = {
     "maj9": "maj7",  # loses the ninth
     "min9": "min7",  # loses the ninth
     "sus4(b7)": "sus4",  # loses the seventh
-    "sus2": "maj",  # keeps root and function, loses the suspension: a third where a second sounds
-    "aug": "maj",  # keeps root and function, loses the raised fifth
-    # "dim" on a pop chart usually means the seventh chord; a diatonic vii° in major then reads
-    # as a borrowed vii°7.
+    "sus2": "sus4",  # exact: to_label moves the root up a fifth, as C:sus2 is G:sus4
+    "aug": "maj",  # approximation: keeps root and function, loses the raised fifth
+    # Approximation: "dim" on a pop chart usually means the seventh chord, so this gains a
+    # diminished seventh; a diatonic vii° in major then reads as a borrowed vii°7.
     "dim": "dim7",
 }
 
@@ -80,7 +80,10 @@ def available() -> bool:
 
 def version() -> str:
     """The installed lv-chordia package version."""
-    return importlib.metadata.version("lv-chordia")
+    try:
+        return importlib.metadata.version("lv-chordia")
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise EngineError(f"lv-chordia's package metadata is missing; {_REINSTALL}") from exc
 
 
 def to_label(name: str) -> str:
@@ -91,7 +94,12 @@ def to_label(name: str) -> str:
     if name == "N":
         return name
     root, quality = name.split(":")
-    return f"{FLATS.get(root, root)}:{QUALITY[quality.partition('/')[0]]}"
+    root = FLATS.get(root, root)
+    quality = quality.partition("/")[0]
+    if quality == "sus2":
+        # C D G is G C D, the sus4 on the fifth; the DSP's bass then shows C as its inversion.
+        root = ROOTS[(ROOTS.index(root) + 7) % 12]
+    return f"{root}:{QUALITY[quality]}"
 
 
 def fold(names: list[str], logprob: np.ndarray) -> np.ndarray:
@@ -230,11 +238,20 @@ def _probabilities(cqt: np.ndarray) -> list[np.ndarray]:
 
 def _decoder():
     """The package's XHMMDecoder on the DICTIONARY chord list."""
-    from lv_chordia.extractors.xhmm_ismir import XHMMDecoder
+    try:
+        from lv_chordia.extractors.xhmm_ismir import XHMMDecoder
+    except ImportError as exc:
+        raise EngineError(
+            f"lv_chordia cannot be imported ({exc}); install the model extra with "
+            "`uv sync --extra model`, or pass --engine dsp"
+        ) from exc
 
     template = importlib.resources.files("lv_chordia") / "data" / f"{DICTIONARY}_chord_list.txt"
-    with importlib.resources.as_file(template) as path:
-        return XHMMDecoder(template_file=str(path))
+    try:
+        with importlib.resources.as_file(template) as path:
+            return XHMMDecoder(template_file=str(path))
+    except OSError as exc:
+        raise EngineError(f"{template} cannot be read ({exc!r}); {_REINSTALL}") from exc
 
 
 def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
