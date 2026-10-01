@@ -99,7 +99,7 @@ Common in J-pop, as passing chords in major:
 - **`vii°7/ii` → `ii`:** `#i°7`, C♯dim7 → Dm in C. Between I and ii it fills the whole step, often over a bass climbing C – C♯ – D.
 - **`viiø7/V` → `V`:** `#ivø7`, F♯m7♭5 → G in C, a push into the dominant.
 
-The analyzer spells a diminished chord by where it leads. A dim7's four notes are the notes of three other dim7s (C♯dim7, Edim7, Gdim7 and B♭dim7 sound the same), and a m6 has the notes of the m7♭5 a minor third below (Am6 is F♯m7♭5). When one of them leads into the next chord, the JSON names that one, unless an m6 has its own root in the bass. So a `candidates` entry with the same notes as `chord` is not a different sound, only the same notes spelled from another root. Don't present it as a misheard chord.
+The analyzer spells a diminished chord by where it leads. A dim7's four notes are the notes of three other dim7s (C♯dim7, Edim7, Gdim7 and B♭dim7 sound the same), and a m6 has the notes of the m7♭5 a minor third below (Am6 is F♯m7♭5). When one of them leads into the next chord, the JSON names that one, unless an m6 has its own root in the bass. The viewer doesn't respell: an `edited` chord is spelled as the user picked it, and a chord left alone keeps its spelling when the user changes the chord after it. So a `candidates` entry with the same notes as `chord` is not a different sound, only the same notes spelled from another root. Don't present it as a misheard chord.
 
 ## Borrowed chords (`role: borrowed`)
 
@@ -146,7 +146,7 @@ The chord is neither diatonic, nor a secondary dominant, nor borrowed. Describe 
 - **`IV7`:** a subdominant whose own seventh (E♭ over F in C) is the key's blue ♭3. It is common in blues.
 - **`#ivø7` that does not go to `V`:** F♯m7♭5 in C, the descending #IVm7♭5 → IV of J-pop. The root falls a half step to IV instead of rising to V.
 
-Chromatic labels are the likeliest extraction errors. When a segment's `candidates` include a diatonic chord, mention it as the alternative reading.
+Chromatic labels are the likeliest extraction errors, unless the segment is `edited`, in which case the chord is the user's. Otherwise, when a segment's `candidates` include a diatonic chord, mention it as the alternative reading.
 
 ## Inversions and bass lines
 

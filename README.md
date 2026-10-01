@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** everything on the roadmap below works except chord editing and manual entry. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. Its chords are major, minor, dominant 7th, major 7th, minor 7th, minor 6th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. Its chords are major, minor, dominant 7th, major 7th, minor 7th, minor 6th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 
@@ -25,7 +25,7 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 - [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
 - [x] Short explanations of the highlighted moves (a Claude Code skill)
 - [x] Viewer: playback that highlights the current chord
-- [ ] Chord editing and manual entry in the viewer
+- [x] Chord editing and manual entry in the viewer
 
 ## Usage
 
@@ -60,7 +60,17 @@ Open it at <https://zeikar.github.io/chordotomy/>, or open `viewer/index.html` f
 
 To check the chords by ear, turn on **Play chords**. The page plays each detected chord on every beat, with its bass note, under the recording. **Mute recording** leaves the chords on their own. The sound is synthesized in the browser.
 
-Space plays and pauses. → goes to the next chord. ← goes back to the start of the current chord, or to the chord before when it is already within a second of the start, so pressing it twice steps back. C turns the chords on and off, M mutes the recording, and clicking a chord jumps to it. Editing chords comes later.
+Space plays and pauses. → goes to the next chord. ← goes back to the start of the current chord, or to the chord before when it is already within a second of the start, so pressing it twice steps back. C turns the chords on and off, M mutes the recording, and clicking a chord jumps to it.
+
+### Editing
+
+The editor acts on the current chord. While you pick, it stays on that chord, even if playback moves on. **Root**, **Quality** and **Bass** set the chord and its bass note, and a pick applies at once. The chords the analyzer also heard are buttons: one click makes one of them the chord. **Split at beat** cuts the chord at the beat under the playhead. **Merge ←** and **Merge →** join it with the chord before or after, keeping its own chord and bass. **Delete** removes it, and a neighbour takes its beats. **Undo** and **Redo** step through the edits. The select under **Key** fixes the key, and **Estimated** goes back to the estimate. After every edit the page works out the key, numerals and roles again, as `chordotomy analyze` does, and marks the chords you changed.
+
+Chords start and end on the analyzer's beats. To enter a chord it missed, split where the chord starts and pick it; over silence, one pick enters a chord. There is no entering a progression from scratch: the beat grid comes from `chordotomy analyze`, so a timeline needs a recording's analysis first.
+
+**Save edited JSON** downloads the timeline with your edits, named after the opened file: `song.chords.json` saves as `song.edited.chords.json`, wherever your browser puts downloads. The opened file is never changed. Put the saved file next to the recording, and the `explain-harmony` skill reads it in place of the analyzer's. Until you save, the page shows **Unsaved edits** and asks before it closes or opens another timeline.
+
+S splits at the beat under the playhead, and Shift+← and Shift+→ step back or forward a beat to get there. Delete or Backspace deletes the chord. Ctrl+Z (⌘Z on a Mac) undoes, and Ctrl+Shift+Z (⌘⇧Z) or Ctrl+Y redoes. Held down, these keys act once. While a select has focus, keys go to it, not to the shortcuts.
 
 ## Development
 
@@ -75,6 +85,12 @@ node --test viewer/tests/
 ```
 
 The viewer is plain HTML, CSS, and JavaScript with no build step. Its tests need Node and no packages.
+
+The viewer re-analyzes edited chords with a JavaScript port of the Python harmonic analysis, and `tests/harmony_vectors.json` pins the port to it. After changing the analysis in Python, regenerate that file; pytest fails until you do:
+
+```sh
+uv run python tests/harmony_vectors.py
+```
 
 ### Real-audio evaluation (opt-in)
 

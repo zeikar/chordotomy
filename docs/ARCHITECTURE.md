@@ -1,6 +1,6 @@
 # Architecture
 
-Implemented so far: chords on the beat, key estimation and Roman-numeral analysis, the bass note and inversions, explanations through the `explain-harmony` skill, a viewer that plays the recording with its chords, and an opt-in evaluation on real audio. The chord vocabulary is v4. This records the design decided before the first line of code (2026-09-29) and the reasons behind it.
+Implemented so far: chords on the beat, key estimation and Roman-numeral analysis, the bass note and inversions, explanations through the `explain-harmony` skill, a viewer that plays the recording with its chords, chord editing in that viewer, and an opt-in evaluation on real audio. The chord vocabulary is v4. This records the design decided before the first line of code (2026-09-29) and the reasons behind it.
 
 ## Pipeline
 
@@ -28,7 +28,7 @@ viewer ←── chord-timeline JSON ←─────────────�
 - There is no ML: a whitened chroma from librosa's CQT and beat tracking, then templates for nine chord qualities, from triads to sevenths, a minor sixth and sus4. See "Whitened chroma and an energy-gated N" and "Chord vocabulary v4" under Design decisions.
 - The bass note comes from a low-register CQT of the mix. It settles slash chords and inversions (`F#7/A#`), which the chroma can't: it folds all octaves together and can't tell which note is lowest. See "Bass from DSP, not Demucs" under Design decisions.
 - Analysis marks secondary dominants, secondary leading-tone chords and borrowed chords. The analyzer writes no prose: the explanations come from a Claude Code skill that reads the JSON. See "Explanations from an agent skill" under Design decisions.
-- A Python CLI (uv, Typer) writes the JSON. A static HTML viewer (`viewer/`) plays the audio and highlights the current chord; correcting chords in it comes later.
+- A Python CLI (uv, Typer) writes the JSON. A static HTML viewer (`viewer/`) plays the audio, highlights the current chord, and corrects chords on the analyzer's beats, re-analyzing them in the browser. See "Editing in the viewer".
 
 ### Stages implemented
 
@@ -121,6 +121,8 @@ Two chords satisfy both rule 2 and rule 4, both in minor keys: the major triads 
 
 The function is set for diatonic chords only, by the degree, whatever the quality: `I`, `III`, `VI` are `tonic`; `II`, `IV` are `predominant`; `V`, `VII` are `dominant`. So `viiø7` and `#vii°7` are dominant, and `Vsus4` and `iiadd6` take their degree's function. `iii` and `vi` are tonic substitutes, and `VII` in minor is the subtonic dominant. Other roles have no function.
 
+The viewer re-analyzes edited chords with a JavaScript port of this analysis, `viewer/harmony.js`, pinned to the Python by golden vectors that `uv run python tests/harmony_vectors.py` writes to `tests/harmony_vectors.json`: pytest fails when the file no longer matches the Python, and `node --test viewer/tests/` replays every case through the port (see "Re-analysis in the browser, Python as the reference" under Design decisions).
+
 ## The chord-timeline JSON
 
 This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 5.
@@ -203,6 +205,34 @@ The schema is stable. Any change to the documented schema, an added field includ
 }
 ```
 
+## Editing in the viewer
+
+The viewer corrects a timeline that `chordotomy analyze` wrote. The editing model is `viewer/edit.js`: pure functions that take a timeline and return a new one, sharing the segments they didn't change. `viewer/app.js` wires them to the page.
+
+An edit acts on the current segment, the one under the playhead. A pick takes a moment, and playback may move on meanwhile. So while one of the Root, Quality and Bass selects has focus, or the pointer is pressed on it, the target is pinned to the segment that was current when that began. Split, Merge and Delete act on the segment that was current when their press began, for the same reason.
+
+There are five operations:
+
+- **Set a chord:** a chord and bass for one segment, from the selects or a candidate. `inversion` follows from the two. `candidates` stay what the analyzer heard, so its other readings stay on offer. Choosing the chord and bass the segment already has is not an edit.
+- **Split** at a beat strictly inside a segment. Both halves keep everything the segment had, `edited` included, since neither half's chord changed.
+- **Merge** a segment with the one before or after. It keeps its chord, bass and candidates over both spans.
+- **Delete** a segment. The one before takes its span, or the next one for the first segment. A lone segment can't be deleted: nothing would take its span, and setting it to `N` silences it.
+- **Set the key:** a key fixes it as `--key` does, with `source: given`, and Estimated estimates it again from the chords.
+
+An edit never merges neighbours that end up with the same chord. The analyzer writes such neighbours itself when the bass changes under a chord, a split would undo itself before the user could change one half, and the analysis already reads them as one chord run. Merging is explicit.
+
+Boundaries only move onto beats the analyzer found, so the viewer can correct a timeline but not start one. Segment times are read from `beats`, or `source.duration` at the end, as `chordotomy analyze` writes them. Nothing is computed, so an edit adds no rounding.
+
+Every edit ends in a re-analysis. The segments are grouped into chord runs, and `viewer/harmony.js`, the port of "Harmonic analysis", estimates the key again and recomputes every segment's numeral, role, function and target. A given key keeps its label, and only its candidates follow the chords. Diminished twins are not respelled: a chord the user picks is spelled as picked, and the others keep the analyzer's spelling. Opening a file doesn't re-analyze, so the analyzer's fields stand until the first edit.
+
+Undo keeps whole timelines, not inverse edits. They are small, and each snapshot shares the segments its edit didn't change. Undoing back to the timeline as opened or last saved gives back that very object, which is how the page knows nothing is unsaved. An edit that changes nothing adds no step.
+
+`edited` keeps the provenance: it marks a segment whose chord and bass are the user's, not the analyzer's. The field's row above says what each operation does to it. The `explain-harmony` skill reads it, so it doesn't present an edited chord's candidates as alternative readings.
+
+Saving downloads the timeline as `<stem>.edited.chords.json`, where `<stem>` is the opened file's name without `.chords.json`; an opened `.edited.chords.json` keeps its name. The file is a `Blob` downloaded through an `<a download>` link, because that works from `file://` in every browser and sends nothing anywhere. The viewer never writes to the file it opened, so what the analyzer wrote stays as it was, and the skill looks for the edited name first. The timeline counts as saved once the download starts; if the user cancels a browser's save dialog, the page can't tell.
+
+A batch of dropped or picked files opens whole or not at all, so the recording and the timeline shown are always a pair the user chose together. The timeline is read and validated before anything changes, every field of every segment included, so whatever opens can be drawn and edited. With unsaved edits the viewer asks once before it replaces them, and the browser asks before the page closes. A batch with only a recording replaces the recording and keeps the edits.
+
 ## Evaluation
 
 `chordotomy evaluate {tiny-aam,guitarset} [--limit N]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.
@@ -263,6 +293,12 @@ Chord extraction will sometimes be wrong, and the analysis is only as good as th
 ### Key from chords, not audio
 
 The key is estimated from the chord segments, not from the recording. Corrected or hand-entered chords then get the same analysis as extracted ones, and the estimator can be tested with plain progressions instead of synthesized audio.
+
+### Re-analysis in the browser, Python as the reference
+
+A corrected chord changes the key estimate, the numerals and the roles around it, and the viewer shows that at once. So the viewer runs the harmonic analysis itself, in a JavaScript port. It has to work opened from `file://`, with no build step and a CSP that allows no network, and the alternatives don't fit that. Pyodide would run the Python itself, but it is a large runtime loaded over the network and needs `wasm-unsafe-eval`. A local server would be one more thing to install and run. Saving the edits unanalyzed for the CLI to finish would not show the analysis while editing.
+
+The port is small: key estimation, numerals and roles, inversions, and the grouping into chord runs. Python stays the reference, and a rule changes there first. The golden vectors make drift a test failure on whichever side changed: pytest fails until the vectors are regenerated from the Python, and node fails until the port agrees with them.
 
 ### Local-first
 
