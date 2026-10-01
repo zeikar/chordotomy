@@ -17,7 +17,7 @@ import librosa
 import numpy as np
 from scipy.ndimage import convolve1d, median_filter
 
-from .chords import BASS_BINS, pick_bass
+from .chords import BASS_BINS, match, pick_bass, smooth
 
 SR = 22050
 HOP = 512
@@ -51,6 +51,15 @@ TEMPO_DEPARTURE = 0.10
 # constant-tempo Tiny AAM 2269 from CMLt .97 to .17, and the hold is what keeps such tracks on the
 # global tempo (the research's measured point).
 TEMPO_HOLD_SECONDS = 16
+# The octave check doubles the grid when at least this share of the chord changes decoded on the
+# doubled grid fall on its inserted beats. The synthesized half-lock scores 1.00 on 35 changes;
+# tracks whose grid is right (period ratio within 10 % of 1) score up to 0.34 on Tiny AAM and 0.71
+# on GuitarSet takes with 24 or more changes, so a step either way flags none (0.70 would flag two).
+# One-beat chords under a half lock score 0.50, so they are not covered.
+OCTAVE_INSERTED_SHARE = 0.80
+# With fewer changes the share is noise: an 84 BPM GuitarSet take whose grid is right scores 0.84
+# on 19, which 16 would flag. A step either way stays clear of it and under the half-lock's 35.
+OCTAVE_MIN_CHANGES = 24
 
 
 def _ramp(midi: np.ndarray, start: float, end: float) -> np.ndarray:
@@ -140,8 +149,8 @@ def _tempo_curve(onset: np.ndarray) -> np.ndarray | None:
     size = int(TEMPO_WINDOW_SECONDS * SR / HOP) | 1  # odd, so the window is centred
     curve = 2 ** median_filter(np.log2(local), size=size, mode="nearest")
     # Folded to the nearest octave: the tempogram's choice of metrical level is arbitrary, and a
-    # 2:1 "change" is the same pulse counted at another level. A grid locked at half tempo is a
-    # different failure, which this rule leaves alone.
+    # 2:1 "change" is the same pulse counted at another level. A grid locked at half tempo is the
+    # octave check's (_too_slow).
     ratio = np.log2(curve / tempo)
     departs = np.abs(ratio - np.round(ratio)) > np.log2(1 + TEMPO_DEPARTURE)
     longest = max((sum(1 for _ in run) for away, run in groupby(departs) if away), default=0)
@@ -165,6 +174,76 @@ def _extend(beat_frames: np.ndarray, n_frames: int, tempo: float) -> np.ndarray:
     head = np.arange(beat_frames[0] % head_gap, beat_frames[0], head_gap)
     tail = np.arange(beat_frames[-1] + tail_gap, n_frames - tail_gap // 2, tail_gap)
     return np.concatenate([head, beat_frames, tail])
+
+
+def _double(beat_frames: np.ndarray, n_frames: int, tempo: float) -> tuple[np.ndarray, int]:
+    """The tracker's grid at twice its tempo, and the parity of the tracker's beats in it.
+
+    A beat is inserted at every midpoint, and the grid is extended at half the edge gaps (twice
+    the tempo, for a single beat). The extension alternates too, so every beat at the other
+    parity is an inserted one.
+    """
+    doubled = np.sort(np.concatenate([beat_frames, (beat_frames[:-1] + beat_frames[1:]) // 2]))
+    frames = _extend(doubled, n_frames, 2 * tempo)
+    return frames, int(np.searchsorted(frames, beat_frames[0])) % 2
+
+
+def _sync(
+    boundaries: list[int], whitened: np.ndarray, cqt: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Treble and bass chroma and the bass CQT per beat between boundaries, as in Features."""
+    treble_window, bass_window, fold = _windows()
+    # No max-normalisation: the correlation that scores these is scale-free.
+    treble = librosa.util.sync(
+        (fold * treble_window) @ whitened, boundaries, aggregate=np.median, pad=False
+    )
+    bass = librosa.util.sync(
+        (fold * bass_window) @ whitened, boundaries, aggregate=np.median, pad=False
+    )
+    cqt = librosa.util.sync(cqt, boundaries, aggregate=np.median, pad=False)
+    # The reference is the file's loudest bin anywhere, not the register's own maximum, so a file
+    # with no bass never sets its own reference from leakage: what survives in its register is
+    # leakage slopes under real notes above, which the peak test rejects. Zeroed rather than
+    # lifted by an additive floor, because a flat column would make C1 the lowest peak.
+    cqt[:, cqt[:BASS_BINS].max(axis=0) < SILENCE_FLOOR * cqt.max()] = 0.0
+    # The bass correlation is scale-free, so on a beat with no bass note the leakage under a chord
+    # above the register would vote at full strength (it pulls a bass-less C:maj toward C:maj7).
+    bass[:, np.array([pick_bass(column) is None for column in cqt.T])] = 0.0
+    return treble, bass, cqt
+
+
+def _changes_between(states: np.ndarray, parity: int) -> bool:
+    """Whether the chord changes decoded on a doubled grid fall between the tracker's beats.
+
+    states is one label per beat of the doubled grid, and the tracker's beats sit at parity. True
+    when at least OCTAVE_MIN_CHANGES changes were decoded and at least OCTAVE_INSERTED_SHARE of
+    them start on inserted beats.
+    """
+    starts = np.flatnonzero(np.diff(states)) + 1
+    return (
+        len(starts) >= OCTAVE_MIN_CHANGES and np.mean(starts % 2 != parity) >= OCTAVE_INSERTED_SHARE
+    )
+
+
+def _too_slow(treble: np.ndarray, bass: np.ndarray, durations: np.ndarray, parity: int) -> bool:
+    """Whether the tracker has locked at half tempo with the chord changes between its beats.
+
+    treble and bass are synced on the doubled grid from _double, durations are its (n - 1,) gaps
+    in seconds, and parity is its tracker beats' parity. The DSP's own decode places the chord
+    changes on that grid, and when they fall on the inserted beats (_changes_between), the
+    tracker's grid would merge the chords on either side of each change. A half-tempo grid in
+    phase with the changes is left: each chord is one beat on it, and the decoder keeps a one-beat
+    change to a distinct chord, so it costs granularity, not labels.
+
+    Two limits. Under a half lock, one-beat chords at the true tempo change on inserted and
+    tracker beats alike (a share of 0.50), so that lock is not caught. And a grid at double tempo
+    is never halved: it loses no chord, since CHORD_SECONDS is in seconds, while halving a grid
+    could merge real two-beat chords.
+    """
+    # No beat is gated: the check asks where the chords change, the level belongs to the grid that
+    # is kept, and digital silence's flat chroma decodes as N without the gate.
+    states = smooth(match(treble, bass), np.zeros(treble.shape[1]), durations)
+    return _changes_between(states, parity)
 
 
 def beat_features(y: np.ndarray) -> Features:
@@ -218,38 +297,31 @@ def beat_features(y: np.ndarray) -> Features:
         )
     )
     n_frames = chord_cqt.shape[1]
-    beat_frames = _extend(beat_frames, n_frames, tempo)
-
-    boundaries = list(beat_frames) + [n_frames]
-    treble_window, bass_window, fold = _windows()
     whitened = _whiten(chord_cqt)
-    # No max-normalisation: the correlation that scores these is scale-free.
-    treble = librosa.util.sync(
-        (fold * treble_window) @ whitened, boundaries, aggregate=np.median, pad=False
-    )
-    bass = librosa.util.sync(
-        (fold * bass_window) @ whitened, boundaries, aggregate=np.median, pad=False
-    )
+    # The octave check: the doubled grid is read first, and kept with its features when the
+    # tracker's beats fall between the chord changes.
+    doubled, parity = _double(beat_frames, n_frames, tempo)
+    boundaries = list(doubled) + [n_frames]
+    treble, bass, beat_cqt = _sync(boundaries, whitened, cqt)
+    durations = np.diff(librosa.frames_to_time(doubled, sr=SR, hop_length=HOP))
+    if _too_slow(treble, bass, durations, parity):
+        beat_frames = doubled
+    else:
+        beat_frames = _extend(beat_frames, n_frames, tempo)
+        boundaries = list(beat_frames) + [n_frames]
+        treble, bass, beat_cqt = _sync(boundaries, whitened, cqt)
+
     rms = librosa.util.sync(
         librosa.feature.rms(y=harmonic, hop_length=HOP), boundaries, aggregate=np.median, pad=False
     )[0]
     # Relative to a high percentile rather than the maximum, so one loud hit cannot push a quiet
     # intro under the N gate. Digital silence lands at librosa's -80 dB floor.
     level = librosa.amplitude_to_db(rms, ref=np.percentile(rms, 95))
-    cqt = librosa.util.sync(cqt, boundaries, aggregate=np.median, pad=False)
-    # The reference is the file's loudest bin anywhere, not the register's own maximum, so a file
-    # with no bass never sets its own reference from leakage: what survives in its register is
-    # leakage slopes under real notes above, which the peak test rejects. Zeroed rather than
-    # lifted by an additive floor, because a flat column would make C1 the lowest peak.
-    cqt[:, cqt[:BASS_BINS].max(axis=0) < SILENCE_FLOOR * cqt.max()] = 0.0
-    # The bass correlation is scale-free, so on a beat with no bass note the leakage under a chord
-    # above the register would vote at full strength (it pulls a bass-less C:maj toward C:maj7).
-    bass[:, np.array([pick_bass(column) is None for column in cqt.T])] = 0.0
     return Features(
         times=librosa.frames_to_time(beat_frames, sr=SR, hop_length=HOP),
         frames=beat_frames,
         treble=treble,
         bass=bass,
-        cqt=cqt,
+        cqt=beat_cqt,
         level=level,
     )

@@ -3,8 +3,17 @@ import numpy as np
 import pytest
 import soundfile
 
+from chordotomy import features
 from chordotomy.chords import LABELS, N_GATE_DB, match, pick_bass
-from chordotomy.features import HOP, SR, Features, NoBeatsError, beat_features, load_audio
+from chordotomy.features import (
+    HOP,
+    SR,
+    Features,
+    NoBeatsError,
+    _changes_between,
+    beat_features,
+    load_audio,
+)
 
 
 def _labels(f: Features) -> list[str]:
@@ -111,6 +120,25 @@ def test_the_grid_extends_at_the_edge_gaps(synth, monkeypatch) -> None:
     assert len(head) == 3 and len(tail) == 3
     assert np.allclose(head, 0.5, atol=HOP / SR)
     assert np.allclose(tail, 0.75, atol=HOP / SR)
+
+
+def _changes_at(starts) -> np.ndarray:
+    """States over 100 doubled-grid beats whose chord changes start at the given beats."""
+    return np.cumsum(np.isin(np.arange(100), list(starts)))
+
+
+def test_too_slow_reads_the_change_positions() -> None:
+    # Read when the test runs, so a margin run that assigns the constant is tested at its value.
+    end = 2 * features.OCTAVE_MIN_CHANGES + 1
+    # Parity 0: the tracker's beats are the even ones, the inserted ones odd.
+    assert _changes_between(_changes_at(range(1, end, 2)), 0)
+    # The same changes on the tracker's beats.
+    assert not _changes_between(_changes_at(range(1, end, 2)), 1)
+    # One change short of OCTAVE_MIN_CHANGES.
+    assert not _changes_between(_changes_at(range(1, end - 2, 2)), 0)
+    # Twice as many changes, half of them on inserted beats.
+    assert not _changes_between(_changes_at(range(1, end)), 0)
+    assert not _changes_between(_changes_at([]), 0)
 
 
 def _basses(cqt: np.ndarray) -> list[str | None]:

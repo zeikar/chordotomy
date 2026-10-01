@@ -401,6 +401,41 @@ And of every GuitarSet take whose ratio is within 10 % of 2 (nine: eight jazz ta
 
 The zeros say little. 03_Jazz1-200 and 05_Jazz1-200 have no reference chord that `majmin` compares (each omits its root or fifth, or is a sus chord), and mir_eval scores an empty comparison as 0. 03_Jazz3-137 has one, a 1.75 s `G:min7/b7` out of 28 s, which both engines miss.
 
+### The octave check
+
+The octave check at the commit that adds these rows. It doubled no track: none of Tiny AAM's 20 (one, 0080, had a ratio within 10 % of 2 on the grid above) and none of GuitarSet's 180 (nine had). So there is no false trigger among the tracks whose ratio was within 10 % of 1 (16 and 104), and every overall row is the tempo rule's alone. The half- and double-tempo tracks of the tables above and Tiny AAM's multi-tempo tracks, each period and majmin cell reading: on the grid above / with the tempo rule / with the octave check. `changes` is the number of chord changes decoded on the doubled grid and `share` the share of them on inserted beats; the check doubles at 24 changes and 0.80. The model's columns are scored from its cached frames, which reproduce the CLI's rows within 0.001.
+
+| | group | period | changes | share | majmin, `dsp` | majmin, `model` |
+|---|---|---|---|---|---|---|
+| 0080 | half tempo, multi-tempo | 2.018 / 1.513 / 1.513 | 78 | 0.19 | 0.569 / 0.552 / 0.552 | 0.600 / 0.599 / 0.599 |
+| 01_BN2-166-Ab_comp | half tempo | 1.992 / 1.992 / 1.992 | 16 | 0.19 | 0.528 / 0.528 / 0.528 | 0.500 / 0.500 / 0.500 |
+| 02_Jazz1-200-B_comp | half tempo | 2.013 / 2.013 / 2.013 | 6 | 0.67 | 0.900 / 0.900 / 0.900 | 0.900 / 0.900 / 0.900 |
+| 02_Jazz3-150-C_comp | half tempo | 1.975 / 1.975 / 1.975 | 18 | 0.67 | 0.601 / 0.601 / 0.601 | 0.623 / 0.623 / 0.623 |
+| 03_Jazz1-200-B_comp | half tempo | 1.897 / 1.897 / 1.897 | 14 | 0.57 | 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 |
+| 03_Jazz3-137-Eb_comp | half tempo | 1.961 / 1.379 / 1.379 | 35 | 0.49 | 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 |
+| 04_Jazz1-200-B_comp | half tempo | 1.937 / 1.937 / 1.937 | 22 | 0.41 | 0.445 / 0.445 / 0.445 | 0.803 / 0.803 / 0.803 |
+| 04_Jazz2-187-F#_comp | half tempo | 1.954 / 1.954 / 1.954 | 30 | 0.33 | 0.395 / 0.395 / 0.395 | 0.612 / 0.612 / 0.612 |
+| 04_Jazz3-150-C_comp | half tempo | 2.030 / 2.030 / 2.030 | 40 | 0.60 | 0.490 / 0.490 / 0.490 | 0.604 / 0.604 / 0.604 |
+| 05_Jazz1-200-B_comp | half tempo | 1.937 / 1.937 / 1.937 | 20 | 0.65 | 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 |
+| 2462 | double tempo, multi-tempo | 0.488 / 0.488 / 0.488 | 91 | 0.08 | 0.905 / 0.905 / 0.905 | 0.981 / 0.981 / 0.981 |
+| 02_SS1-68-E_comp | double tempo | 0.500 / 0.500 / 0.500 | 10 | 0.50 | 0.976 / 0.981 / 0.981 | 0.989 / 0.985 / 0.985 |
+| 04_SS1-68-E_comp | double tempo | 0.500 / 0.500 / 0.500 | 6 | 0.50 | 0.997 / 0.997 / 0.997 | 0.993 / 0.993 / 0.993 |
+| 03_Funk3-98-A_comp | double tempo | 0.493 / 0.493 / 0.493 | 53 | 0.53 | 0.634 / 0.634 / 0.634 | 0.693 / 0.693 / 0.693 |
+| 04_Funk3-98-A_comp | double tempo | 0.493 / 0.493 / 0.493 | 64 | 0.56 | 0.230 / 0.230 / 0.230 | 0.522 / 0.522 / 0.522 |
+| 05_Funk3-98-A_comp | double tempo | 0.493 / 0.493 / 0.493 | 46 | 0.46 | 0.189 / 0.189 / 0.189 | 0.407 / 0.407 / 0.407 |
+| 04_Rock2-85-F_comp | double tempo | 0.493 / 0.493 / 0.493 | 34 | 0.35 | 0.923 / 0.923 / 0.923 | 0.989 / 0.989 / 0.989 |
+| 0192 | multi-tempo | 0.978 / 1.029 / 1.029 | 51 | 0.29 | 0.956 / 0.950 / 0.950 | 0.960 / 0.960 / 0.960 |
+| 0620 | multi-tempo | 1.000 / 0.998 / 0.998 | 117 | 0.16 | 0.907 / 0.923 / 0.923 | 0.959 / 0.970 / 0.970 |
+| 1014 | multi-tempo | 0.985 / 0.987 / 0.987 | 108 | 0.11 | 0.910 / 0.905 / 0.905 | 0.960 / 0.962 / 0.962 |
+| 1050 | multi-tempo | 1.505 / 0.961 / 0.961 | 79 | 0.27 | 0.849 / 0.970 / 0.970 | 0.888 / 0.970 / 0.970 |
+| 1711 | multi-tempo | 1.009 / 1.009 / 1.009 | 81 | 0.21 | 0.804 / 0.804 / 0.804 | 0.985 / 0.985 / 0.985 |
+| 1941 | multi-tempo | 0.657 / 0.657 / 0.657 | 153 | 0.15 | 0.802 / 0.793 / 0.793 | 0.897 / 0.885 / 0.885 |
+| 2720 | multi-tempo | 1.013 / 1.012 / 1.012 | 250 | 0.30 | 0.576 / 0.569 / 0.569 | 0.859 / 0.868 / 0.868 |
+| 2828 | multi-tempo | 1.008 / 0.683 / 0.683 | 130 | 0.49 | 0.391 / 0.395 / 0.395 | 0.831 / 0.840 / 0.840 |
+| 2990 | multi-tempo | 1.013 / 1.012 / 1.012 | 223 | 0.29 | 0.626 / 0.635 / 0.635 | 0.896 / 0.901 / 0.901 |
+
+The ten half-tempo tracks score 0.19 to 0.67: their halved grids sit in phase, or half in phase, with the chord changes, not between them, so the check leaves them, and their majmin with it equals their majmin with the tempo rule alone. Only 0080's majmin moved, with the tempo rule, which took its ratio from 2.018 to 1.513: 0.569 to 0.552 on the DSP and 0.600 to 0.599 on the model.
+
 ## Design decisions
 
 ### An analyzer, not a transcriber

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import soundfile
 
-from chordotomy import __version__, model, timeline
+from chordotomy import __version__, features, model, timeline
 from chordotomy.chords import LABELS
 from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.timeline import analyze
@@ -354,13 +354,13 @@ def test_edge_silence_is_n(synth, tmp_path) -> None:
 CYCLE = ("C:maj", "F:maj", "G:maj", "A:min", "D:min", "E:min")
 
 
-def _two_beat_chords(synth, sections: list[tuple[float, int]]):
-    """Two-beat chords cycling through CYCLE, (bpm, n_chords) per section, and every strike's time
-    and chord."""
+def _two_beat_chords(render, sections: list[tuple[float, int]]):
+    """Two-beat chords cycling through CYCLE, (bpm, n_chords) per section, rendered by `synth` or
+    `half_locked`, and every strike's time and chord."""
     clips, strikes, struck, start, chords = [], [], [], 0.0, 0
     for bpm, n in sections:
         progression = [(CYCLE[(chords + i) % len(CYCLE)], 2) for i in range(n)]
-        clips.append(synth(progression, bpm=bpm))
+        clips.append(render(progression, bpm=bpm))
         strikes += [start + k * 60 / bpm for k in range(2 * n)]
         struck += [label for label, n_beats in progression for _ in range(n_beats)]
         start += 2 * n * 60 / bpm
@@ -372,6 +372,17 @@ def _nearest(beats: np.ndarray, times: np.ndarray) -> np.ndarray:
     """The index of each time's nearest beat."""
     i = np.clip(np.searchsorted(beats, times), 1, len(beats) - 1)
     return np.where(times - beats[i - 1] < beats[i] - times, i - 1, i)
+
+
+def _matched(result: dict, strikes: np.ndarray, struck: list[str]) -> tuple[float, float]:
+    """The share of strikes with a beat within 70 ms, and the share of those beats that carry the
+    chord struck on them."""
+    beats = np.array(result["beats"])
+    nearest = _nearest(beats, strikes)
+    hit = np.abs(beats[nearest] - strikes) <= 0.07
+    labels = [s["chord"] for s in result["segments"] for _ in range(s["start_beat"], s["end_beat"])]
+    correct = [labels[i] == chord for i, chord, h in zip(nearest, struck, hit, strict=True) if h]
+    return float(hit.mean()), float(np.mean(correct))
 
 
 @pytest.fixture
@@ -395,28 +406,44 @@ def test_the_grid_follows_a_sustained_tempo_change(synth, tracked, tmp_path) -> 
     result = analyze(_write(tmp_path, y))
 
     assert isinstance(tracked["bpm"], np.ndarray)
-    beats = np.array(result["beats"])
-    nearest = _nearest(beats, strikes)
-    hit = np.abs(beats[nearest] - strikes) <= 0.07
-    labels = [s["chord"] for s in result["segments"] for _ in range(s["start_beat"], s["end_beat"])]
-    correct = [labels[i] == chord for i, chord, h in zip(nearest, struck, hit, strict=True) if h]
+    hit, correct = _matched(result, strikes, struck)
     # Measured: 95 of 96 strikes have a beat within 70 ms (58 at the global tempo alone), and
     # every matched beat carries the chord struck on it.
-    assert hit.mean() >= 0.9, hit.mean()
-    assert np.mean(correct) >= 0.9, np.mean(correct)
+    assert hit >= 0.9, hit
+    assert correct >= 0.9, correct
 
 
 def test_a_constant_tempo_keeps_the_global_grid(synth, tracked, tmp_path) -> None:
-    y, strikes, _ = _two_beat_chords(synth, [(120, 48)])
+    y, strikes, struck = _two_beat_chords(synth, [(120, 48)])
 
     result = analyze(_write(tmp_path, y))
 
     assert tracked["bpm"] is None
-    beats = np.array(result["beats"])
-    hit = np.abs(beats[_nearest(beats, strikes)] - strikes) <= 0.07
+    hit, _ = _matched(result, strikes, struck)
     # Measured: all 96 strikes hit, on 96 beats.
-    assert hit.mean() >= 0.95, hit.mean()
-    assert abs(len(beats) - len(strikes)) <= 2, (len(beats), len(strikes))
+    assert hit >= 0.95, hit
+    # The octave check's negative case too: two-beat changes on the tracker's beats keep its grid.
+    assert abs(len(result["beats"]) - len(strikes)) <= 2, (len(result["beats"]), len(strikes))
+
+
+def test_a_half_tempo_lock_is_doubled(half_locked, tmp_path, monkeypatch) -> None:
+    # 72 beats of 0.333 s, 24 s, 35 chord changes: above OCTAVE_MIN_CHANGES.
+    y, strikes, struck = _two_beat_chords(half_locked, [(180, 36)])
+    path = _write(tmp_path, y)
+
+    hit, correct = _matched(analyze(path), strikes, struck)
+
+    # Measured: 71 of 72 strikes hit, on 71 beats of a median 0.325 s, and every matched beat
+    # carries the chord struck on it.
+    assert hit >= 0.9, hit
+    assert correct >= 0.9, correct
+
+    monkeypatch.setattr(features, "OCTAVE_MIN_CHANGES", 10_000)
+    hit, _ = _matched(analyze(path), strikes, struck)
+
+    # Measured with the check off: librosa's half lock, 36 beats of 0.673 s on the drummed beats,
+    # so 50 % of the strikes hit and 6 % of the matched beats carry their chord.
+    assert hit <= 0.6, hit
 
 
 def test_all_silent_audio_has_no_beats(tmp_path) -> None:
@@ -475,6 +502,9 @@ def test_a_mix_like_clip_keeps_its_chords(mix, chord_at, tmp_path) -> None:
 
     segments = result["segments"]
     beats = result["beats"]
+    # Measured: the octave check decodes 3 changes here, none between the tracker's beats, so the
+    # grid stays at 120 BPM (17 beats).
+    assert abs(len(beats) - 16) <= 2, len(beats)
     assert "N" not in [s["chord"] for s in segments], [s["chord"] for s in segments]
     correct = total = 0
     for s in segments:

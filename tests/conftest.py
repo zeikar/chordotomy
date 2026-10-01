@@ -111,6 +111,44 @@ def chord_at() -> Callable[[Progression, float], str]:
     return label_at
 
 
+def _kick() -> np.ndarray:
+    """A kick drum: a sine swept from 150 down to 50 Hz over 80 ms."""
+    t = np.arange(int(0.08 * SR)) / SR
+    # Exponential sweep 150 -> 50 Hz: the phase is the integral of the frequency.
+    rate = np.log(50 / 150) / 0.08
+    return np.sin(2 * np.pi * 150 * (np.exp(rate * t) - 1) / rate) * np.exp(-t / 0.05)
+
+
+def _hat(rng: np.random.Generator) -> np.ndarray:
+    """A hi-hat: a 30 ms burst of white noise."""
+    return rng.standard_normal(int(0.03 * SR)) * 0.3
+
+
+@pytest.fixture
+def half_locked() -> Callable[[list[tuple[str, int]], float], np.ndarray]:
+    """A progression rendered like `synth`, with a kick and a hat struck on every odd beat.
+
+    The drums on the beats between two-beat chord changes make librosa lock at half tempo, on the
+    drummed beats, so the changes fall between its beats (measured for this plan at 160, 180 and
+    200 BPM). Seeded, so the clip is identical on every run.
+    """
+    rng = np.random.default_rng(0)
+
+    def make(progression: list[tuple[str, int]], bpm: float) -> np.ndarray:
+        beats = [
+            _strike(label, beat=60 / bpm) for label, n_beats in progression for _ in range(n_beats)
+        ]
+        kick = _kick()
+        for beat in beats[1::2]:
+            beat[: len(kick)] += kick
+            hat = _hat(rng)
+            beat[: len(hat)] += hat
+        y = np.concatenate(beats)
+        return (y / np.abs(y).max() * 0.5).astype(np.float32)
+
+    return make
+
+
 DETUNE = 2 ** (0.4 / 12)  # +40 cents: real recordings are never at A440 to the cent
 
 
@@ -146,12 +184,7 @@ def mix() -> Callable[[Progression], np.ndarray]:
         envelope = np.minimum(t / 0.005, 1.0) * (0.4 + 0.6 * np.exp(-t / 0.4))
         eighth = n // 2
         t8 = t[:eighth]
-        hat_len = int(0.03 * SR)
-        kick_len = int(0.08 * SR)
-        tk = np.arange(kick_len) / SR
-        # Exponential sweep 150 -> 50 Hz: the phase is the integral of the frequency.
-        rate = np.log(50 / 150) / 0.08
-        kick = np.sin(2 * np.pi * 150 * (np.exp(rate * tk) - 1) / rate) * np.exp(-tk / 0.05)
+        kick = _kick()
         beats = []
         for label, n_beats, *_ in progression:
             root_pc = ROOT_NAMES.index(label.split(":")[0])
@@ -162,8 +195,9 @@ def mix() -> Callable[[Progression], np.ndarray]:
                 for offset, step in ((0, 2), (eighth, 5)):
                     melody = 60 + root_pc + step
                     beat[offset : offset + eighth] += 0.8 * _partials(t8, melody, 8, rng, 0.15)
-                    beat[offset : offset + hat_len] += rng.standard_normal(hat_len) * 0.3
-                beat[:kick_len] += kick
+                    hat = _hat(rng)
+                    beat[offset : offset + len(hat)] += hat
+                beat[: len(kick)] += kick
                 beat += rng.standard_normal(n) * 0.2 * np.abs(beat).max()
                 beats.append(beat)
         y = np.concatenate(beats)
