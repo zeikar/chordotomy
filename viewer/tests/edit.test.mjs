@@ -106,9 +106,15 @@ const assertFieldOrder = (timeline) => {
 };
 const spans = (timeline) => timeline.segments.map((s) => [s.start_beat, s.end_beat]);
 
-test("upgrade turns a schema-4 timeline into a 5 with nothing edited", () => {
-  assert.equal(base.schema_version, 5);
+test("upgrade turns a schema-4 timeline into a 6 by the DSP with nothing edited", () => {
+  assert.equal(base.schema_version, 6);
   assert.deepEqual(Object.keys(base), Object.keys(v4));
+  // In the CLI's order: the engine follows the chordotomy version, which is the DSP's.
+  assert.deepEqual(Object.entries(base.generator), [
+    ["name", "chordotomy"],
+    ["version", "0.0.0"],
+    ["engine", { name: "dsp", version: "0.0.0" }],
+  ]);
   assert.ok(base.segments.every((segment) => segment.edited === false));
   base.segments.forEach((segment, index) => {
     const { edited, ...rest } = segment;
@@ -116,6 +122,23 @@ test("upgrade turns a schema-4 timeline into a 5 with nothing edited", () => {
   });
   assertFieldOrder(base);
   assert.equal(Edit.upgrade(base), base);
+});
+
+test("upgrade turns a schema-5 timeline into a 6 by the DSP, keeping its edits", () => {
+  const v5 = deepFreeze({
+    ...setChord(base, 2, "D:7", "F#"),
+    schema_version: 5,
+    generator: { name: "chordotomy", version: "0.1.0" },
+  });
+  const upgraded = Edit.upgrade(v5);
+  assert.equal(upgraded.schema_version, 6);
+  assert.deepEqual(upgraded.generator, {
+    name: "chordotomy",
+    version: "0.1.0",
+    engine: { name: "dsp", version: "0.1.0" },
+  });
+  assert.equal(upgraded.segments, v5.segments);
+  assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
 });
 
 test("reanalyze leaves an analyzer-written timeline as it was", () => {
@@ -369,9 +392,21 @@ test("serialize writes the file as the CLI does", () => {
   const timeline = setChord(base, 1, "F#:hdim7", "F#");
   const text = Edit.serialize(timeline);
   assert.deepEqual(JSON.parse(text), timeline);
-  assert.ok(text.startsWith('{\n  "schema_version": 5,\n'));
+  assert.ok(text.startsWith('{\n  "schema_version": 6,\n'));
   assert.ok(text.endsWith("}\n"));
   assert.ok(text.includes('"numeral": "viiø7/V"'));
+});
+
+test("a 6 keeps the engine it was read with, through an edit to the saved file", () => {
+  const generator = {
+    name: "chordotomy",
+    version: "0.0.0",
+    engine: { name: "lv-chordia", version: "1.1.0" },
+  };
+  const model = deepFreeze({ ...base, generator });
+  assert.equal(Edit.upgrade(model), model);
+  const saved = JSON.parse(Edit.serialize(setChord(model, 1, "F#:hdim7", "F#")));
+  assert.deepEqual(Object.entries(saved.generator), Object.entries(generator));
 });
 
 test("the save name is the audio stem plus .edited.chords.json", () => {

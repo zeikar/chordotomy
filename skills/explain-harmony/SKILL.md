@@ -20,7 +20,7 @@ The input is an audio file or an existing `*.chords.json`.
 
 Choose the command by what is installed, and run it once. An analysis error is not a reason to try another command.
 
-1. `uv` is on `PATH`: `uv run --project "${CLAUDE_PLUGIN_ROOT}" chordotomy analyze "<audio>"`. This is the copy that ships with this plugin, at the same commit as this skill. The first run builds its environment, so allow a timeout of up to 10 minutes.
+1. `uv` is on `PATH`: `uv run --project "${CLAUDE_PLUGIN_ROOT}" chordotomy analyze "<audio>"`. This is the copy that ships with this plugin, at the same commit as this skill. The first run builds its environment, so allow a timeout of up to 10 minutes. This copy recognizes chords with chordotomy's DSP front end unless the model extra is installed in the plugin root (`uv sync --extra model` run in `${CLAUDE_PLUGIN_ROOT}`); then it uses the lv-chordia model.
 2. There is no `uv`, but `chordotomy` is on `PATH`: `chordotomy analyze "<audio>"`. Mention that it may be a different version from this skill.
 3. Neither is installed: tell the user to install uv (https://docs.astral.sh/uv/) and stop.
 
@@ -37,21 +37,23 @@ The analyzer writes `<audio stem>.chords.json` next to the audio (or to `-o`) an
 The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines. Read a compact view instead of the raw file:
 
 ```bash
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 5:
+Check `schema_version`. This skill is written for version 6:
 
+- **Below 6:** there is no `generator.engine`; the chords are the DSP recognizer's.
 - **Below 5:** there is no `edited`; every chord is the analyzer's.
 - **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
 - **Below 3:** there is no `bass` and no `inversion`.
 - **Below 2:** there is no key and there are no numerals either.
-- **Above 5:** this skill may be out of date. Explain only the fields listed here.
+- **Above 6:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 5, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+In every case other than 6, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
 
 The fields:
 
+- **`generator.engine`:** the chord recognizer that produced `chord` and `candidates`: `name` (`dsp`, chordotomy's own DSP front end, or `lv-chordia`, a pretrained model) and `version` (chordotomy's version for `dsp`, the lv-chordia package version for `lv-chordia`).
 - **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
 - **Per segment:**
   - `start_time`, `end_time`
@@ -84,7 +86,7 @@ Rules:
 
 - **Ground every claim in the JSON:** the numeral, role, target, next chord and bass. Music theory explains why those facts work. It never adds facts the JSON does not contain. The analyzer knows nothing about melody, lyrics, instrumentation or phrase boundaries, so claim none of them.
 - **Be brief:** one to three sentences per move.
-- **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, and its segment is not `edited`, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. A candidate on the same notes as `chord` (`A:min6` beside `F#:hdim7`) is a spelling, not an alternative; see `references/moves.md`. Never state percentages or confidence numbers. The candidates are a ranking, not probabilities.
+- **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, and its segment is not `edited`, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. A candidate on the same notes as `chord` (`A:min6` beside `F#:hdim7`) is a spelling, not an alternative; see `references/moves.md`. Never state percentages or confidence numbers. The candidates are the recognizer's own ranking (the DSP's template scores or the model's), never probabilities.
 - **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, `F:maj7` → Fmaj7, `D:min7` → Dm7, `G:min6` → Gm6, `F#:hdim7` → F♯m7♭5, `C#:dim7` → C♯dim7, `G:sus4` → Gsus4, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
 - **Write times as m:ss** from `start_time`.
 - **Answer in the user's language.**
@@ -102,11 +104,12 @@ Moves worth noticing
 - 0:08 D7 → G7 (V7/V → V7): …why it works…
 - 0:24 Fm (iv, borrowed from C minor): …
 
-(The labels come from automatic extraction, except the segments the user corrected; <any caveat worth making>.)
+(The labels were extracted automatically by <engine>, except the segments the user corrected; <any caveat worth making>.)
 ```
 
 - **Progression line:** the numerals of the chord runs in order, with each segment's inversion figure. Collapse immediate repeats. For a long song, show the first 16 and say that it continues.
 - **Highlights:** list them in time order.
+- **Caveat line:** `<engine>` comes from `generator.engine`: its name and `version` for `lv-chordia` ("extracted automatically by lv-chordia 1.1.0"), and "chordotomy's DSP front end" for `dsp` and for a file below schema 6.
 
 Then offer follow-ups:
 

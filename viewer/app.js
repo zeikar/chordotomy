@@ -134,7 +134,7 @@
     if (opened) installTimeline(opened, timelineFile.name);
   }
 
-  // The timeline in `file`, checked and upgraded to schema 5, or the reason it can't be shown.
+  // The timeline in `file`, checked and upgraded to schema 6, or the reason it can't be shown.
   async function readTimeline(file) {
     let data;
     try {
@@ -154,14 +154,15 @@
   }
 
   // A long name is cut before its extensions, which always show: they are where a recording and
-  // its timeline differ (.mp3, .chords.json, .prototype.chords.json).
-  function showName(id, name) {
+  // its timeline differ (.mp3, .chords.json, .prototype.chords.json). A `note` after the name
+  // always shows too.
+  function showName(id, name, note = "") {
     const extensions = /(\.[^.\s]+)+$/.exec(name);
     const cut = extensions ? extensions.index : name.length;
     const head = document.createElement("span");
     const tail = document.createElement("span");
     head.textContent = name.slice(0, cut);
-    tail.textContent = name.slice(cut);
+    tail.textContent = name.slice(cut) + (note && ` · ${note}`);
     $(id).replaceChildren(head, tail);
     $(id).title = name;
     $("files").hidden = false;
@@ -185,7 +186,7 @@
     history = Edit.history(opened);
     saved = opened;
     timelineName = name;
-    showName("json-name", name);
+    showName("json-name", name, Core.engineText(opened));
     $("empty").hidden = true;
     $("viewer").hidden = false;
     strip.scrollLeft = 0;
@@ -968,7 +969,7 @@
   document.addEventListener("click", () => (pressedAt = null));
   document.addEventListener("pointercancel", () => (pressedAt = null));
 
-  // Saving is allowed with nothing unsaved too: it writes an opened schema-4 file as a 5.
+  // Saving is allowed with nothing unsaved too: it writes an opened schema-4 or 5 file as a 6.
   $("save").addEventListener("click", (event) => {
     releaseFocus(event);
     save();

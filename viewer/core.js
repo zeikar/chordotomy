@@ -9,9 +9,9 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  // The viewer reads 4 and 5 and writes 5; a 4 is upgraded in memory (edited: false on every segment).
+  // The viewer reads 4 to 6 and writes 6; an older file is upgraded in memory (see Edit.upgrade).
   const MIN_SCHEMA_VERSION = 4;
-  const SCHEMA_VERSION = 5;
+  const SCHEMA_VERSION = 6;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
   // and, if its numeral suffix is new, in NUMERAL_SUFFIX and numeralParts' pattern; it also takes
@@ -303,7 +303,7 @@ const Core = ((Harmony) => {
         version < MIN_SCHEMA_VERSION
           ? "Run chordotomy analyze again to write a current one."
           : "It was written by a newer chordotomy than this viewer.";
-      return `This timeline uses schema version ${version}; the viewer reads versions ${MIN_SCHEMA_VERSION} and ${SCHEMA_VERSION}. ${fix}`;
+      return `This timeline uses schema version ${version}; the viewer reads versions ${MIN_SCHEMA_VERSION} to ${SCHEMA_VERSION}. ${fix}`;
     }
     if (!Array.isArray(data.segments) || !Array.isArray(data.beats)) {
       return "This timeline has no beats or segments list.";
@@ -311,6 +311,15 @@ const Core = ((Harmony) => {
     if (!data.beats.every(Number.isFinite)) return "This timeline has a beat that isn't a time.";
     // An edit to the last segment runs it to the end of the audio.
     if (!Number.isFinite(data.source?.duration)) return "This timeline has no source duration.";
+    // Edit.upgrade records an older file as the DSP's at the chordotomy version that wrote it.
+    const { generator } = data;
+    if (version < 6 && !isText(generator?.version)) {
+      return "This timeline has no generator version.";
+    }
+    const engine = generator?.engine;
+    if (version >= 6 && !(engine && isText(engine.name) && isText(engine.version))) {
+      return "This timeline's generator has a missing or invalid engine.";
+    }
     // Everything downstream (names, numerals, the chord sound) assumes the schema's vocabulary.
     // The key is null when there is no chord to estimate it from.
     const { key } = data;
@@ -331,7 +340,7 @@ const Core = ((Harmony) => {
     if (beats.some((time, index) => index > 0 && time <= beats[index - 1])) {
       return "This timeline's beats aren't in ascending order.";
     }
-    const fields = data.schema_version === 5 ? SEGMENT_FIELDS_5 : SEGMENT_FIELDS;
+    const fields = data.schema_version >= 5 ? SEGMENT_FIELDS_5 : SEGMENT_FIELDS;
     for (const [index, segment] of data.segments.entries()) {
       const where = `segment ${index + 1}`;
       if (!segment || typeof segment !== "object") {
@@ -363,6 +372,14 @@ const Core = ((Harmony) => {
       }
     }
     return null;
+  }
+
+  // The recognizer that produced the chords, as the header shows it ("lv-chordia 1.1.0",
+  // "DSP 0.0.0"), or "" for a timeline that doesn't say.
+  function engineText(data) {
+    const engine = data.generator?.engine;
+    if (!engine) return "";
+    return `${engine.name === "dsp" ? "DSP" : engine.name} ${engine.version}`;
   }
 
   // Hearing the chords. Voicings are MIDI note numbers: 60 is middle C.
@@ -496,6 +513,7 @@ const Core = ((Harmony) => {
     chordName,
     closestVoicing,
     dueStrikes,
+    engineText,
     formatTime,
     keyName,
     numeralParts,

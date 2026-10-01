@@ -253,7 +253,7 @@ test("left goes to the start of the chord, then to the one before; right to the 
 });
 
 // A one-segment timeline as `chordotomy analyze` writes it in schema 4 (no `edited`), with
-// `fields` laid over the segment.
+// `fields` laid over the segment. As a 6 it has the DSP for its engine; `edited` is up to `fields`.
 const SEGMENT = {
   start_beat: 0,
   end_beat: 2,
@@ -268,29 +268,57 @@ const SEGMENT = {
   function: "dominant",
   target: null,
 };
+const DSP = { name: "dsp", version: "0.0.0" };
 const withSegment = (fields, version = 4) => ({
   schema_version: version,
-  generator: { name: "chordotomy", version: "0.0.0" },
+  generator: { name: "chordotomy", version: "0.0.0", ...(version >= 6 && { engine: DSP }) },
   source: { path: "song.mp3", duration: 1.5 },
   key: { label: "F#:maj", source: "estimated", candidates: ["F#:maj", "C#:maj", "A#:min"] },
   beats: [0.5, 1.0],
   segments: [{ ...SEGMENT, ...fields }],
 });
 
-test("schema versions 4 and 5 are accepted", () => {
+test("schema versions 4, 5 and 6 are accepted", () => {
   const ok = {
-    schema_version: 5,
+    schema_version: 6,
+    generator: { name: "chordotomy", version: "0.0.0", engine: DSP },
     source: { path: "song.mp3", duration: 1 },
     beats: [],
     segments: [],
   };
   assert.equal(Core.timelineProblem(ok), null);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
+  assert.equal(Core.timelineProblem({ ...ok, schema_version: 5 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 6 }), /newer chordotomy/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 7 }), /versions 4 to 6.*newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
   assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);
+});
+
+test("a 6 must name its engine, and an older file the chordotomy version that wrote it", () => {
+  const timeline = (version, generator) => ({ ...withSegment({ edited: false }, version), generator });
+  const engine = (value) =>
+    Core.timelineProblem(timeline(6, { name: "chordotomy", version: "0.0.0", engine: value }));
+  assert.equal(engine(DSP), null);
+  assert.equal(engine({ name: "lv-chordia", version: "1.1.0" }), null);
+  for (const value of [undefined, null, "dsp", [], { name: "dsp" }, { name: 5, version: "1" }]) {
+    assert.match(engine(value), /generator has a missing or invalid engine/, JSON.stringify(value));
+  }
+  assert.match(Core.timelineProblem(timeline(6, undefined)), /invalid engine/);
+  // Edit.upgrade records a 4 or a 5 as the DSP's at generator.version, so that must be there.
+  for (const version of [4, 5]) {
+    assert.equal(Core.timelineProblem(timeline(version, { name: "chordotomy", version: "0.1.0" })), null);
+    assert.match(Core.timelineProblem(timeline(version, { name: "chordotomy" })), /no generator version/);
+    assert.match(Core.timelineProblem(timeline(version, undefined)), /no generator version/);
+  }
+});
+
+test("the engine reads as its name and version, the DSP's name in capitals", () => {
+  const generator = (engine) => ({ generator: { name: "chordotomy", version: "0.0.0", engine } });
+  assert.equal(Core.engineText(generator({ name: "lv-chordia", version: "1.1.0" })), "lv-chordia 1.1.0");
+  assert.equal(Core.engineText(generator(DSP)), "DSP 0.0.0");
+  assert.equal(Core.engineText({ generator: { name: "chordotomy", version: "0.0.0" } }), "");
 });
 
 test("chord and bass labels outside the schema are refused, not half-rendered", () => {
@@ -320,11 +348,13 @@ test("every segment field the viewer reads must be there and hold what chordotom
   for (const field of fields) {
     assert.match(missing(field), new RegExp(`segment 1 has a missing or invalid ${field}\\.`));
   }
-  // `edited` is schema 5's: Edit.upgrade adds it to a 4.
+  // `edited` came with schema 5: Edit.upgrade adds it to a 4.
   assert.equal(problem({}, 4), null);
-  assert.equal(problem({ edited: true }, 5), null);
-  assert.match(problem({}, 5), /segment 1 has a missing or invalid edited/);
-  assert.match(problem({ edited: "false" }, 5), /invalid edited/);
+  for (const version of [5, 6]) {
+    assert.equal(problem({ edited: true }, version), null);
+    assert.match(problem({}, version), /segment 1 has a missing or invalid edited/);
+    assert.match(problem({ edited: "false" }, version), /invalid edited/);
+  }
   assert.match(problem({ start_beat: "0" }), /invalid start_beat/);
   assert.match(problem({ end_beat: 1.5 }), /invalid end_beat/);
   assert.match(problem({ start_time: "0.5" }), /invalid start_time/);
@@ -388,9 +418,9 @@ test("beats must ascend and segments must tile them with matching times", () => 
 
 test("an odd value anywhere gets a reason, never a throw", () => {
   const odd = [null, 0, -1, "", "x", true, [], [null], {}, { label: "C:maj" }];
-  const timeline = withSegment({}, 5);
+  const timeline = withSegment({}, 6);
   timeline.segments[0].edited = false;
-  const fields = ["source", "key", "beats", "segments"];
+  const fields = ["generator", "source", "key", "beats", "segments"];
   const places = [
     ...fields.map((field) => (value) => ({ ...timeline, [field]: value })),
     ...Object.keys(timeline.segments[0]).map((field) => (value) => ({
@@ -409,6 +439,7 @@ test("an odd value anywhere gets a reason, never a throw", () => {
 test("a key label outside the 24 keys chordotomy writes is refused", () => {
   const timeline = (label) => ({
     schema_version: 4,
+    generator: { name: "chordotomy", version: "0.0.0" },
     source: { path: "song.mp3", duration: 1 },
     key: { label, source: "estimated", candidates: [] },
     beats: [],

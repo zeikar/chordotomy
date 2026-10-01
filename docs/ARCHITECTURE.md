@@ -125,13 +125,15 @@ The viewer re-analyzes edited chords with a JavaScript port of this analysis, `v
 
 ## The chord-timeline JSON
 
-This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 5.
+This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 6.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schema_version` | int, `5` | schema version of this file |
+| `schema_version` | int, `6` | schema version of this file |
 | `generator.name` | `"chordotomy"` | |
 | `generator.version` | str | the chordotomy version that wrote the file |
+| `generator.engine.name` | `"dsp"` or `"lv-chordia"` | the recognizer that produced `chord` and `candidates`: chordotomy's DSP front end, or the lv-chordia model |
+| `generator.engine.version` | str | chordotomy's version for `dsp`, the lv-chordia package version otherwise |
 | `source.path` | str | the audio path as given on the command line |
 | `source.duration` | float, seconds, 3 decimals | |
 | `beats` | list of float seconds, 3 decimals, ascending | beat index = list position |
@@ -144,7 +146,7 @@ This is the project's public seam. It carries beat positions, not just seconds, 
 | `segments[].start_time` | float | `beats[start_beat]` |
 | `segments[].end_time` | float | `beats[end_beat]`, or `source.duration` when `end_beat == len(beats)` |
 | `segments[].chord` | str | Harte label or `N`; always the root-position label; consecutive segments may repeat it when the bass changes under one chord |
-| `segments[].candidates` | list of 3 str | best first, no scores; `candidates[0] == chord` when `edited` is false, and the analyzer's ranking for the span the segment came from when it is true; when a diminished chord was respelled by where it leads, `candidates[1]` is the recognizer's label for the same notes |
+| `segments[].candidates` | list of 3 str | best first by the recognizer's own scores over the segment, which aren't written; `candidates[0] == chord` when `edited` is false, and the analyzer's ranking for the span the segment came from when it is true; when a diminished chord was respelled by where it leads, `candidates[1]` is the recognizer's label for the same notes |
 | `segments[].bass` | str or `null` | the segment's held bass, sharps only (`C` to `B`): the per-beat bass (the lowest note sounding in the bass register) that holds for at least 2 beats under the chord; when no value holds that long (a one-beat chord, a bass moving every beat), the most frequent per-beat value, silence included, ties to a note and then to the earliest; a bass move shorter than 2 beats under an unchanged chord (a passing tone, an alternating C–E or C–G accompaniment) is not reported; `null` for `N` and when no beat has a note in the bass register |
 | `segments[].inversion` | `"root"`, `"first"`, `"second"`, `"third"`, `"non_chord"`, or `null` | `chord` over `bass`, by the bass's place among the chord's tones from the root up: `root`; `first`, the third, or the fourth of a `sus4`; `second`, the fifth; `third`, the seventh of a `7`, `maj7`, `min7`, `hdim7` or `dim7`, or the added sixth of a `min6`; `non_chord` when it is not a chord tone; `null` whenever `bass` is `null` |
 | `segments[].numeral` | str or `null` | Roman numeral of the root-position chord relative to `key`, `<accidental><roman><suffix>[/<target>]` (grammar above), e.g. `bVII`, `ii7`, `IVmaj7`, `#i°7`, `viiø7/V`; `ø` and `°` are written as characters; `null` for `N` |
@@ -161,12 +163,12 @@ Segments are contiguous: each `start_beat` equals the previous `end_beat`, and t
 
 The file is UTF-8, and non-ASCII characters are written as themselves rather than as `\u` escapes: the numerals' `ø` and `°`, and a non-ASCII `source.path`. A path that is not valid UTF-8 keeps `\u` escapes for the bytes that don't decode.
 
-The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`. Schema 4 kept schema 3's fields and widened what they hold: the chord qualities, the numerals, what `third` means in `inversion`, which chords `secondary_dominant` covers, and what `candidates[1]` means after a respelling. Schema 5 added `segments[].edited`, so a corrected chord is told apart from a heard one. The viewer reads 4 and 5, and fills in `edited: false` on a 4 before it saves it as 5.
+The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`. Schema 4 kept schema 3's fields and widened what they hold: the chord qualities, the numerals, what `third` means in `inversion`, which chords `secondary_dominant` covers, and what `candidates[1]` means after a respelling. Schema 5 added `segments[].edited`, so a corrected chord is told apart from a heard one. Schema 6 added `generator.engine`; a file below 6 was written by the DSP. The viewer reads 4 to 6 and saves a 6: it fills in `edited: false` on a 4, and on a 4 or 5 the engine `{"name": "dsp", "version": <generator.version>}`.
 
 ```json
 {
-  "schema_version": 5,
-  "generator": {"name": "chordotomy", "version": "0.0.0"},
+  "schema_version": 6,
+  "generator": {"name": "chordotomy", "version": "0.0.0", "engine": {"name": "dsp", "version": "0.0.0"}},
   "source": {"path": "song.mp3", "duration": 5.0},
   "key": {"label": "C:maj", "source": "estimated", "candidates": ["C:maj", "F:maj", "G:maj"]},
   "beats": [0.023, 0.534, 1.045, 1.533, 2.043, 2.531, 3.042, 3.529, 4.04, 4.528],
