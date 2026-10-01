@@ -16,7 +16,23 @@ from chordotomy import evaluate, model  # noqa: E402
 from chordotomy.cli import app  # noqa: E402
 from chordotomy.features import SR  # noqa: E402
 
+# Eight beats at 0.5 s on the 4 s clip: the last ends exactly at the duration, so no N tail.
 ARFF = "@RELATION beatinfo\n" + "".join(f"{i * 0.5},1,{i % 4 + 1},'Cmaj'\n" for i in range(8))
+COLUMNS = (
+    "root",
+    "majmin",
+    "sevenths",
+    "tetrads",
+    "majmin_inv",
+    "n_est",
+    "n_ref",
+    "n_precision",
+    "n_recall",
+    "beat_f",
+    "cmlt",
+    "amlt",
+    "period_ratio",
+)
 
 
 @pytest.fixture
@@ -42,13 +58,7 @@ def _run(*args):
 
 def _overall(output):
     row = next(line for line in output.splitlines() if line.startswith("overall"))
-    return dict(
-        zip(
-            ["root", "majmin", "sevenths", "tetrads", "majmin_inv", "n_est", "n_ref"],
-            map(float, row.split()[1:]),
-            strict=True,
-        )
-    )
+    return dict(zip(COLUMNS, map(float, row.split()[1:]), strict=True))
 
 
 def test_tiny_aam_prints_a_row_per_track_and_overall(monkeypatch, track) -> None:
@@ -61,6 +71,8 @@ def test_tiny_aam_prints_a_row_per_track_and_overall(monkeypatch, track) -> None
     overall = _overall(result.stdout)
     assert overall["majmin"] >= 0.9
     assert overall["n_est"] <= 0.1
+    assert overall["n_ref"] == 0.0
+    assert overall["period_ratio"] == pytest.approx(1.0, abs=0.05)
 
 
 def test_guitarset_scores_the_performed_annotation(monkeypatch, tmp_path, track) -> None:
@@ -79,6 +91,14 @@ def test_guitarset_scores_the_performed_annotation(monkeypatch, tmp_path, track)
                         "namespace": "chord",
                         "annotation_metadata": {"data_source": "Semi-automatic"},
                         "data": [{"time": 0.0, "duration": 4.0, "value": "C:maj/1"}],
+                    },
+                    {
+                        "namespace": "beat_position",
+                        "annotation_metadata": {"data_source": ""},
+                        "data": [
+                            {"time": t, "duration": 0.0, "value": {"position": t + 1}}
+                            for t in range(4)
+                        ],
                     },
                 ]
             }

@@ -11,7 +11,7 @@ import json
 import re
 import zipfile
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import numpy as np
 
@@ -19,6 +19,10 @@ from . import timeline
 from .chords import ROOTS
 
 METRICS = ("root", "majmin", "sevenths", "tetrads", "majmin_inv")
+
+# mir_eval's default, passed explicitly so both datasets trim the same. A median GuitarSet take
+# loses about 17 % of its length to it, the same for every run.
+BEAT_MIN_TIME = 5.0
 
 # Scale degree of the bass above the chord root, by semitone offset 1..11, as mir_eval reads it.
 DEGREES = ("b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7")
@@ -85,7 +89,15 @@ def bass_missing(result: dict) -> list[bool]:
     return [s["chord"] != "N" and s["bass"] is None for s in result["segments"]]
 
 
-def tiny_aam_reference(text: str, duration: float) -> tuple[np.ndarray, list[str]]:
+class Reference(NamedTuple):
+    """A track's reference chords, and its annotated beat times in seconds."""
+
+    intervals: np.ndarray
+    labels: list[str]
+    beats: np.ndarray
+
+
+def tiny_aam_reference(text: str, duration: float) -> Reference:
     """Beat-level reference from a Tiny AAM beatinfo.arff; each beat ends where the next starts."""
     starts = []
     labels = []
@@ -103,11 +115,19 @@ def tiny_aam_reference(text: str, duration: float) -> tuple[np.ndarray, list[str
             raise ValueError(f"unsupported chord label {name!r}")
         starts.append(float(start))
         labels.append(label)
-    intervals = np.column_stack([starts, [*starts[1:], duration]]).astype(float)
-    return intervals, labels
+    # The annotation stops at the last played beat. Stretching that beat over the silent tail
+    # would reward calling the tail a chord, so it lasts one period and the rest is N.
+    end = duration
+    if len(starts) > 1:
+        end = min(starts[-1] + float(np.median(np.diff(starts))), duration)
+    intervals = np.column_stack([starts, [*starts[1:], end]]).astype(float)
+    if end < duration:
+        intervals = np.vstack([intervals, [end, duration]])
+        labels.append("N")
+    return Reference(intervals, labels, np.array(starts, dtype=float))
 
 
-def guitarset_reference(jams: dict) -> tuple[np.ndarray, list[str]]:
+def guitarset_reference(jams: dict) -> Reference:
     """The performed chord annotation of a GuitarSet JAMS dict (it carries the bass)."""
     performed = [
         a
@@ -117,9 +137,34 @@ def guitarset_reference(jams: dict) -> tuple[np.ndarray, list[str]]:
     ]
     if len(performed) != 1:
         raise ValueError(f"expected one Semi-automatic chord annotation, found {len(performed)}")
+    beats = [a for a in jams["annotations"] if a["namespace"] == "beat_position"]
+    if len(beats) != 1:
+        raise ValueError(f"expected one beat_position annotation, found {len(beats)}")
     data = performed[0]["data"]
     intervals = np.array([(d["time"], d["time"] + d["duration"]) for d in data], dtype=float)
-    return intervals, [d["value"] for d in data]
+    times = np.array([d["time"] for d in beats[0]["data"]], dtype=float)
+    return Reference(intervals, [d["value"] for d in data], times)
+
+
+def beat_metrics(ref_beats: np.ndarray, est_beats: np.ndarray) -> dict:
+    """Beat F-measure, CMLt and AMLt of the estimated grid, and its period over the reference's."""
+    import mir_eval
+
+    ratio = float("nan")
+    if len(ref_beats) > 1 and len(est_beats) > 1:
+        ratio = float(np.median(np.diff(est_beats)) / np.median(np.diff(ref_beats)))
+    # A clip that ends before BEAT_MIN_TIME leaves no reference beat to score against: mir_eval
+    # would warn and score 0, a miss the overall row would count.
+    if len(mir_eval.beat.trim_beats(ref_beats, BEAT_MIN_TIME)) < 2:
+        nan = float("nan")
+        return {"beat_f": nan, "cmlt": nan, "amlt": nan, "period_ratio": ratio}
+    scores = mir_eval.beat.evaluate(ref_beats, est_beats, min_beat_time=BEAT_MIN_TIME)
+    return {
+        "beat_f": scores["F-measure"],
+        "cmlt": scores["Correct Metric Level Total"],
+        "amlt": scores["Any Metric Level Total"],
+        "period_ratio": ratio,
+    }
 
 
 def score(
@@ -130,6 +175,8 @@ def score(
     est_bass_missing: list[bool] | None = None,
 ) -> dict:
     """One track's per-interval comparisons and durations for each metric, plus the N shares.
+
+    n_est and n_ref are the shares of the duration labeled N; n_hit is the share where both are.
 
     est_bass_missing flags estimate segments whose chord has no detected bass. A bare `C:maj`
     reads as root position to mir_eval, which would award an inversion the estimate never
@@ -161,18 +208,34 @@ def score(
         # -1 is an interval mir_eval excluded; it stays excluded.
         if missing and inv[i] != -1:
             inv[i] = 0.0
-    track["n_est"] = float(durations[np.array(est) == "N"].sum()) / total
-    track["n_ref"] = float(durations[np.array(ref) == "N"].sum()) / total
+    est_n = np.array(est) == "N"
+    ref_n = np.array(ref) == "N"
+    track["n_est"] = float(durations[est_n].sum()) / total
+    track["n_ref"] = float(durations[ref_n].sum()) / total
+    track["n_hit"] = float(durations[est_n & ref_n].sum()) / total
     track["duration"] = total
     return track
 
 
 def summarise(tracks: dict[str, dict]) -> dict[str, dict]:
-    """Accuracy and N rates per track, plus an `overall` row weighted by duration."""
+    """Accuracy, N and beat rates per track, plus an `overall` row weighted by duration.
+
+    N precision is the share of estimated N that is reference N, and N recall the share of
+    reference N estimated as N (nan when there is none). The period ratio's overall is the
+    median over tracks. A track with no beat scores (nan, a clip too short to trim) is left out
+    of the beat columns' overall; they are nan only when no track has a value.
+    """
     import mir_eval
 
     def row(items: list[dict]) -> dict:
         total = sum(t["duration"] for t in items)
+
+        def weighted(key: str) -> float:
+            scored = [t for t in items if not np.isnan(t[key])]
+            if not scored:
+                return float("nan")
+            return sum(t[key] * t["duration"] for t in scored) / sum(t["duration"] for t in scored)
+
         out = {
             metric: mir_eval.chord.weighted_accuracy(
                 np.concatenate([t[metric][0] for t in items]),
@@ -180,8 +243,14 @@ def summarise(tracks: dict[str, dict]) -> dict[str, dict]:
             )
             for metric in METRICS
         }
-        for rate in ("n_est", "n_ref"):
-            out[rate] = sum(t[rate] * t["duration"] for t in items) / total
+        for key in ("n_est", "n_ref", "beat_f", "cmlt", "amlt"):
+            out[key] = weighted(key)
+        hit = weighted("n_hit")
+        out["n_precision"] = hit / out["n_est"] if out["n_est"] else float("nan")
+        out["n_recall"] = hit / out["n_ref"] if out["n_ref"] else float("nan")
+        # np.nanmedian, without its RuntimeWarning when every ratio is nan.
+        ratios = [t["period_ratio"] for t in items if not np.isnan(t["period_ratio"])]
+        out["period_ratio"] = float(np.median(ratios)) if ratios else float("nan")
         out["duration"] = total
         return out
 
@@ -257,7 +326,7 @@ def guitarset_tracks(limit: int | None) -> list[tuple[str, Path, Path]]:
     return [(stem, found[wav], j) for stem, wav, j in zip(stems, wavs, jams, strict=True)]
 
 
-def _read_reference(dataset: str, path: Path, duration: float) -> tuple[np.ndarray, list[str]]:
+def _read_reference(dataset: str, path: Path, duration: float) -> Reference:
     try:
         if dataset == "tiny-aam":
             return tiny_aam_reference(path.read_text(), duration)
@@ -272,18 +341,28 @@ def run(dataset: str, limit: int | None, engine: Literal["dsp", "model"]) -> dic
     scored = {}
     for name, audio, annotation in tracks:
         result = timeline.analyze(audio, engine=engine)
-        ref_intervals, ref_labels = _read_reference(
-            dataset, annotation, result["source"]["duration"]
-        )
+        reference = _read_reference(dataset, annotation, result["source"]["duration"])
         est_intervals, est_labels = timeline_to_intervals(result)
-        scored[name] = score(
-            ref_intervals, ref_labels, est_intervals, est_labels, bass_missing(result)
-        )
+        scored[name] = {
+            **score(
+                reference.intervals,
+                reference.labels,
+                est_intervals,
+                est_labels,
+                bass_missing(result),
+            ),
+            # The grid analyze writes, extended to the edges: the one every consumer snaps to.
+            **beat_metrics(reference.beats, np.array(result["beats"], dtype=float)),
+        }
     rows = summarise(scored)
 
-    columns = (*METRICS, "n_est", "n_ref")
-    header = (*METRICS, "N_est", "N_ref")
-    print(f"{'track':<28}" + "".join(f"{c:>11}" for c in header))
+    columns = (*METRICS, "n_est", "n_ref", "n_precision", "n_recall")
+    columns += ("beat_f", "cmlt", "amlt", "period_ratio")
+    header = (*METRICS, "N_est", "N_ref", "N_prec", "N_rec", "beat_F", "CMLt", "AMLt", "period")
+    # Width 8, widened for a heading that would otherwise run into its neighbour.
+    widths = [max(8, len(h) + 1) for h in header]
+    print(f"{'track':<28}" + "".join(f"{h:>{w}}" for h, w in zip(header, widths, strict=True)))
     for name in (*scored, "overall"):
-        print(f"{name:<28}" + "".join(f"{rows[name][c]:>11.3f}" for c in columns))
+        cells = (f"{rows[name][c]:>{w}.3f}" for c, w in zip(columns, widths, strict=True))
+        print(f"{name:<28}" + "".join(cells))
     return rows
