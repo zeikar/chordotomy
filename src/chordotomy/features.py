@@ -9,12 +9,13 @@ bass pitch window. Implemented from the paper, not from their GPL-licensed plugi
 from __future__ import annotations
 
 import functools
+from itertools import groupby
 from pathlib import Path
 from typing import NamedTuple
 
 import librosa
 import numpy as np
-from scipy.ndimage import convolve1d
+from scipy.ndimage import convolve1d, median_filter
 
 from .chords import BASS_BINS, pick_bass
 
@@ -40,6 +41,16 @@ TREBLE_IN = (40, 48)
 TREBLE_OUT = (84, 96)
 # Bass is flat through B2 and fades out by B3, the top of the pick_bass register.
 BASS_OUT = (47, 59)
+# The local tempo is the tempogram's per-frame tempo, median-filtered over this many seconds in
+# log2: the research's measured point.
+TEMPO_WINDOW_SECONDS = 10
+# A tempo change is a smoothed local tempo more than this fraction off the global one, folded to
+# the nearest octave: the research's measured point.
+TEMPO_DEPARTURE = 0.10
+# The change must last this long before the tracker follows it: a raw local tempo took the
+# constant-tempo Tiny AAM 2269 from CMLt .97 to .17, and the hold is what keeps such tracks on the
+# global tempo (the research's measured point).
+TEMPO_HOLD_SECONDS = 16
 
 
 def _ramp(midi: np.ndarray, start: float, end: float) -> np.ndarray:
@@ -117,10 +128,59 @@ def _whiten(cqt: np.ndarray) -> np.ndarray:
     return np.divide(excess, std, out=np.zeros_like(cqt), where=(excess > 0) & (std > 0))
 
 
+def _tempo_curve(onset: np.ndarray) -> np.ndarray | None:
+    """The local tempo in BPM per onset frame, or None to track at the global tempo.
+
+    librosa's tracker assumes one tempo per file. It gets the local curve only when that curve,
+    smoothed over TEMPO_WINDOW_SECONDS, stays more than TEMPO_DEPARTURE off the envelope's global
+    tempo for TEMPO_HOLD_SECONDS on end.
+    """
+    tempo = librosa.feature.tempo(onset_envelope=onset, sr=SR, hop_length=HOP)[0]
+    local = librosa.feature.tempo(onset_envelope=onset, sr=SR, hop_length=HOP, aggregate=None)
+    size = int(TEMPO_WINDOW_SECONDS * SR / HOP) | 1  # odd, so the window is centred
+    curve = 2 ** median_filter(np.log2(local), size=size, mode="nearest")
+    # Folded to the nearest octave: the tempogram's choice of metrical level is arbitrary, and a
+    # 2:1 "change" is the same pulse counted at another level. A grid locked at half tempo is a
+    # different failure, which this rule leaves alone.
+    ratio = np.log2(curve / tempo)
+    departs = np.abs(ratio - np.round(ratio)) > np.log2(1 + TEMPO_DEPARTURE)
+    longest = max((sum(1 for _ in run) for away, run in groupby(departs) if away), default=0)
+    return curve if longest * HOP / SR >= TEMPO_HOLD_SECONDS else None
+
+
+def _extend(beat_frames: np.ndarray, n_frames: int, tempo: float) -> np.ndarray:
+    """The grid carried through edge silence, where the tracker places no beats.
+
+    Without it, the last beat would swallow seconds of silent tail, and leading silence would
+    have no beats to label N. The head steps at the first gap and the tail at the last: the
+    grid's local period at each edge, so a track that ends in a slower section extends at that
+    section's period. On a constant grid both are the median gap within a frame. A single beat
+    has no gap, so it steps at the global tempo's period. The half-period guard avoids a sliver
+    interval at the end.
+    """
+    if len(beat_frames) >= 2:
+        head_gap, tail_gap = np.diff(beat_frames)[[0, -1]]
+    else:
+        head_gap = tail_gap = int(round(60 / tempo * SR / HOP))
+    head = np.arange(beat_frames[0] % head_gap, beat_frames[0], head_gap)
+    tail = np.arange(beat_frames[-1] + tail_gap, n_frames - tail_gap // 2, tail_gap)
+    return np.concatenate([head, beat_frames, tail])
+
+
 def beat_features(y: np.ndarray) -> Features:
     """Beat-synchronous chord, bass and level features of a mono signal at SR."""
+    # What beat_track(y=...) computes itself, so a track whose tempo does not change keeps the
+    # grid the tracker gives it on its own. Its global tempo is the one the tracker uses.
+    onset = librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP, aggregate=np.median)
+    tempo = float(librosa.feature.tempo(onset_envelope=onset, sr=SR, hop_length=HOP)[0])
+    # The tempo rule reads the mean over bands, the research's envelope. Measured on Tiny AAM, the
+    # tracker's median one switched the constant-tempo 2395 (CMLt .97 to .52) and gained less
+    # overall: CMLt +1.9 pp against +9.9.
+    curve = _tempo_curve(librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP))
     # The default trim dropped the last two real beats of a synthesized clip.
-    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=SR, hop_length=HOP, trim=False)
+    _, beat_frames = librosa.beat.beat_track(
+        onset_envelope=onset, sr=SR, hop_length=HOP, trim=False, bpm=curve
+    )
     # Checked before the features: otherwise sync returns empty matrices and the floor's max()
     # raises a bare numpy error, after estimate_tuning has warned about tuning on an empty signal.
     if len(beat_frames) == 0:
@@ -158,18 +218,7 @@ def beat_features(y: np.ndarray) -> Features:
         )
     )
     n_frames = chord_cqt.shape[1]
-    # The tracker places no beats in edge silence. Without extending the grid, the last beat
-    # would swallow seconds of silent tail, and leading silence would have no beats to label
-    # N. The half-period guard avoids a sliver interval at the end.
-    if len(beat_frames) >= 2:
-        period = int(round(np.median(np.diff(beat_frames))))
-    else:
-        # A single beat has no spacing to measure, so fall back to the tracker's tempo (a
-        # positive 1-element array whenever any beat was found).
-        period = int(round(60 / float(np.ravel(tempo)[0]) * SR / HOP))
-    head = np.arange(beat_frames[0] % period, beat_frames[0], period)
-    tail = np.arange(beat_frames[-1] + period, n_frames - period // 2, period)
-    beat_frames = np.concatenate([head, beat_frames, tail])
+    beat_frames = _extend(beat_frames, n_frames, tempo)
 
     boundaries = list(beat_frames) + [n_frames]
     treble_window, bass_window, fold = _windows()

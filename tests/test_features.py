@@ -92,6 +92,27 @@ def test_a_single_beat_extends_the_grid_at_the_tempo_period(synth, monkeypatch) 
     assert len(y) / SR - f.times[-1] <= 1.0
 
 
+def test_the_grid_extends_at_the_edge_gaps(synth, monkeypatch) -> None:
+    # Known frames, because a real tracker cannot change tempo on so short a clip (the tempo rule
+    # needs a 16 s departure), so this proves the extension and nothing else.
+    silence = np.zeros(2 * SR, dtype=np.float32)
+    y = np.concatenate([silence, synth([("C:maj", 16)]), silence])
+    fast, slow = round(0.5 * SR / HOP), round(0.75 * SR / HOP)
+    # From 2.0 s, 8 gaps of 0.5 s, then 4 of 0.75 s ending at 9.0 s, 3 s before the end.
+    frames = round(2.0 * SR / HOP) + np.cumsum([0] + [fast] * 8 + [slow] * 4)
+    monkeypatch.setattr("chordotomy.features.librosa.beat.beat_track", lambda **_: (120.0, frames))
+
+    f = beat_features(y)
+
+    first, last = np.searchsorted(f.frames, frames[[0, -1]])
+    np.testing.assert_array_equal(f.frames[first : last + 1], frames)
+    head = np.diff(f.times[: first + 1])
+    tail = np.diff(f.times[last:])
+    assert len(head) == 3 and len(tail) == 3
+    assert np.allclose(head, 0.5, atol=HOP / SR)
+    assert np.allclose(tail, 0.75, atol=HOP / SR)
+
+
 def _basses(cqt: np.ndarray) -> list[str | None]:
     return [pick_bass(column) for column in cqt.T]
 

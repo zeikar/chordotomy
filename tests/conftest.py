@@ -3,8 +3,8 @@
 A progression entry is (label, n_beats), (label, n_beats, bass_midi) or (label, n_beats,
 bass_midi, melody_midi); the bass is an extra tone under the chord, the melody an extra tone
 struck with it at a chord tone's level. `synth` also takes a `chord_midi` register for the chord
-tones. Keep clips at least 8 beats: `chroma_cqt` warns on shorter ones, which fails under
-`-W error::UserWarning`.
+tones and a `bpm`; `chord_at` assumes the default. Keep clips at least 8 beats: `chroma_cqt`
+warns on shorter ones, which fails under `-W error::UserWarning`.
 """
 
 from collections.abc import Callable
@@ -48,16 +48,20 @@ Progression = list[tuple[str, int] | tuple[str, int, int] | tuple[str, int, int,
 
 
 def _strike(
-    label: str, bass: int | None = None, chord_midi: int = 48, melody: int | None = None
+    label: str,
+    bass: int | None = None,
+    chord_midi: int = 48,
+    melody: int | None = None,
+    beat: float = BEAT,
 ) -> np.ndarray:
-    """One beat of a chord struck at the downbeat, or silence for N.
+    """One beat of a chord struck at the downbeat, or silence for N; beat is its length in seconds.
 
     A bass sits at MIDI 36-47 under a chord at 48: the bass register ends at B3, so the bass tone
     is the lowest note by construction and the ground truth is exact. chord_midi=60 voices the
     chord above the register for the no-bass cases. A melody note is one more tone, as loud as
     each chord tone.
     """
-    n = int(round(BEAT * SR))
+    n = int(round(beat * SR))
     if label == "N":
         return np.zeros(n)
     root, quality = label.split(":")
@@ -78,13 +82,13 @@ def _strike(
 
 @pytest.fixture
 def synth() -> Callable[..., np.ndarray]:
-    def make(progression: Progression, chord_midi: int = 48) -> np.ndarray:
+    def make(progression: Progression, chord_midi: int = 48, bpm: float = BPM) -> np.ndarray:
         # Each beat is re-struck and decays: a sustained chord has no onsets for the beat
         # tracker to lock onto.
         beats = []
         for label, n_beats, *rest in progression:
             bass, melody = (*rest, None, None)[:2]  # both optional, in that order
-            beats += [_strike(label, bass, chord_midi, melody) for _ in range(n_beats)]
+            beats += [_strike(label, bass, chord_midi, melody, 60 / bpm) for _ in range(n_beats)]
         y = np.concatenate(beats)
         peak = np.abs(y).max()
         if peak > 0:
