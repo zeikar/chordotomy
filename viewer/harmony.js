@@ -112,11 +112,11 @@ const Harmony = (() => {
 
   // A chord of the parallel mode, or a tetrad on one of its triads whose fourth tone lies in
   // either mode: a seventh the borrowed triad takes from home is still borrowed color. So in major
-  // bVIImaj7, ii°7 (the notes of the borrowed vii°7), iadd6 and vadd6 are borrowed; in minor I7
-  // and IV7 are, and they join the overlap of I and IV with V/iv and V/VII. A triad of the home
-  // mode with a foreign seventh stays chromatic (IV7 in major, VIImaj7 and iadd6 in minor), as do
-  // sevenths outside both scales (bIII7, bVI7, Vmaj7). This only widens what borrowed covers; the
-  // precedence stays diatonic, secondary dominant, leading-tone chord, borrowed, chromatic.
+  // bVIImaj7, ii°7 (the notes of the borrowed vii°7), iadd6 and vadd6 are borrowed. In minor the
+  // rule would also cover I7 and IV7, but the secondary dominant claims them first. A triad of the
+  // home mode with a foreign seventh stays chromatic (IV7 in major, VIImaj7 and iadd6 in minor), as
+  // do sevenths outside both scales (bIII7, bVI7, Vmaj7). This only widens what borrowed covers;
+  // the precedence stays diatonic, secondary dominant, leading-tone chord, borrowed, chromatic.
   function isBorrowed(offset, quality, mode) {
     const parallel = PARALLEL[mode];
     if (isDiatonic(offset, quality, parallel)) return true;
@@ -178,9 +178,9 @@ const Harmony = (() => {
 
   function numeral(offset, quality, mode) {
     let text = NUMERALS[mode][offset];
-    // A diminished chord or a half-diminished seventh leads up a semitone, so its root is the raised
-    // degree below, never the flattened one above: C#:dim7 in C major is #i°7, pointing at ii, not
-    // bii°7. The degree below a flat one is always plain.
+    // A diminished chord or a half-diminished seventh leads up a semitone, so its root is the
+    // raised degree below, never the flattened one above: C#:dim7 in C major is #i°7, pointing at
+    // ii, not bii°7. The degree below a flat one is always plain.
     if ((quality === "dim7" || quality === "hdim7" || quality === "dim") && text.startsWith("b")) {
       text = "#" + NUMERALS[mode][offset - 1];
     }
@@ -210,12 +210,14 @@ const Harmony = (() => {
     if (secondary) {
       const target = TARGETS[mode][targetOffset];
       const resolution = ROOTS[(ROOTS.indexOf(tonic) + targetOffset) % 12];
-      // Only the major triads and dominant sevenths on the tonic and subdominant of a minor key
-      // are also borrowed, and for those the very next chord being diatonic on the target's root
-      // is the one thing that tells V/VII from a borrowed IV. Outside this overlap and the
-      // leading-tone chords below, `following` is ignored, so a label depends on the chord and key
-      // alone.
-      if (!borrowed || resolves(following, resolution, tonic, mode)) {
+      // Only the major triads on the tonic and subdominant of a minor key are also chords of the
+      // parallel mode, and for those the very next chord being diatonic on the target's root is
+      // the one thing that tells V/VII from a borrowed IV. The borrowed-seventh rule does not
+      // widen this overlap, so I7 and IV7 in minor stay V7/iv and V7/VII wherever they go.
+      // Outside this overlap and the leading-tone chords below, `following` is ignored, so a
+      // label depends on the chord and key alone.
+      const parallel = isDiatonic(offset, quality, PARALLEL[mode]);
+      if (!parallel || resolves(following, resolution, tonic, mode)) {
         return {
           numeral: (quality === "7" ? "V7" : "V") + "/" + target,
           role: "secondary_dominant",

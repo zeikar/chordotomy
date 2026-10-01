@@ -179,11 +179,9 @@ def test_analyze_chord_secondary_dominant(label: str, key: str, numeral: str, ta
         *[("A:maj", f, "I", "borrowed", None) for f in ("D:7", "D:maj", "N", "E:maj", None)],
         *[("D:maj", f, "V/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:7")],
         *[("D:maj", f, "IV", "borrowed", None) for f in ("G:min", "A:min", "N", None)],
-        # Their dominant sevenths are borrowed too, as A major's triads with minor's seventh.
-        ("A:7", "D:min", "V7/iv", "secondary_dominant", "iv"),
-        *[("A:7", f, "I7", "borrowed", None) for f in ("D:7", "N", None)],
-        *[("D:7", f, "V7/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:7")],
-        *[("D:7", f, "IV7", "borrowed", None) for f in ("G:min", "N", None)],
+        # Their dominant sevenths are no part of the overlap: rule 2 claims them wherever they go.
+        *[("A:7", f, "V7/iv", "secondary_dominant", "iv") for f in ("D:min", "D:7", "N", None)],
+        *[("D:7", f, "V7/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:min", "N", None)],
     ],
 )
 def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(

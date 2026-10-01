@@ -105,13 +105,13 @@ Common in J-pop, as passing chords in major:
 - **`viiø7/V` → `V`:** `#ivø7`, F♯m7♭5 → G in C, a push into the dominant.
 - **`vii°/x`:** the same with the triad, `#i°`, C♯dim → Dm in C. A diminished triad has one root, so it is never respelled, and it is labelled only when the next chord is diatonic on the half step above its root. C♯dim → C is a plain chromatic `#i°`, with no target.
 
-The analyzer spells a diminished chord by where it leads. A dim7's four notes are the notes of three other dim7s (C♯dim7, Edim7, Gdim7 and B♭dim7 sound the same), and a m6 has the notes of the m7♭5 a minor third below (Am6 is F♯m7♭5). When one of them leads into the next chord, the JSON names that one, unless an m6 has its own root in the bass. The viewer doesn't respell: an `edited` chord is spelled as the user picked it, and a chord left alone keeps its spelling when the user changes the chord after it. So a `candidates` entry with the same notes as `chord` is not a different sound, only the same notes spelled from another root. Don't present it as a misheard chord. A diminished triad has no twin, so it is left as heard.
+The analyzer spells a dim7 or a m6 by where it leads. A dim7's four notes are the notes of three other dim7s (C♯dim7, Edim7, Gdim7 and B♭dim7 sound the same), and a m6 has the notes of the m7♭5 a minor third below (Am6 is F♯m7♭5). When one of them leads into the next chord, the JSON names that one, unless an m6 has its own root in the bass. The viewer doesn't respell: an `edited` chord is spelled as the user picked it, and a chord left alone keeps its spelling when the user changes the chord after it. So a `candidates` entry with the same notes as `chord` is not a different sound, only the same notes spelled from another root. Don't present it as a misheard chord.
 
 ## Borrowed chords (`role: borrowed`)
 
 This is modal mixture: a chord taken from the parallel key, which shares the tonic but has the other mode. Name the borrowed tones.
 
-A seventh chord is borrowed when its triad comes from the parallel key and its seventh belongs to either key. A chord whose triad is the key's own, such as `IV7` in major or `VIImaj7` in minor, is not borrowed, whatever its seventh.
+The analyzer tries the roles in order: diatonic, secondary dominant or leading-tone chord, borrowed, chromatic. A chord that reaches the borrowed test is borrowed when it is a chord of the parallel key (harmonic minor's V7 and vii°7 included), or when it is a seventh chord or an add6 whose triad is a chord of the parallel key and whose seventh or sixth belongs to either key. So `IV7` in major and `VIImaj7` in minor stay chromatic: their triads are not chords of the parallel key.
 
 In C major:
 
@@ -147,7 +147,6 @@ Common in major:
 Common in minor:
 
 - **`I`:** a major tonic. As the last chord it is the Picardy third.
-- **`I7`, `IV7`:** A7 and D7 in A minor. They are `V7/iv` and `V7/VII` when the next chord is iv or VII, and borrowed otherwise (the major tonic or Dorian subdominant with a seventh).
 - **`IV`:** the Dorian IV, with the raised sixth.
 - **`ii`, `#iii`, `#vi`:** rarer.
 
@@ -199,7 +198,7 @@ A pedal point is different: the same `bass` held across segments whose `chord` c
 
 `Vsus4` → `V` is a suspension: the fourth (C over G in C) resolves down to the third (B). It decorates V; it is not a substitute dominant.
 
-`Isus2` and `Vsus2`: Csus2 → C, the second (D) stepping up to the third or ringing as colour. `Vsus2` is not a substitute dominant. Csus2 and Gsus4 share notes: the analyzer names the one with its root in the bass, and sus4 when there is no bass, so a `sus4` candidate beside a `sus2` chord is a spelling.
+`Isus2` and `Vsus2`: Csus2 → C, the second (D) stepping up to the third or ringing as colour. `Vsus2` is not a substitute dominant. Csus2 and Gsus4 share notes. The DSP engine (`generator.engine.name` `dsp`) never writes `sus2`: a played Csus2 reads as Gsus4 over C or as the triad. The model maps its own `sus2` label directly, so a `sus2` comes from the model or a manual edit, and a candidate on the same notes (Gsus4 beside Csus2) is a spelling, not an alternative.
 
 ## When everything is diatonic
 

@@ -87,8 +87,8 @@ def _is_diatonic(offset: int, quality: str, mode: str) -> bool:
 def _is_borrowed(offset: int, quality: str, mode: str) -> bool:
     # A chord of the parallel mode, or a tetrad on one of its triads whose fourth tone lies in
     # either mode: a seventh the borrowed triad takes from home is still borrowed color. So in
-    # major bVIImaj7, ii°7 (the notes of the borrowed vii°7), iadd6 and vadd6 are borrowed; in
-    # minor I7 and IV7 are, and they join the overlap of I and IV with V/iv and V/VII below. A
+    # major bVIImaj7, ii°7 (the notes of the borrowed vii°7), iadd6 and vadd6 are borrowed. In
+    # minor the rule would also cover I7 and IV7, but the secondary dominant claims them first. A
     # triad of the home mode with a foreign seventh stays chromatic (IV7 in major, VIImaj7 and
     # iadd6 in minor), as do sevenths outside both scales (bIII7, bVI7, Vmaj7). This only widens
     # what borrowed covers; the precedence stays diatonic, secondary dominant, leading-tone chord,
@@ -183,13 +183,17 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
     if secondary:
         target = TARGETS[mode][target_offset]
         resolution = ROOTS[(ROOTS.index(tonic) + target_offset) % 12]
-        # Only the major triads and dominant sevenths on the tonic and subdominant of a minor key
-        # are also borrowed, and for those the very next chord being diatonic on the target's root
-        # is the one thing that tells V/VII from a borrowed IV (G:maj and G:7 both resolve it; D:7
+        # Only the major triads on the tonic and subdominant of a minor key are also chords of the
+        # parallel mode, and for those the very next chord being diatonic on the target's root is
+        # the one thing that tells V/VII from a borrowed IV (G:maj and G:7 both resolve it; D:7
         # does not resolve A:maj, as it is not diatonic); another chord or an N is no resolution.
+        # The borrowed-seventh rule does not widen this overlap, so I7 and IV7 in minor stay V7/iv
+        # and V7/VII wherever they go.
         # Outside this overlap and the leading-tone chords below, `following` is ignored, so a
         # label depends on the chord and key alone.
-        if not borrowed or _resolves(following, resolution, tonic, mode):
+        if not _is_diatonic(offset, quality, PARALLEL[mode]) or _resolves(
+            following, resolution, tonic, mode
+        ):
             text = ("V7" if quality == "7" else "V") + "/" + target
             return {
                 "numeral": text,
