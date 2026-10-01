@@ -229,15 +229,15 @@ const Core = ((Harmony) => {
     return spellInKey(resolution, parseKey(keyLabel)).name + (minor ? "m" : "");
   }
 
-  // Index of the segment sounding at time `t`, or -1 before the first one. Segments are
-  // contiguous and sorted, so this is the last one starting at or before `t`.
-  function segmentIndexAt(segments, t) {
+  // Of `count` ascending times, `timeAt(i)` the i-th, the index of the last at or before `t`, or
+  // -1 before the first.
+  function lastAtOrBefore(count, timeAt, t) {
     let lo = 0;
-    let hi = segments.length - 1;
+    let hi = count - 1;
     let found = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (segments[mid].start_time <= t) {
+      if (timeAt(mid) <= t) {
         found = mid;
         lo = mid + 1;
       } else {
@@ -245,6 +245,17 @@ const Core = ((Harmony) => {
       }
     }
     return found;
+  }
+
+  // Index of the segment sounding at time `t`, or -1 before the first one. Segments are
+  // contiguous and sorted, so this is the last one starting at or before `t`.
+  function segmentIndexAt(segments, t) {
+    return lastAtOrBefore(segments.length, (i) => segments[i].start_time, t);
+  }
+
+  // Index of the beat under time `t`, the last at or before it, or -1 before the first one.
+  function beatIndexAt(beats, t) {
+    return lastAtOrBefore(beats.length, (i) => beats[i], t);
   }
 
   // Where ← (step -1) and → (step +1) go from time `t`. → is the next segment. ← is the start
@@ -417,6 +428,7 @@ const Core = ((Harmony) => {
   return {
     alternativeName,
     bassName,
+    beatIndexAt,
     chordName,
     closestVoicing,
     dueStrikes,

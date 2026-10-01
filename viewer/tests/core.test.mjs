@@ -223,6 +223,17 @@ test("the segment at a time is the last one starting at or before it", () => {
   assert.equal(segmentIndexAt([], 1), -1);
 });
 
+test("the beat at a time is the last one at or before it", () => {
+  const beats = [0.023, 0.523, 1.023];
+  assert.equal(Core.beatIndexAt(beats, 0), -1);
+  assert.equal(Core.beatIndexAt(beats, 0.023), 0);
+  assert.equal(Core.beatIndexAt(beats, 0.522), 0);
+  assert.equal(Core.beatIndexAt(beats, 0.523), 1);
+  assert.equal(Core.beatIndexAt(beats, 1.023), 2);
+  assert.equal(Core.beatIndexAt(beats, 9), 2); // past the last beat, in its tail to the end
+  assert.equal(Core.beatIndexAt([], 1), -1);
+});
+
 test("left goes to the start of the chord, then to the one before; right to the next", () => {
   const segments = [
     { start_time: 0.5, end_time: 1.5 },
