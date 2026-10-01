@@ -350,6 +350,57 @@ Runtime and memory of `chordotomy analyze` on synthesized 3- and 6-minute mixes,
 
 Importing torch and lv-chordia and loading the five nets takes 1.3 s and 0.28 GB, once per run; the model rows include it. The nets run on the CPU by construction, whatever torch is installed, so this is the only profile. Memory grows with length mostly through `beat_features`, by 0.26 to 0.27 GB per audio minute in both engines. The windows hold the nets' own share of the peak at 1.1 GB at both lengths, where the whole track took 2.5 GB at 3 minutes and 5.0 GB at 6. They make the run about 10 % slower than on the whole track.
 
+### Corrected Tiny AAM reference
+
+Corrected Tiny AAM reference, before the stage-II analyzer changes, at the commit that adds these rows. Both engines snap to the DSP's beat grid, so their beat columns are equal. GuitarSet's reference has no `N`, so its `N_rec` is `nan`.
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.848 | 0.802 | 0.758 | 0.758 | 0.700 | 0.011 | 0.032 | 0.951 | 0.325 | 0.826 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `dsp` | 0.720 | 0.661 | 0.531 | 0.347 | 0.395 | 0.007 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.965 | 0.443 | 0.826 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+
+With the analyzer unchanged, the Tiny AAM rows rise by the tail alone: the DSP's root, majmin and sevenths from the v4 row's 0.839, 0.793 and 0.748 to 0.848, 0.802 and 0.758, and the model's from 0.927, 0.913 and 0.845 to 0.939, 0.924 and 0.857. GuitarSet's reference did not change, and its chord and `N_est` columns equal the v4 and model rows above.
+
+The period ratio and majmin on this grid of Tiny AAM's multi-tempo tracks:
+
+| | period | majmin, `dsp` | majmin, `model` |
+|---|---|---|---|
+| 0080 | 2.018 | 0.569 | 0.600 |
+| 0192 | 0.978 | 0.956 | 0.960 |
+| 0620 | 1.000 | 0.907 | 0.959 |
+| 1014 | 0.985 | 0.910 | 0.960 |
+| 1050 | 1.505 | 0.849 | 0.888 |
+| 1711 | 1.009 | 0.804 | 0.985 |
+| 1941 | 0.657 | 0.802 | 0.897 |
+| 2462 | 0.488 | 0.905 | 0.981 |
+| 2720 | 1.013 | 0.576 | 0.859 |
+| 2828 | 1.008 | 0.391 | 0.831 |
+| 2990 | 1.013 | 0.626 | 0.896 |
+
+And of every GuitarSet take whose ratio is within 10 % of 2 (nine: eight jazz takes and one bossa nova) or of 0.5 (six):
+
+| | period | majmin, `dsp` | majmin, `model` |
+|---|---|---|---|
+| 03_Jazz1-200-B_comp | 1.897 | 0.000 | 0.000 |
+| 04_Jazz1-200-B_comp | 1.937 | 0.445 | 0.803 |
+| 05_Jazz1-200-B_comp | 1.937 | 0.000 | 0.000 |
+| 04_Jazz2-187-F#_comp | 1.954 | 0.395 | 0.612 |
+| 03_Jazz3-137-Eb_comp | 1.961 | 0.000 | 0.000 |
+| 02_Jazz3-150-C_comp | 1.975 | 0.601 | 0.623 |
+| 01_BN2-166-Ab_comp | 1.992 | 0.528 | 0.500 |
+| 02_Jazz1-200-B_comp | 2.013 | 0.900 | 0.900 |
+| 04_Jazz3-150-C_comp | 2.030 | 0.490 | 0.604 |
+| 03_Funk3-98-A_comp | 0.493 | 0.634 | 0.693 |
+| 04_Funk3-98-A_comp | 0.493 | 0.230 | 0.522 |
+| 04_Rock2-85-F_comp | 0.493 | 0.923 | 0.989 |
+| 05_Funk3-98-A_comp | 0.493 | 0.189 | 0.407 |
+| 02_SS1-68-E_comp | 0.500 | 0.976 | 0.989 |
+| 04_SS1-68-E_comp | 0.500 | 0.997 | 0.993 |
+
+The zeros say little. 03_Jazz1-200 and 05_Jazz1-200 have no reference chord that `majmin` compares (each omits its root or fifth, or is a sus chord), and mir_eval scores an empty comparison as 0. 03_Jazz3-137 has one, a 1.75 s `G:min7/b7` out of 28 s, which both engines miss.
+
 ## Design decisions
 
 ### An analyzer, not a transcriber
