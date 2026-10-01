@@ -237,7 +237,7 @@ A batch of dropped or picked files opens whole or not at all, so the recording a
 
 ## Evaluation
 
-`chordotomy evaluate {tiny-aam,guitarset} [--limit N]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.
+`chordotomy evaluate {tiny-aam,guitarset} [--limit N] [--engine auto|model|dsp]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.
 
 - **Tiny AAM**: 20 mixed tracks with one chord per beat, reduced to major, minor and `N`. Its annotation has no bass, so its `majmin_inv` assumes every reference chord is in root position; read it as bass agreement with that assumption, not as inversion accuracy.
 - **GuitarSet**: the 180 accompaniment takes (`_comp`, mono mic), scored against the performed chord annotation, which carries the bass.
@@ -283,6 +283,37 @@ The quality offsets, `TEMPERATURE`, `CHORD_SECONDS`, `BASS_WEIGHT`, `BASS_TONE` 
 Each constant was then moved one grid step either way, and margin on the suite came first, because stage 1's point was one step from breaking an inversion test. At the descent's point, with `PARTIAL_DECAY` 0.6, one step of `TEMPERATURE` up, `BASS_WEIGHT` up, `BASS_TONE` down or `PARTIAL_DECAY` down smoothed away the two-beat `A:min/C` inside `C:maj`, the stage-1 binding case. Moving `PARTIAL_DECAY` to 0.8 was a cost: 0.3 pp of label-only GuitarSet sevenths, and Tiny AAM's root, majmin and sevenths from 0.844, 0.799 and 0.754 to 0.839, 0.793 and 0.748. It is what keeps the suite green at every one-step neighbour. `7`, `maj7`/`min7`, `min6`/`hdim7`, `dim7` and `CHORD_SECONDS` also hold every floor at both neighbours. Elsewhere Tiny AAM's root floor binds, cleared by 0.4 pp: one step of `sus4` up, `TEMPERATURE` down, `BASS_WEIGHT` down, `BASS_TONE` up or `PARTIAL_DECAY` up takes it to between 0.822 and 0.834. `sus4` is pinned from both sides, since at -0.3 the suspension test fails.
 
 The chosen point is therefore not the objective's best. One step outside the grid, three neighbours score higher with the suite green and every floor held (GuitarSet sevenths on the CLI): `TEMPERATURE` 0.035 (0.534) and `BASS_TONE` 0.6 (0.532) were not taken because each uses up the `A:min/C` case's margin, which fails at `TEMPERATURE` 0.040 and with both moves together. `maj7`/`min7` at -0.05 (0.540) was not taken because it calls more sevenths on major and minor material: Tiny AAM sevenths falls to 0.744, and at the next step, 0, to 0.715, under its floor.
+
+### Model engine
+
+`chordotomy evaluate <dataset> --engine model` scores the lv-chordia engine, the default when the `model` extra is installed. The rows above are the DSP's, `--engine dsp`, which still reproduces the v4 Tiny AAM row.
+
+Model engine, lv-chordia 1.1.0 on the DSP beat grid with the DSP bass, at the commit that adds these rows:
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref |
+|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks) | 0.927 | 0.913 | 0.845 | 0.845 | 0.788 | 0.015 | 0.015 |
+| Tiny AAM, labels only | 0.927 | 0.922 | 0.887 | 0.887 | — | 0.015 | 0.015 |
+| GuitarSet (180 takes) | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 |
+| GuitarSet, labels only | 0.827 | 0.872 | 0.819 | 0.533 | — | 0.032 | 0.000 |
+
+The rows were accepted against the planning spike's labels over the DSP's bass: lv-chordia's own labels, mapped to v4, snapped to the DSP's beats by the label covering most of each beat, and scored with the bass this engine writes. Those score 0.926, 0.912, 0.842 and 0.842 on Tiny AAM (root, majmin, sevenths, tetrads) and 0.827, 0.787, 0.676 and 0.440 on GuitarSet, and the CLI rows match them within 0.003. The labels-only rows score the same timelines without the bass. They match the spike's beat-snapped labels alone, 0.926, 0.922, 0.886 and 0.886 and 0.827, 0.872, 0.819 and 0.533, within 0.001, so the beat majority and the label mapping reproduce the spike's.
+
+The CLI rows sit below the labels-only rows because of the bass. A DSP bass outside the model's chord becomes a slash degree, which mir_eval adds to the pitch set (see the slash-chord note above), on 5.0 % of Tiny AAM's duration and 19.4 % of GuitarSet's. The engine keeps it, because in band recordings such a bass is often real, a pedal point or a descending line, while on these two datasets it only costs: Tiny AAM's references carry no bass, and GuitarSet's solo guitar defeats `pick_bass`. Dropping those basses, which is not shipped, would give the labels-only majmin, sevenths and tetrads and a `majmin_inv` of 0.831 and 0.578.
+
+`majmin_inv` here is the DSP's bass under the model's chords: 0.788 and 0.466, against the DSP engine's 0.690 and 0.395. The spike's `majmin_inv` with the model's own bass, 0.903 and 0.701, is not comparable. That bass is off the root on under 3 % of the duration, and the references are mostly in root position, on Tiny AAM all of them by assumption. A root-position prior scores well there without hearing a bass.
+
+The nets run in windows of at most `CHUNK_SECONDS` = 60 s. Tiny AAM's tracks are 123 to 181 s long, so each is split into three or four windows. On the whole track instead, Tiny AAM scores 0.926, 0.912, 0.843, 0.843, 0.786, 0.015 and 0.015, against the windows' 0.927, 0.913, 0.845, 0.845, 0.788, 0.015 and 0.015. The window would have gone up to 120 s had root, majmin or sevenths moved by more than 0.5 pp. They moved by 0.1 to 0.2 pp, so 60 s ships. GuitarSet's takes are 14 to 46 s, one window each.
+
+Runtime and memory of `chordotomy analyze` on synthesized 3- and 6-minute mixes, on an Apple M4 (10 cores, torch 2.14.1). Time is wall time per audio minute, start-up included, the mean of two runs; memory is the peak resident set size. The whole-track rows set `CHUNK_SECONDS` above the clip's length.
+
+| | 3 min: s per audio minute | 3 min: peak RSS | 6 min: s per audio minute | 6 min: peak RSS |
+|---|---|---|---|---|
+| `dsp` | 3.3 | 1.00 GB | 3.1 | 1.77 GB |
+| model, 60 s windows (shipped) | 6.8 | 2.36 GB | 6.3 | 3.17 GB |
+| model, whole track | 6.2 | 3.73 GB | 5.7 | 6.98 GB |
+
+Importing torch and lv-chordia and loading the five nets takes 1.3 s and 0.28 GB, once per run; the model rows include it. The nets run on the CPU by construction, whatever torch is installed, so this is the only profile. Memory grows with length mostly through `beat_features`, by 0.26 to 0.27 GB per audio minute in both engines. The windows hold the nets' own share of the peak at 1.1 GB at both lengths, where the whole track took 2.5 GB at 3 minutes and 5.0 GB at 6. They make the run about 10 % slower than on the whole track.
 
 ## Design decisions
 

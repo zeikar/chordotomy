@@ -33,11 +33,12 @@ NAME = "lv-chordia"
 # lv_chordia/data/submission_chord_list.txt: 25 qualities on C, which the decoder transposes to
 # 12 roots spelled C C# D Eb E F F# G Ab A Bb B, and N.
 DICTIONARY = "submission"
-# The nets' memory peak (CNN activations and im2col buffers) grows linearly with length, so
-# they run over windows of at most CHUNK_SECONDS, each with OVERLAP_SECONDS of context on both
-# sides whose outputs are discarded, and the HMM decodes the stitched probabilities once.
-# InstanceNorm and the BiLSTM then see at most 70 s, closer to the 23 s segments the nets were
-# trained on than a whole song.
+# The nets' memory peak (CNN activations and im2col buffers) grows linearly with length, 2.5 GB
+# above the rest of the analysis at 3 minutes and 5.0 GB at 6. So they run over windows of at
+# most CHUNK_SECONDS, each with OVERLAP_SECONDS of context on both sides whose outputs are
+# discarded, and the HMM decodes the stitched probabilities once; that holds the nets' share at
+# 1.1 GB at both lengths. InstanceNorm and the BiLSTM then see at most 70 s, closer to the 23 s
+# segments the nets were trained on than a whole song.
 CHUNK_SECONDS = 60
 OVERLAP_SECONDS = 5
 _REINSTALL = (
