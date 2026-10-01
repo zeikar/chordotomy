@@ -53,6 +53,8 @@ const Core = ((Harmony) => {
   };
   // Seconds into a chord after which ← goes back to its start rather than to the chord before.
   const RESTART = 1;
+  // The length beatPosition gives the one beat of a single-beat grid, which has no gap to go by.
+  const LONE_BEAT = 0.5;
   // Keys whose written sharp tonic is conventionally spelled flat. Every other key keeps its label.
   const FLAT_KEYS = {
     "C#:maj": "Db",
@@ -257,6 +259,18 @@ const Core = ((Harmony) => {
   // Index of the beat under time `t`, the last at or before it, or -1 before the first one.
   function beatIndexAt(beats, t) {
     return lastAtOrBefore(beats.length, (i) => beats[i], t);
+  }
+
+  // The fractional beat index of time `t`: the beat it falls in plus how far through that beat it
+  // is, so every beat spans one unit whatever its length. Before the first beat and after the
+  // last, the nearest gap carries on (negative before the first). The strip is scaled per beat so
+  // that a one-beat chord has room for its name, and on a grid whose tempo changes that holds only
+  // if each beat, not each second, gets the same width.
+  function beatPosition(beats, t) {
+    if (beats.length === 0) return 0;
+    if (beats.length === 1) return (t - beats[0]) / LONE_BEAT;
+    const i = Math.min(Math.max(beatIndexAt(beats, t), 0), beats.length - 2);
+    return i + (t - beats[i]) / (beats[i + 1] - beats[i]);
   }
 
   // Where ← (step -1) and → (step +1) go from time `t`. → is the next segment. ← is the start
@@ -510,6 +524,7 @@ const Core = ((Harmony) => {
     alternativeName,
     bassName,
     beatIndexAt,
+    beatPosition,
     chordName,
     closestVoicing,
     dueStrikes,

@@ -234,6 +234,19 @@ test("the beat at a time is the last one at or before it", () => {
   assert.equal(Core.beatIndexAt([], 1), -1);
 });
 
+test("a time's beat position is linear inside each beat, and at the edge gaps' rate outside", () => {
+  const beats = [0.5, 1.0, 2.0];
+  assert.equal(Core.beatPosition(beats, 0.5), 0);
+  assert.equal(Core.beatPosition(beats, 0.75), 0.5);
+  assert.equal(Core.beatPosition(beats, 1.5), 1.5); // a beat twice as long, at the same width
+  assert.equal(Core.beatPosition(beats, 2.5), 2.5); // past the last beat, at the last gap's rate
+  assert.equal(Core.beatPosition(beats, 0.25), -0.5); // before the first, at the first gap's rate
+  // One beat has no gap of its own, so it takes half a second; none at all is position 0.
+  assert.equal(Core.beatPosition([0.5], 1.0), 1);
+  assert.equal(Core.beatPosition([0.5], 0.25), -0.5);
+  assert.equal(Core.beatPosition([], 3), 0);
+});
+
 test("left goes to the start of the chord, then to the one before; right to the next", () => {
   const segments = [
     { start_time: 0.5, end_time: 1.5 },

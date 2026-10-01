@@ -53,7 +53,7 @@
   // rewrites the picker nor moves its edits to the next chord.
   let pinned = null;
   let keyLabel = null;
-  let pxPerSecond = 0;
+  let xAt = null; // a time's x on the strip, set by renderTimeline
   let buttons = [];
   let current = null;
   let tabStop = null;
@@ -384,15 +384,10 @@
     );
   }
 
-  function medianGap(beats) {
-    const gaps = beats.slice(1).map((beat, i) => beat - beats[i]);
-    gaps.sort((a, b) => a - b);
-    return gaps.length ? gaps[gaps.length >> 1] : 0.5;
-  }
-
   function place(element, start, end) {
-    element.style.left = `${start * pxPerSecond}px`;
-    if (end !== undefined) element.style.width = `${(end - start) * pxPerSecond}px`;
+    const left = xAt(start);
+    element.style.left = `${left}px`;
+    if (end !== undefined) element.style.width = `${xAt(end) - left}px`;
   }
 
   function renderNumeral(element, segment) {
@@ -425,11 +420,13 @@
 
   function renderTimeline() {
     const { beats, segments } = timeline;
-    // Scale by the beat, not the second, so a one-beat chord has room for its name at any tempo.
-    pxPerSecond = PX_PER_BEAT / medianGap(beats);
+    // Every beat gets PX_PER_BEAT, not every second, so a one-beat chord has room for its name at
+    // any tempo, and through a tempo change too: the ruler's seconds spread or bunch instead.
+    const origin = Core.beatPosition(beats, 0);
+    xAt = (t) => PX_PER_BEAT * (Core.beatPosition(beats, t) - origin);
     const last = segments[segments.length - 1];
     const duration = (timeline.source && timeline.source.duration) || (last ? last.end_time : 0);
-    $("track").style.width = `${duration * pxPerSecond}px`;
+    $("track").style.width = `${xAt(duration)}px`;
 
     buttons = segments.map((segment, index) => {
       const button = document.createElement("button");
@@ -631,7 +628,7 @@
 
   function update() {
     if (!timeline) return;
-    const x = now() * pxPerSecond;
+    const x = xAt(now());
     $("playhead").style.transform = `translateX(${x}px)`;
     const index = currentIndex();
     if (index !== current) show(index);
