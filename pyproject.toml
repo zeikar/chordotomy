@@ -24,6 +24,14 @@ eval = [
   "mir_eval>=0.8",
   "pooch>=1.8",
 ]
+model = [
+  # The engine uses chord_recognition.MODEL_NAMES, ChordNet, NetworkInterface and
+  # XHMMDecoder directly, so the pin is one minor version.
+  "lv-chordia>=1.1,<1.2",
+  "torch>=2.2",
+  # pydub (imported by lv_chordia.mir) needs audioop, removed in Python 3.13.
+  "audioop-lts; python_version >= '3.13'",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,6 +39,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chordotomy"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+# PyPI's Linux torch wheel pulls CUDA; macOS and Windows PyPI wheels are CPU-only.
+torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
 
 [tool.ruff]
 line-length = 100
