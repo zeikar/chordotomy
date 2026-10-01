@@ -1,8 +1,10 @@
 """Synthesized-audio fixtures: chord progressions at a known tempo, with exact ground truth.
 
-A progression entry is (label, n_beats) or (label, n_beats, bass_midi); the bass is an extra tone
-under the chord. `synth` also takes a `chord_midi` register for the chord tones. Keep clips at
-least 8 beats: `chroma_cqt` warns on shorter ones, which fails under `-W error::UserWarning`.
+A progression entry is (label, n_beats), (label, n_beats, bass_midi) or (label, n_beats,
+bass_midi, melody_midi); the bass is an extra tone under the chord, the melody an extra tone
+struck with it at a chord tone's level. `synth` also takes a `chord_midi` register for the chord
+tones. Keep clips at least 8 beats: `chroma_cqt` warns on shorter ones, which fails under
+`-W error::UserWarning`.
 """
 
 from collections.abc import Callable
@@ -30,15 +32,18 @@ INTERVALS = {
     "sus4": (0, 5, 7),
 }
 
-Progression = list[tuple[str, int] | tuple[str, int, int]]
+Progression = list[tuple[str, int] | tuple[str, int, int] | tuple[str, int, int, int]]
 
 
-def _strike(label: str, bass: int | None = None, chord_midi: int = 48) -> np.ndarray:
+def _strike(
+    label: str, bass: int | None = None, chord_midi: int = 48, melody: int | None = None
+) -> np.ndarray:
     """One beat of a chord struck at the downbeat, or silence for N.
 
     A bass sits at MIDI 36-47 under a chord at 48: the bass register ends at B3, so the bass tone
     is the lowest note by construction and the ground truth is exact. chord_midi=60 voices the
-    chord above the register for the no-bass cases.
+    chord above the register for the no-bass cases. A melody note is one more tone, as loud as
+    each chord tone.
     """
     n = int(round(BEAT * SR))
     if label == "N":
@@ -49,6 +54,8 @@ def _strike(label: str, bass: int | None = None, chord_midi: int = 48) -> np.nda
     notes = [chord_midi + ROOT_NAMES.index(root) + i for i in INTERVALS[quality]]
     if bass is not None:
         notes.append(bass)
+    if melody is not None:
+        notes.append(melody)
     for note in notes:
         freq = 440.0 * 2 ** ((note - 69) / 12)
         for h in range(1, 5):
@@ -62,11 +69,10 @@ def synth() -> Callable[..., np.ndarray]:
     def make(progression: Progression, chord_midi: int = 48) -> np.ndarray:
         # Each beat is re-struck and decays: a sustained chord has no onsets for the beat
         # tracker to lock onto.
-        beats = [
-            _strike(label, bass=(rest[0] if rest else None), chord_midi=chord_midi)
-            for label, n_beats, *rest in progression
-            for _ in range(n_beats)
-        ]
+        beats = []
+        for label, n_beats, *rest in progression:
+            bass, melody = (*rest, None, None)[:2]  # both optional, in that order
+            beats += [_strike(label, bass, chord_midi, melody) for _ in range(n_beats)]
         y = np.concatenate(beats)
         peak = np.abs(y).max()
         if peak > 0:

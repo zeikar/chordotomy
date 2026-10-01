@@ -235,6 +235,7 @@ def test_a_diminished_seventh_is_spelled_by_where_it_leads_over_any_bass(
 
     assert [s["chord"] for s in segments] == ["C:maj", "C#:dim7", "D:min7", "G:7", "C:maj"]
     assert [s["numeral"] for s in segments] == ["I", "vii°7/ii", "ii7", "V7", "I"]
+    assert (segments[1]["role"], segments[1]["target"]) == ("secondary_dominant", "ii")
     assert (segments[1]["bass"], segments[1]["inversion"]) == (note, position)
 
 
@@ -253,6 +254,69 @@ def test_a_diminished_seventh_over_a_moving_bass_is_one_chord(synth, tmp_path) -
     assert [s["chord"] for s in segments] == ["C:maj", "D#:dim7", "D#:dim7", "E:min", "C:maj"]
     assert [s["inversion"] for s in segments[1:3]] == ["second", "first"]
     assert [s["numeral"] for s in segments[1:3]] == ["vii°7/iii", "vii°7/iii"]
+
+
+def test_a_ii_v_i_of_sevenths_keeps_its_sevenths(synth, tmp_path) -> None:
+    progression = [("D:min7", 4, 38), ("G:7", 4, 43), ("C:maj7", 4, 36)]
+
+    result = analyze(_write(tmp_path, synth(progression)))
+
+    segments = result["segments"]
+    assert result["key"]["label"] == "C:maj"
+    assert [s["chord"] for s in segments] == ["D:min7", "G:7", "C:maj7"]
+    assert [s["numeral"] for s in segments] == ["ii7", "V7", "Imaj7"]
+    assert [s["inversion"] for s in segments] == ["root", "root", "root"]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="QUALITY_OFFSET['sus4'] -0.3 binds: G:sus4 clears G:maj by 0.006-0.025 a beat, 0.045 "
+    "over its four beats, short of the 0.12 an extra chord change costs at TEMPERATURE 0.02; "
+    "-0.25 passes, and Tiny AAM's root floor needs -0.3",
+)
+def test_a_suspension_resolves_to_its_triad(synth, tmp_path) -> None:
+    progression = [("C:maj", 4, 36), ("G:sus4", 4, 43), ("G:maj", 4, 43), ("C:maj", 4, 36)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "G:sus4", "G:maj", "C:maj"]
+    assert [s["numeral"] for s in segments] == ["I", "Vsus4", "V", "I"]
+    assert [(s["bass"], s["inversion"]) for s in segments[1:3]] == [("G", "root"), ("G", "root")]
+
+
+@pytest.mark.parametrize(
+    ("following", "bass", "numeral", "role"),
+    [("G:maj", 43, "viiø7/V", "secondary_dominant"), ("F:maj", 41, "#ivø7", "chromatic")],
+)
+def test_a_half_diminished_is_secondary_only_when_it_resolves(
+    synth, tmp_path, following, bass, numeral, role
+) -> None:
+    progression = [("C:maj", 4, 36), ("F#:hdim7", 2, 42), (following, 4, bass), ("C:maj", 4, 36)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "F#:hdim7", following, "C:maj"]
+    assert (segments[1]["numeral"], segments[1]["role"]) == (numeral, role)
+
+
+def test_a_minor_sixth_on_the_subdominant_is_borrowed(synth, tmp_path) -> None:
+    progression = [("C:maj", 4, 36), ("F:maj", 2, 41), ("F:min6", 2, 41), ("C:maj", 4, 36)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "F:maj", "F:min6", "C:maj"]
+    assert (segments[2]["numeral"], segments[2]["role"]) == ("ivadd6", "borrowed")
+    assert (segments[2]["bass"], segments[2]["inversion"]) == ("F", "root")
+
+
+def test_a_melody_over_a_triad_is_not_a_seventh(synth, tmp_path) -> None:
+    # One entry per beat is one eight-beat C:maj, as synth strikes every beat anew. B is
+    # C:maj7's seventh, and A turns the chord into A:min7's pitch set.
+    progression = [("C:maj", 1, 36, melody) for melody in (71, 69, 67, 65, 64, 62, 60, 71)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert {(s["chord"], s["numeral"]) for s in segments} == {("C:maj", "I")}
 
 
 def test_edge_silence_is_n(synth, tmp_path) -> None:
