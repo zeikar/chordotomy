@@ -13,6 +13,8 @@ from itertools import groupby, pairwise
 import numpy as np
 
 ROOTS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+# The quality strings are Harte's, because evaluate hands labels to mir_eval: it parses A:sus4(b7)
+# and its slash forms, and would reject an ad-hoc 7sus4.
 # Left out, for the reasons in docs/ARCHITECTURE.md: maj6 (min7's pitch set, I6 reads as a
 # first-inversion figure, and the model never emits it); add9 and 9/11/13 (beyond a beat-median
 # chroma, where the fifth's twelfth lands on the ninth; the model maps them to sevenths).
@@ -29,13 +31,15 @@ QUALITIES = {
     "aug": (0, 4, 8),
     "dim": (0, 3, 6),
     "sus2": (0, 2, 7),
+    "sus4(b7)": (0, 5, 7, 10),
 }
 # Quality-major, and the order is the tie-break: smooth takes the first argmax.
 # Pitch-set twins score exactly alike without bass evidence (G:min6 and E:hdim7; the four dim7
 # labels on one set; C:aug, E:aug and G#:aug), and then the earlier label wins: min6 over hdim7,
 # the lowest root of a dim7 or an aug. resolve_twins then respells a diminished or augmented twin
 # by where it leads. C:sus2 and G:sus4 are twins in the vocabulary only: the DSP never calls
-# sus2 (QUALITY_OFFSET), so it decodes sus4 alone.
+# sus2 (QUALITY_OFFSET), so it decodes sus4 alone. A sus4(b7) has no twin: A-D-E-G is no other
+# label's pitch set.
 LABELS = [f"{root}:{quality}" for quality in QUALITIES for root in ROOTS] + ["N"]
 # A tone's first four partials in semitones above it: the fundamental, the octave, the twelfth
 # and the double octave. Partial k weighs PARTIAL_DECAY ** (k - 1) in a template.
@@ -91,8 +95,8 @@ BASS_WEIGHT = 0.3
 BASS_TONE = 0.7
 # Sharpens score gaps into likelihood ratios: a gap g on one beat is worth g / TEMPERATURE nats
 # against the transition cost. Too high and two-beat chord changes are smoothed away. The
-# self-loop spreads what it leaves over the other 144 labels, so at period 0.5 leaving a chord and
-# coming back costs about 13.2 nats. The suite's binding case, the two-beat A:min/C inside C:maj
+# self-loop spreads what it leaves over the other 156 labels, so at period 0.5 leaving a chord and
+# coming back costs about 13.4 nats. The suite's binding case, the two-beat A:min/C inside C:maj
 # at 0.24 per beat, holds up to 0.037.
 TEMPERATURE = 0.03
 # The expected chord length in seconds, not beats, so a tracker locked at half or double tempo
@@ -154,6 +158,9 @@ QUALITY_OFFSET = {
     # played C:sus2 does (0.30 against 0.285 over C:maj), so no offset passes both synthesized
     # cases, and sus2 calls cost Tiny AAM majmin. The model engine and the editor still produce it.
     "sus2": float("-inf"),
+    # Provisional: never called until the offset is measured, so the label exists for the model
+    # engine and the editor before the DSP decides on it.
+    "sus4(b7)": float("-inf"),
 }
 
 
@@ -172,7 +179,7 @@ def _correlate(templates: np.ndarray, chroma: np.ndarray) -> np.ndarray:
 
 
 def match(treble: np.ndarray, bass: np.ndarray) -> np.ndarray:
-    """Score treble and bass chroma columns (12, n) against every label, shape (145, n).
+    """Score treble and bass chroma columns (12, n) against every label, shape (157, n).
 
     A chord's score is the correlation of the treble chroma with its template, in [-1, 1], plus
     BASS_WEIGHT times the correlation of the bass chroma with its bass profile, plus its quality's
@@ -204,7 +211,7 @@ def no_chord(
 
 
 def smooth(scores: np.ndarray, forced: np.ndarray, durations: np.ndarray) -> np.ndarray:
-    """Viterbi-decode (145, n) scores into one label index per beat.
+    """Viterbi-decode (157, n) scores into one label index per beat.
 
     forced is (n,) bool, the beats that can only be N (no_chord). durations is (n - 1,) seconds,
     the gap from each beat to the next.
@@ -350,9 +357,9 @@ def resolve_twins(segments: list[dict]) -> list[dict]:
     triad (V+ to I): a run becomes the aug a fifth above the next chord's root, when its pitch
     set has one. A bass-less D#:aug before C:maj is G:aug, and a C:aug before A:min is E:aug. Like
     a min6, an aug is left when a bass sits on its decoded root (C:aug over C before A:min stays):
-    that is the evidence for the reading, and label order says nothing. A sus2 and its sus4 are
-    never respelled: a suspension resolves on its own root, so the next chord's root is no
-    evidence, and the bass, which decodes them, is.
+    that is the evidence for the reading, and label order says nothing. A sus2, a sus4 and a
+    sus4(b7) are never respelled: a suspension resolves on its own root, so the next chord's root
+    is no evidence, and the bass, which decodes them, is.
 
     A run with no such twin keeps the recognizer's reading, as does a run before N or at the end. A
     run split by the bass is one chord and one decision. The candidates lead with the new label,
@@ -400,8 +407,9 @@ BASS_BINS = 36
 # needs to be both a local maximum and at least this fraction of the register's strongest.
 BASS_SALIENCE = 0.5
 # Position names index a quality's QUALITIES intervals in order: third is the seventh of a 7, maj7,
-# min7, hdim7 or dim7 and the added sixth of a min6; sus4 and sus2 have no third, and their first
-# is the fourth or the second, their second the fifth.
+# min7, hdim7 or dim7, the added sixth of a min6 and the seventh of a sus4(b7); sus4 and sus2 have
+# no third, and their first is the fourth or the second, their second the fifth (a sus4(b7)'s first
+# is the fourth too).
 INVERSIONS = ("root", "first", "second", "third")
 
 

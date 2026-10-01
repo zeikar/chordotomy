@@ -45,6 +45,7 @@ INTERVALS = {
     "aug": (0, 4, 8),
     "dim": (0, 3, 6),
     "sus2": (0, 2, 7),
+    "sus4(b7)": (0, 5, 7, 10),
 }
 
 Progression = list[tuple[str, int] | tuple[str, int, int] | tuple[str, int, int, int]]

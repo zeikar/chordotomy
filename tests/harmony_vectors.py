@@ -44,6 +44,7 @@ KEY_TEMPLATES = {
 # root it would resolve to. C major has no diatonic chord on D#, so A#:maj keeps the test's D#:maj.
 # B:hdim7 and B:dim are left out: the leading-tone cases already hold them. The augmented triads
 # stand before the chord a fifth below, which they never resolve.
+# A 7sus4 is never a secondary dominant, so C:sus4(b7) before F:maj stays I7sus4, not V7/IV.
 CONTROLS = [
     ("D:maj", "C:maj", "G:maj"),
     ("A:maj", "C:maj", "D:min"),
@@ -51,6 +52,7 @@ CONTROLS = [
     ("D:maj7", "A:min", "G:maj"),
     ("G:aug", "C:maj", "C:maj"),
     ("C:aug", "C:maj", "F:maj"),
+    ("C:sus4(b7)", "C:maj", "F:maj"),
 ]
 # The estimator's tie-breaks and edge cases: those tests/test_harmony.py pins, and a few more.
 TIES = [

@@ -17,8 +17,8 @@ NUMERALS = {
     "maj": ("I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"),
     "min": ("I", "bII", "II", "III", "#III", "IV", "#IV", "V", "VI", "#VI", "VII", "#VII"),
 }
-# Case shows the third: lowercase for a minor or diminished one; sus4 and sus2 have none and stay
-# upper.
+# Case shows the third: lowercase for a minor or diminished one; sus4, sus2 and sus4(b7) have none
+# and stay upper.
 LOWERCASE = {"min", "min7", "min6", "hdim7", "dim7", "dim"}
 # min6 is `add6` because `iv6` is the first-inversion figure, and `add6` cannot be read as one.
 # ø and ° are the characters themselves, not ASCII stand-ins: the viewer turns only the b and #
@@ -36,6 +36,7 @@ NUMERAL_SUFFIX = {
     "aug": "+",
     "dim": "°",
     "sus2": "sus2",
+    "sus4(b7)": "7sus4",
 }
 # Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
 FUNCTIONS = {
@@ -55,8 +56,18 @@ TARGETS = {
     "min": {3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII"},
 }
 PARALLEL = {"maj": "min", "min": "maj"}
-# Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule.
-TRIAD = {"7": "maj", "maj7": "maj", "min7": "min", "min6": "min", "hdim7": "dim", "dim7": "dim"}
+# Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule. The
+# sus4(b7) entry keeps the table complete for every tetrad; for this quality the parallel-mode test
+# already covers every borrowed case, so it changes no classification.
+TRIAD = {
+    "7": "maj",
+    "maj7": "maj",
+    "min7": "min",
+    "min6": "min",
+    "hdim7": "dim",
+    "dim7": "dim",
+    "sus4(b7)": "sus4",
+}
 CANDIDATES = 3
 
 
@@ -177,7 +188,8 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
     target_offset = (offset - 7) % 12
     # An augmented triad never counts: it is symmetric, so its root is the bass's or
     # resolve_twins's spelling, not a fifth relation that identifies it, and C+ = E+ = G#+ would be
-    # V+/IV, V+/vi or bVI+ by tie-break alone. sus2 never counts either, as sus4 does not.
+    # V+/IV, V+/vi or bVI+ by tie-break alone. sus2 never counts either, as sus4 does not, nor does
+    # a sus4(b7): no third, so no leading tone.
     secondary = quality in ("maj", "7") and target_offset in TARGETS[mode]
     borrowed = _is_borrowed(offset, quality, mode)
     if secondary:

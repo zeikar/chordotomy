@@ -47,7 +47,7 @@ def test_analyze_writes_the_timeline(clip, tmp_path) -> None:
     assert result.exit_code == 0
     assert "Wrote" in result.stdout
     data = json.loads(out.read_text())
-    assert data["schema_version"] == 7
+    assert data["schema_version"] == 8
     assert data["source"]["path"] == str(clip)
 
 
@@ -274,7 +274,7 @@ def test_forced_write_keeps_the_existing_mode(clip, tmp_path) -> None:
 
     assert result.exit_code == 0
     assert out.stat().st_mode & 0o777 == 0o600
-    assert json.loads(out.read_text())["schema_version"] == 7
+    assert json.loads(out.read_text())["schema_version"] == 8
 
 
 @pytest.mark.parametrize("args", [[], ["--engine", "dsp"]], ids=["default", "dsp"])

@@ -1,4 +1,4 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v7)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v8)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from . import __version__, harmony, model
 from .chords import inversion, match, no_chord, resolve_twins, segment, smooth
 from .features import SR, beat_features, load_audio
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def chord_runs(segments: list[dict]) -> list[list[dict]]:

@@ -130,6 +130,14 @@ def test_estimate_key_takes_every_quality() -> None:
         ("C:sus2", "C:maj", "Isus2", "tonic"),
         ("G:sus2", "C:maj", "Vsus2", "dominant"),
         ("D:sus2", "C:maj", "IIsus2", "predominant"),
+        ("G:sus4(b7)", "C:maj", "V7sus4", "dominant"),
+        ("D:sus4(b7)", "C:maj", "II7sus4", "predominant"),
+        ("A:sus4(b7)", "C:maj", "VI7sus4", "tonic"),
+        ("E:sus4(b7)", "C:maj", "III7sus4", "tonic"),
+        ("E:sus4(b7)", "A:min", "V7sus4", "dominant"),
+        ("A:sus4(b7)", "A:min", "I7sus4", "tonic"),
+        ("D:sus4(b7)", "A:min", "IV7sus4", "predominant"),
+        ("G:sus4(b7)", "A:min", "VII7sus4", "dominant"),
     ],
 )
 def test_analyze_chord_diatonic(label: str, key: str, numeral: str, function: str) -> None:
@@ -209,6 +217,9 @@ def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(
         # resolve_twins's spelling of a symmetric chord, not a fifth relation.
         ("G:aug", "C:maj", "C:maj", "V+", "chromatic"),
         ("C:aug", "C:maj", "F:maj", "I+", "chromatic"),
+        # As a 7 this would be V7/IV; a 7sus4 never is.
+        ("C:sus4(b7)", "C:maj", "F:maj", "I7sus4", "borrowed"),
+        ("D:sus4(b7)", "C:maj", "G:maj", "II7sus4", "diatonic"),
     ],
 )
 def test_following_is_ignored_outside_the_overlap(
@@ -282,6 +293,12 @@ def test_leading_tone_chord_resolves_only_on_a_diatonic_chord_on_the_target_root
         # D F Ab lies in C minor as it is.
         ("D:dim", "C:maj", "ii°"),
         ("A#:sus2", "C:maj", "bVIIsus2"),
+        # The 7sus4 of a parallel-mode sus4 has its seventh in that mode too.
+        ("C:sus4(b7)", "C:maj", "I7sus4"),
+        ("F:sus4(b7)", "C:maj", "IV7sus4"),
+        ("A#:sus4(b7)", "C:maj", "bVII7sus4"),
+        ("B:sus4(b7)", "A:min", "II7sus4"),
+        ("F#:sus4(b7)", "A:min", "#VI7sus4"),
         # C minor's harmonic III+.
         ("D#:aug", "C:maj", "bIII+"),
         # A tetrad on a C minor triad, its fourth tone in either mode of C: D:dim7 has the notes
@@ -346,6 +363,9 @@ def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
         ("C#:dim", "C:maj", "#i°"),
         ("D#:dim", "C:maj", "#ii°"),
         ("E:sus2", "C:maj", "IIIsus2"),
+        # The seventh or the fifth is outside both modes of C: D#'s seventh Db, B's fifth F#.
+        ("D#:sus4(b7)", "C:maj", "bIII7sus4"),
+        ("B:sus4(b7)", "C:maj", "VII7sus4"),
     ],
 )
 def test_analyze_chord_chromatic(label: str, key: str, numeral: str) -> None:

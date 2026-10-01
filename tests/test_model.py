@@ -71,7 +71,7 @@ def test_fold_sums_the_probability_of_every_name_on_a_label() -> None:
 
     scores = fold(names, np.log(probability))
 
-    assert scores.shape == (145, 2)
+    assert scores.shape == (157, 2)
     d_sharp, c_min7 = LABELS.index("D#:maj"), LABELS.index("C:min7")
     d_sharp_aug = LABELS.index("D#:aug")
     np.testing.assert_allclose(scores[d_sharp], np.log([0.1 + 0.3, 0.4 + 0.01]))

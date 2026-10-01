@@ -51,6 +51,13 @@ test("augmented, diminished and sus2 triads are spelled out in letters", () => {
   assert.equal(chordName("C:aug", "C:maj", "G#", "second"), "Caug/G♯");
 });
 
+test("a 7sus4 is named with its seventh and a bass on any of its tones", () => {
+  assert.equal(chordName("A:sus4(b7)", "D:maj"), "A7sus4");
+  assert.equal(chordName("A:sus4(b7)", "D:maj", "G", "third"), "A7sus4/G");
+  assert.equal(chordName("A:sus4(b7)", "D:maj", "D", "first"), "A7sus4/D");
+  assert.equal(chordName("A#:sus4(b7)", "F:maj"), "B♭7sus4");
+});
+
 test("a diminished root on a lowered degree is spelled raised, as its numeral is", () => {
   assert.equal(chordName("C#:dim7", "C:maj"), "C♯dim7"); // #i°7, not bii°7
   assert.equal(chordName("D#:hdim7", "C:maj"), "D♯m7♭5"); // #iiø7
@@ -148,6 +155,7 @@ test("a candidate is spelled by its interval above the segment's chord", () => {
   assert.equal(alternativeName("C#:7", "N", "C:maj"), "D♭7"); // no chord: a degree of the key
   assert.equal(alternativeName("D#:dim7", "C:dim7", "C:maj"), "E♭dim7"); // the third it is
   assert.equal(alternativeName("E:hdim7", "G:min6", "D:maj"), "Em7♭5"); // the sixth it is
+  assert.equal(alternativeName("A:sus4(b7)", "A:7", "D:maj"), "A7sus4");
 });
 
 test("a diminished candidate on other notes is named as it would be if chosen", () => {
@@ -197,12 +205,18 @@ test("diminished and augmented triads take triad figures", () => {
   assert.equal(Core.numeralParts("vii°7", "root").suffix, "°7");
 });
 
-test("add6, sus4 and sus2 numerals take no figures", () => {
+test("add6, sus4, sus2 and 7sus4 numerals take no figures", () => {
   for (const inversion of ["root", "first", "second", "third", "non_chord", null]) {
     assert.equal(numeralText("ivadd6", inversion), "ivadd6");
     assert.equal(numeralText("Vsus4", inversion), "Vsus4");
     assert.equal(numeralText("Vsus2", inversion), "Vsus2");
+    assert.equal(numeralText("V7sus4", inversion), "V7sus4");
   }
+  const parts = Core.numeralParts("V7sus4", "root");
+  assert.equal(parts.suffix, "7sus4");
+  assert.equal(parts.quality, "7sus4");
+  assert.deepEqual(parts.figures, []);
+  assert.deepEqual(Core.numeralParts("V7", "first").figures, ["6", "5"]);
 });
 
 test("a secondary dominant puts the figure before the slash", () => {
@@ -318,20 +332,21 @@ const withSegment = (fields, version = 4) => ({
   segments: [{ ...SEGMENT, ...fields }],
 });
 
-test("schema versions 4, 5, 6 and 7 are accepted", () => {
+test("schema versions 4 to 8 are accepted", () => {
   const ok = {
-    schema_version: 7,
+    schema_version: 8,
     generator: { name: "chordotomy", version: "0.0.0", engine: DSP },
     source: { path: "song.mp3", duration: 1 },
     beats: [],
     segments: [],
   };
   assert.equal(Core.timelineProblem(ok), null);
+  assert.equal(Core.timelineProblem({ ...ok, schema_version: 7 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 6 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 5 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
   assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 8 }), /versions 4 to 7.*newer chordotomy/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 9 }), /versions 4 to 8.*newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
   assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);
@@ -368,10 +383,12 @@ test("chord and bass labels outside the schema are refused, not half-rendered", 
   const silence = { chord: "N", bass: null, inversion: null, numeral: null, role: null };
   assert.equal(Core.timelineProblem(timeline({ ...silence, function: null })), null);
   const chords = ["C:min7", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4", "F:maj7", "C:aug"];
-  for (const chord of [...chords, "B:dim", "C:sus2"]) {
+  for (const chord of [...chords, "B:dim", "C:sus2", "A:sus4(b7)"]) {
     assert.equal(Core.timelineProblem(timeline({ chord })), null, chord);
   }
   assert.match(Core.timelineProblem(timeline({ chord: "C:maj6" })), /chord C:maj6/);
+  // The parentheses are literal: unescaped, the pattern would take A:sus4b7 and refuse A:sus4(b7).
+  assert.match(Core.timelineProblem(timeline({ chord: "A:sus4b7" })), /chord A:sus4b7/);
   assert.match(Core.timelineProblem(timeline({ chord: "C:min9" })), /chord C:min9/);
   assert.match(Core.timelineProblem(timeline({ chord: "E#:maj" })), /chord E#:maj/);
   assert.match(Core.timelineProblem(timeline({ chord: "B#:7" })), /chord B#:7/);
@@ -504,6 +521,7 @@ test("a label's pitch classes, root first", () => {
   assert.deepEqual(Core.pitchClasses("A:min"), [9, 0, 4]);
   assert.deepEqual(Core.pitchClasses("G:7"), [7, 11, 2, 5]);
   assert.deepEqual(Core.pitchClasses("G:min6"), [7, 10, 2, 4]);
+  assert.deepEqual(Core.pitchClasses("A:sus4(b7)"), [9, 2, 4, 7]);
   assert.deepEqual(Core.pitchClasses("F#:hdim7"), [6, 9, 0, 4]);
   assert.deepEqual(Core.pitchClasses("G:sus4"), [7, 0, 2]);
   assert.deepEqual(Core.pitchClasses("N"), []);

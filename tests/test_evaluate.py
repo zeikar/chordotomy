@@ -29,13 +29,14 @@ def test_timeline_to_intervals() -> None:
             {"start_time": 0.0, "end_time": 1.0, "chord": "C:maj", "bass": "C"},
             {"start_time": 1.0, "end_time": 2.0, "chord": "C:maj", "bass": "E"},
             {"start_time": 2.0, "end_time": 3.5, "chord": "N", "bass": None},
+            {"start_time": 3.5, "end_time": 4.5, "chord": "A:sus4(b7)", "bass": "G"},
         ]
     }
 
     intervals, labels = evaluate.timeline_to_intervals(result)
 
-    assert intervals.tolist() == [[0.0, 1.0], [1.0, 2.0], [2.0, 3.5]]
-    assert labels == ["C:maj", "C:maj/3", "N"]
+    assert intervals.tolist() == [[0.0, 1.0], [1.0, 2.0], [2.0, 3.5], [3.5, 4.5]]
+    assert labels == ["C:maj", "C:maj/3", "N", "A:sus4(b7)/b7"]
 
 
 ARFF = (
@@ -194,6 +195,8 @@ def test_tetrads_needs_the_full_pitch_set() -> None:
     assert scores("C:min", "C:hdim7") == [[1.0], [0.0], [0.0], [0.0]]
     assert scores("C:hdim7", "C:min") == [[1.0], [-1.0], [-1.0], [0.0]]
     assert scores("C:sus4", "C:sus4") == [[1.0], [-1.0], [-1.0], [1.0]]
+    assert scores("A:sus4(b7)", "A:sus4(b7)") == [[1.0], [-1.0], [-1.0], [1.0]]
+    assert scores("A:7", "A:sus4(b7)") == [[1.0], [0.0], [0.0], [0.0]]
     assert scores("C:maj7", "C:maj7") == [[1.0], [1.0], [1.0], [1.0]]
     assert scores("C:min6", "C:min") == [[1.0], [1.0], [-1.0], [0.0]]
 

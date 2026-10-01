@@ -46,7 +46,7 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 7
+    assert result["schema_version"] == 8
     assert result["generator"] == {
         "name": "chordotomy",
         "version": __version__,
@@ -589,6 +589,35 @@ def test_the_model_engine_runs_on_the_dsp_grid(synth, chord_at, tmp_path, monkey
     assert [s["bass"] for s in segments] == ["E", "F", "G", "C"]
     assert [s["inversion"] for s in segments] == ["second", "first", "root", "root"]
     assert result["generator"]["engine"] == {"name": "lv-chordia", "version": "9.9"}
+
+
+def test_a_heard_7sus4_gets_its_numeral_and_inversion(
+    synth, chord_at, tmp_path, monkeypatch
+) -> None:
+    # Whatever the DSP decides about calling a sus4(b7), the label reaches the timeline with its
+    # harmony and its inversion: the fake model hears it, the DSP grid and bass place it.
+    heard = [("D:maj", 4), ("A:sus4(b7)", 4), ("A:7", 4), ("D:maj", 4)]
+
+    def recognize(y):
+        times = np.arange(1 + len(y) // HOP) * HOP / SR
+        states = np.array([LABELS.index(chord_at(heard, t)) for t in times])
+        scores = np.full((len(LABELS), len(times)), -5.0)
+        scores[states, np.arange(len(times))] = 0.0
+        return states, scores
+
+    monkeypatch.setattr(model, "recognize", recognize)
+    monkeypatch.setattr(model, "version", lambda: "9.9")
+    progression = [("D:maj", 4, 38), ("D:maj", 4, 43), ("D:maj", 4, 45), ("D:maj", 4, 38)]
+
+    result = analyze(_write(tmp_path, synth(progression)), engine="model")
+
+    segments = result["segments"]
+    assert result["key"]["label"] == "D:maj"
+    assert [s["chord"] for s in segments] == ["D:maj", "A:sus4(b7)", "A:7", "D:maj"]
+    assert [s["bass"] for s in segments] == ["D", "G", "A", "D"]
+    assert [s["inversion"] for s in segments] == ["root", "third", "root", "root"]
+    assert [s["numeral"] for s in segments] == ["I", "V7sus4", "V7", "I"]
+    assert (segments[1]["role"], segments[1]["function"]) == ("diatonic", "dominant")
 
 
 def test_no_beats_fails_before_the_model_loads(tmp_path, monkeypatch) -> None:

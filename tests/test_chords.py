@@ -35,18 +35,31 @@ INTERVALS = {
     "aug": (0, 4, 8),
     "dim": (0, 3, 6),
     "sus2": (0, 2, 7),
+    "sus4(b7)": (0, 5, 7, 10),
 }
 
 
 def test_vocabulary() -> None:
-    assert len(LABELS) == 145
+    assert len(LABELS) == 157
     # Quality-major: the order is the tie-break between pitch-set twins.
     assert LABELS[0] == "C:maj"
     assert LABELS[12] == "C:min"
     # v5's qualities come after sus4, so every earlier label keeps its index.
     assert LABELS[108] == "C:aug"
+    # v6's quality comes after sus2, so every earlier label keeps its index again.
+    assert LABELS[144] == "C:sus4(b7)"
     assert LABELS[-1] == "N"
-    labels = ("F#:7", "A#:min", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4", "C:sus2", "B:dim")
+    labels = (
+        "F#:7",
+        "A#:min",
+        "G:min6",
+        "F#:hdim7",
+        "C#:dim7",
+        "G:sus4",
+        "C:sus2",
+        "B:dim",
+        "A:sus4(b7)",
+    )
     for label in labels:
         assert label in LABELS
     assert len(set(LABELS)) == len(LABELS)
@@ -83,13 +96,13 @@ def test_match_ranks_ideal_chroma_first(no_offsets) -> None:
 
     scores = match(chroma, np.zeros_like(chroma))
 
-    assert scores.shape == (145, 144)
+    assert scores.shape == (157, 156)
     assert np.all(scores[LABELS.index("N")] == N_SCORE)
     top = [LABELS[i] for i in scores.argmax(axis=0)]
     for name, label in zip(names, top, strict=True):
         assert _pitch_set(label) == _pitch_set(name), (name, label)
         # A twin's pitch set goes to the earlier twin without a bass; see the tie-break test. An
-        # ideal C:sus2 decodes G:sus4, an ideal E:aug C:aug.
+        # ideal C:sus2 decodes G:sus4, an ideal E:aug C:aug; a sus4(b7) has no twin.
         if name.split(":")[1] not in ("min6", "hdim7", "dim7", "aug", "sus2"):
             assert label == name
 
@@ -184,7 +197,7 @@ def test_the_decoder_never_calls_sus2() -> None:
 
 
 def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
-    """(145, n) scores: 0.0 everywhere, C:maj 0.8 / C:7 0.6 unless overridden, N N_SCORE."""
+    """(157, n) scores: 0.0 everywhere, C:maj 0.8 / C:7 0.6 unless overridden, N N_SCORE."""
     scores = np.zeros((len(LABELS), n))
     scores[LABELS.index("C:maj")] = 0.8
     scores[LABELS.index("C:7")] = 0.6
@@ -205,8 +218,8 @@ def _labels(
     return [LABELS[i] for i in smooth(scores, forced, durations)]
 
 
-# With 0.5 s beats the self-loop is about 0.84 and the rest is spread over 144 other labels, so a
-# switch costs about 6.60 nats and leaving a chord and coming back about 13.2; a score gap of g
+# With 0.5 s beats the self-loop is about 0.84 and the rest is spread over 156 other labels, so a
+# switch costs about 6.7 nats and leaving a chord and coming back about 13.4; a score gap of g
 # on one beat is worth g / TEMPERATURE = 33.3 g nats. The gaps below hold the verdict by at least
 # 2 nats.
 
@@ -288,7 +301,7 @@ def test_smooth_matches_librosa_on_a_constant_grid(seed: int, seconds: float) ->
 
 
 def test_the_self_loop_follows_seconds_not_beats() -> None:
-    # 11.0 nats against a round trip of about 13.2 with 0.5 s beats and about 8.6 with 3.0 s.
+    # 11.0 nats against a round trip of about 13.4 with 0.5 s beats and about 8.8 with 3.0 s.
     scores = _scores({2: {"C:maj": 0.47, "C:7": 0.8}})
     kept = ["C:maj", "C:maj", "C:7", "C:maj", "C:maj", "C:maj"]
 
@@ -405,6 +418,7 @@ def _runs(*entries: tuple[str, str | None]) -> list[dict]:
         # A suspension resolves on its own root, so sus chords are never respelled.
         ("G:sus4", None, "C:maj", "G:sus4"),
         ("C:sus2", None, "G:maj", "C:sus2"),
+        ("A:sus4(b7)", None, "D:maj", "A:sus4(b7)"),
         ("B:dim", None, "C:maj", "B:dim"),
     ],
 )
@@ -616,6 +630,11 @@ def test_segments_cut_on_the_bass_rank_candidates_over_their_own_beats() -> None
         ("C:sus2", "D", "first"),
         ("C:sus2", "G", "second"),
         ("C:sus2", "E", "non_chord"),
+        # A sus4(b7)'s first is the fourth, its second the fifth, its third the seventh.
+        ("A:sus4(b7)", "D", "first"),
+        ("A:sus4(b7)", "E", "second"),
+        ("A:sus4(b7)", "G", "third"),
+        ("A:sus4(b7)", "C#", "non_chord"),
         ("C:maj", "D", "non_chord"),
         ("C:maj", "A#", "non_chord"),
         ("N", "C", None),

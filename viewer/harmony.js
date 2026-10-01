@@ -32,6 +32,7 @@ const Harmony = (() => {
     ["aug", [0, 4, 8]],
     ["dim", [0, 3, 6]],
     ["sus2", [0, 2, 7]],
+    ["sus4(b7)", [0, 5, 7, 10]],
   ];
   // Wherever order matters, read QUALITY_NAMES: Object.keys(QUALITIES) lists "7" first, as JS
   // enumerates integer-like keys before the others.
@@ -51,8 +52,8 @@ const Harmony = (() => {
     maj: ["I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"],
     min: ["I", "bII", "II", "III", "#III", "IV", "#IV", "V", "VI", "#VI", "VII", "#VII"],
   };
-  // Case shows the third: lowercase for a minor or diminished one; sus4 and sus2 have none and
-  // stay upper.
+  // Case shows the third: lowercase for a minor or diminished one; sus4, sus2 and sus4(b7) have
+  // none and stay upper.
   const LOWERCASE = new Set(["min", "min7", "min6", "hdim7", "dim7", "dim"]);
   // min6 is `add6` because `iv6` is the first-inversion figure. ø and ° are the characters
   // themselves: core.js turns only the b and # accidentals into glyphs, so an ASCII stand-in
@@ -70,6 +71,7 @@ const Harmony = (() => {
     aug: "+",
     dim: "°",
     sus2: "sus2",
+    "sus4(b7)": "7sus4",
   };
   // Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
   const FUNCTIONS = {
@@ -89,8 +91,18 @@ const Harmony = (() => {
     min: { 3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII" },
   };
   const PARALLEL = { maj: "min", min: "maj" };
-  // Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule.
-  const TRIAD = { 7: "maj", maj7: "maj", min7: "min", min6: "min", hdim7: "dim", dim7: "dim" };
+  // Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule. The
+  // sus4(b7) entry keeps the table complete for every tetrad; for this quality the parallel-mode
+  // test already covers every borrowed case, so it changes no classification.
+  const TRIAD = {
+    7: "maj",
+    maj7: "maj",
+    min7: "min",
+    min6: "min",
+    hdim7: "dim",
+    dim7: "dim",
+    "sus4(b7)": "sus4",
+  };
   const CANDIDATES = 3;
 
   const mod = (n, m) => ((n % m) + m) % m;
@@ -204,7 +216,7 @@ const Harmony = (() => {
     let targetOffset = mod(offset - 7, 12);
     // An augmented triad never counts: it is symmetric, so its root is the bass's or
     // resolve_twins's spelling, not a fifth relation that identifies it. sus2 never counts either,
-    // as sus4 does not.
+    // as sus4 does not, nor does a sus4(b7): no third, so no leading tone.
     const secondary = (quality === "maj" || quality === "7") && targetOffset in TARGETS[mode];
     const borrowed = isBorrowed(offset, quality, mode);
     if (secondary) {

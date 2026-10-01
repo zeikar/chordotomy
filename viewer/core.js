@@ -9,16 +9,19 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  // The viewer reads 4 to 7 and writes 7; an older file is upgraded in memory (see Edit.upgrade).
+  // The viewer reads 4 to 8 and writes 8; an older file is upgraded in memory (see Edit.upgrade).
   const MIN_SCHEMA_VERSION = 4;
-  const SCHEMA_VERSION = 7;
+  const SCHEMA_VERSION = 8;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
   // and, if its numeral suffix is new, in NUMERAL_SUFFIX, numeralParts' pattern and app.js's
   // QUALITY_WORDS; it also takes an option in index.html's Quality select.
   const SHARPS = Harmony.ROOTS;
+  // The names are escaped because sus4(b7) holds regex metacharacters: bare, it would match
+  // "sus4b7" and refuse the real label.
+  const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const CHORD_LABEL = new RegExp(
-    `^(${Harmony.ROOTS.join("|")}):(${Harmony.QUALITY_NAMES.join("|")})$`,
+    `^(${Harmony.ROOTS.join("|")}):(${Harmony.QUALITY_NAMES.map(escapeRegExp).join("|")})$`,
   );
   const LETTERS = "CDEFGAB";
   const NATURAL = [0, 2, 4, 5, 7, 9, 11];
@@ -39,6 +42,7 @@ const Core = ((Harmony) => {
     aug: "aug",
     dim: "dim",
     sus2: "sus2",
+    "sus4(b7)": "7sus4",
   };
   // Each quality's chord tones in semitones above the root, in the order `inversion` counts them.
   const INTERVALS = Harmony.QUALITIES;
@@ -56,6 +60,8 @@ const Core = ((Harmony) => {
     aug: [0, 2, 4],
     dim: [0, 2, 4],
     sus2: [0, 1, 4],
+    // Root, fourth, fifth, seventh.
+    "sus4(b7)": [0, 3, 4, 6],
   };
   // Seconds into a chord after which ← goes back to its start rather than to the chord before.
   const RESTART = 1;
@@ -82,8 +88,8 @@ const Core = ((Harmony) => {
     seventh: { first: ["6", "5"], second: ["4", "3"], third: ["4", "2"] },
   };
   // A numeral's suffix: the quality marker that stays beside the figures, and which figures it
-  // takes. add6, sus4 and sus2 take none: their inversions are not stacks of thirds, so no figure
-  // names them, and the chord name already shows the bass.
+  // takes. add6, sus4, sus2 and 7sus4 take none: their inversions are not stacks of thirds, so no
+  // figure names them, and the chord name already shows the bass.
   const NUMERAL_SUFFIX = {
     "": { quality: "", figures: "triad" },
     7: { quality: "", figures: "seventh" },
@@ -95,6 +101,7 @@ const Core = ((Harmony) => {
     add6: { quality: "add6", figures: null },
     sus4: { quality: "sus4", figures: null },
     sus2: { quality: "sus2", figures: null },
+    "7sus4": { quality: "7sus4", figures: null },
   };
 
   const mod = (n, m) => ((n % m) + m) % m;
@@ -211,7 +218,8 @@ const Core = ((Harmony) => {
   // own, which tells vii° from vii°7 where the marker alone cannot.
   function numeralParts(numeral, inversion) {
     const [head, target = null] = numeral.split("/");
-    const match = /^([b#]?)([IViv]+)(maj7|7|ø7|°7|°|\+|add6|sus4|sus2)?$/.exec(head);
+    // A longer suffix stands before the one it starts with (°7 before °, 7sus4 before 7).
+    const match = /^([b#]?)([IViv]+)(maj7|7sus4|7|ø7|°7|°|\+|add6|sus4|sus2)?$/.exec(head);
     if (!match) {
       return { accidental: "", roman: numeral, quality: "", suffix: "", figures: [], target: null };
     }

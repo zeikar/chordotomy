@@ -99,7 +99,7 @@ def to_label(name: str) -> str:
 
 
 def fold(names: list[str], logprob: np.ndarray) -> np.ndarray:
-    """Fold the decoder's (n_frames, n_names) log-scores onto LABELS, shape (145, n_frames).
+    """Fold the decoder's (n_frames, n_names) log-scores onto LABELS, shape (157, n_frames).
 
     names and logprob are what XHMMDecoder.get_chord_tag_obs returns: per frame, the natural log
     of each name's joint probability under the nets' heads, not normalized over the names. A
@@ -251,7 +251,7 @@ def _decoder():
 
 
 def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Per-frame LABELS indices and (145, n_frames) label scores of a mono signal at SR.
+    """Per-frame LABELS indices and (157, n_frames) label scores of a mono signal at SR.
 
     The states are the decoder's smoothed labels, decoded without beats as chord_recognition
     does, so a chord can change on any frame; the scores are fold()'s, from the same
