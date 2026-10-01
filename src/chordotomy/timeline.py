@@ -6,6 +6,8 @@ from itertools import groupby
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
+
 from . import __version__, harmony, model
 from .chords import inversion, match, resolve_twins, segment, smooth
 from .features import SR, beat_features, load_audio
@@ -48,7 +50,7 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
         recognizer = {"name": model.NAME, "version": model.version()}
     else:
         scores = match(f.treble, f.bass)
-        states = smooth(scores, f.level, f.period)
+        states = smooth(scores, f.level, np.diff(f.times))
         recognizer = {"name": "dsp", "version": __version__}
     segments = resolve_twins(segment(states, scores, f.cqt))
 

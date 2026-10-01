@@ -1,13 +1,17 @@
 import json
 from itertools import pairwise
 
+import librosa
 import numpy as np
 import pytest
 
 from chordotomy.chords import (
+    CHORD_SECONDS,
     LABELS,
+    N_GATE_DB,
     N_SCORE,
     QUALITY_OFFSET,
+    TEMPERATURE,
     inversion,
     match,
     pick_bass,
@@ -159,13 +163,17 @@ def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
     return scores
 
 
-def _labels(scores: np.ndarray, level: np.ndarray | None = None, period: float = 0.5) -> list[str]:
+def _labels(
+    scores: np.ndarray, level: np.ndarray | None = None, durations: np.ndarray | None = None
+) -> list[str]:
     if level is None:
         level = np.zeros(scores.shape[1])
-    return [LABELS[i] for i in smooth(scores, level, period)]
+    if durations is None:
+        durations = np.full(scores.shape[1] - 1, 0.5)
+    return [LABELS[i] for i in smooth(scores, level, durations)]
 
 
-# At period 0.5 the self-loop is about 0.84 and the rest is spread over 108 other labels, so a
+# With 0.5 s beats the self-loop is about 0.84 and the rest is spread over 108 other labels, so a
 # switch costs about 6.31 nats and leaving a chord and coming back about 12.6; a score gap of g
 # on one beat is worth g / TEMPERATURE = 33.3 g nats. The gaps below hold the verdict by at least
 # 2 nats.
@@ -207,17 +215,48 @@ def test_no_chord_above_the_n_score_is_n() -> None:
     assert _labels(above) == ["C:maj"] * 6
 
 
-def test_the_self_loop_follows_seconds_not_beats() -> None:
-    # 10.3 nats against a round trip of about 12.6 at period 0.5 and about 8.1 at period 3.0.
-    scores = _scores({2: {"C:maj": 0.49, "C:7": 0.8}})
+@pytest.mark.parametrize("seconds", [0.5, 3.0])
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_smooth_matches_librosa_on_a_constant_grid(seed: int, seconds: float) -> None:
+    rng = np.random.default_rng(seed)
+    # In tenths, so many labels tie and the path depends on taking the first index on ties.
+    scores = rng.integers(0, 11, (len(LABELS), 40)) / 10
+    level = np.zeros(40)
+    level[[0, 7, 8, 23]] = -2 * N_GATE_DB
+    likelihood = np.exp((scores - scores.max(axis=0, keepdims=True)) / TEMPERATURE)
+    likelihood[:-1, level < -N_GATE_DB] = 0.0
+    transition = librosa.sequence.transition_loop(len(LABELS), np.exp(-seconds / CHORD_SECONDS))
 
-    assert _labels(scores, period=0.5) == ["C:maj"] * 6
-    assert _labels(scores, period=3.0) == ["C:maj", "C:maj", "C:7", "C:maj", "C:maj", "C:maj"]
+    np.testing.assert_array_equal(
+        smooth(scores, level, np.full(39, seconds)),
+        librosa.sequence.viterbi(likelihood, transition),
+    )
+
+
+def test_the_self_loop_follows_seconds_not_beats() -> None:
+    # 10.3 nats against a round trip of about 12.6 with 0.5 s beats and about 8.1 with 3.0 s.
+    scores = _scores({2: {"C:maj": 0.49, "C:7": 0.8}})
+    kept = ["C:maj", "C:maj", "C:7", "C:maj", "C:maj", "C:maj"]
+
+    assert _labels(scores, durations=np.full(5, 0.5)) == ["C:maj"] * 6
+    assert _labels(scores, durations=np.full(5, 3.0)) == kept
+
+
+def test_the_self_loop_follows_each_beats_own_length() -> None:
+    # The case above on one grid: only the two transitions into and out of beat 2 span 3.0 s.
+    scores = _scores({2: {"C:maj": 0.49, "C:7": 0.8}})
+    kept = ["C:maj", "C:maj", "C:7", "C:maj", "C:maj", "C:maj"]
+    durations = np.full(5, 0.5)
+
+    assert _labels(scores, durations=durations) == ["C:maj"] * 6
+
+    durations[1:3] = 3.0
+
+    assert _labels(scores, durations=durations) == kept
 
 
 def _states(*labels: str) -> np.ndarray:
-    # uint16, as librosa.sequence.viterbi returns it.
-    return np.array([LABELS.index(label) for label in labels], dtype=np.uint16)
+    return np.array([LABELS.index(label) for label in labels])
 
 
 def test_segment_merges_runs_and_tiles_beats() -> None:

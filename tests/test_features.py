@@ -27,7 +27,6 @@ def test_load_and_beat_features_on_a_repeated_chord(synth, tmp_path) -> None:
     np.testing.assert_array_equal(f.times, librosa.frames_to_time(f.frames, sr=SR, hop_length=HOP))
     assert np.all(np.diff(f.frames) > 0)
     assert abs(np.median(np.diff(f.times)) - 0.5) <= 0.025
-    assert abs(f.period - 0.5) <= 0.025
     assert f.treble.shape == (12, n)
     assert f.bass.shape == (12, n)
     assert f.cqt.shape == (84, n)

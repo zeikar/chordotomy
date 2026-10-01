@@ -78,7 +78,6 @@ class Features(NamedTuple):
     cqt: (84, n) CQT magnitude, bin k is k semitones above C1, the median per beat; beats with a
         silent bass register are all-zero columns.
     level: (n,) the median RMS per beat in dB relative to the 95th-percentile beat.
-    period: the grid's beat period in seconds.
     """
 
     times: np.ndarray
@@ -87,7 +86,6 @@ class Features(NamedTuple):
     bass: np.ndarray
     cqt: np.ndarray
     level: np.ndarray
-    period: float
 
 
 class NoBeatsError(Exception):
@@ -205,5 +203,4 @@ def beat_features(y: np.ndarray) -> Features:
         bass=bass,
         cqt=cqt,
         level=level,
-        period=period * HOP / SR,
     )

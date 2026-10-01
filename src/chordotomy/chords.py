@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import Counter
 from itertools import groupby, pairwise
 
-import librosa
 import numpy as np
 
 ROOTS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -27,7 +26,7 @@ QUALITIES = {
     "dim7": (0, 3, 6, 9),
     "sus4": (0, 5, 7),
 }
-# Quality-major, and the order is the tie-break: librosa.sequence.viterbi takes the first argmax.
+# Quality-major, and the order is the tie-break: smooth takes the first argmax.
 # Pitch-set twins score exactly alike without bass evidence (G:min6 and E:hdim7; the four dim7
 # labels on one set), and then the earlier label wins: min6 over hdim7, the lowest root of a dim7.
 # resolve_twins then respells a diminished twin by where it leads.
@@ -150,21 +149,42 @@ def match(treble: np.ndarray, bass: np.ndarray) -> np.ndarray:
     return np.vstack([chords + offset[:, None], np.full((1, treble.shape[1]), N_SCORE)])
 
 
-def smooth(scores: np.ndarray, level: np.ndarray, period: float) -> np.ndarray:
+def smooth(scores: np.ndarray, level: np.ndarray, durations: np.ndarray) -> np.ndarray:
     """Viterbi-decode (109, n) scores into one label index per beat.
 
     level is each beat's loudness in dB relative to the track's loud beats; a beat below
-    -N_GATE_DB can only be N. period is the beat period in seconds.
+    -N_GATE_DB can only be N. durations is (n - 1,) seconds, the gap from each beat to the next.
+
+    This is librosa.sequence.viterbi with one self-loop matrix per transition instead of one per
+    track, and its arithmetic step for step (the log of each likelihood and transition plus tiny,
+    a uniform start, the first index on ties), so on a constant grid the path is librosa's.
     """
-    # Shifting a column by its maximum leaves the path unchanged and keeps every value in (0, 1],
-    # which librosa.sequence.viterbi requires.
+    # Shifting a column by its maximum leaves the path unchanged and keeps every value in (0, 1].
     likelihood = np.exp((scores - scores.max(axis=0, keepdims=True)) / TEMPERATURE)
     likelihood[:-1, level < -N_GATE_DB] = 0.0  # every chord row; N is the last
+    tiny = np.finfo(float).tiny
+    log_likelihood = np.log(likelihood + tiny)
     # The chance that chord changes, arriving every CHORD_SECONDS on average, fire none within
-    # one beat. Unlike 1 - period / CHORD_SECONDS it stays in (0, 1) when a beat is longer than a
-    # chord, as on a half-tempo grid.
-    transition = librosa.sequence.transition_loop(len(LABELS), np.exp(-period / CHORD_SECONDS))
-    return librosa.sequence.viterbi(likelihood, transition)
+    # the beat. Per beat, in seconds, so a grid whose period changes inside a file keeps the
+    # expected chord length in seconds. Unlike 1 - duration / CHORD_SECONDS it stays in (0, 1)
+    # when a beat is longer than a chord, as on a half-tempo grid.
+    stay = np.exp(-durations / CHORD_SECONDS)
+    log_stay = np.log(stay + tiny)
+    log_switch = np.log((1.0 - stay) / (len(LABELS) - 1) + tiny)
+    diagonal = np.eye(len(LABELS), dtype=bool)
+    n = scores.shape[1]
+    value = log_likelihood[:, 0] + np.log(1.0 / len(LABELS) + tiny)
+    back = np.empty((n - 1, len(LABELS)), dtype=int)
+    for i in range(n - 1):
+        # candidates[k, j]: the best path into label k at beat i, then k -> j.
+        candidates = value[:, None] + np.where(diagonal, log_stay[i], log_switch[i])
+        back[i] = candidates.argmax(axis=0)
+        value = candidates[back[i], np.arange(len(LABELS))] + log_likelihood[:, i + 1]
+    path = np.empty(n, dtype=int)
+    path[-1] = value.argmax()
+    for i in range(n - 2, -1, -1):
+        path[i] = back[i, path[i + 1]]
+    return path
 
 
 CANDIDATES = 3
