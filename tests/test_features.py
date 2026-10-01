@@ -1,9 +1,10 @@
+import librosa
 import numpy as np
 import pytest
 import soundfile
 
 from chordotomy.chords import LABELS, N_GATE_DB, match, pick_bass
-from chordotomy.features import SR, Features, NoBeatsError, beat_features, load_audio
+from chordotomy.features import HOP, SR, Features, NoBeatsError, beat_features, load_audio
 
 
 def _labels(f: Features) -> list[str]:
@@ -23,6 +24,8 @@ def test_load_and_beat_features_on_a_repeated_chord(synth, tmp_path) -> None:
     n = len(f.times)
 
     assert n >= 6
+    np.testing.assert_array_equal(f.times, librosa.frames_to_time(f.frames, sr=SR, hop_length=HOP))
+    assert np.all(np.diff(f.frames) > 0)
     assert abs(np.median(np.diff(f.times)) - 0.5) <= 0.025
     assert abs(f.period - 0.5) <= 0.025
     assert f.treble.shape == (12, n)

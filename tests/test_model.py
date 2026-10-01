@@ -1,10 +1,13 @@
 import importlib.util
+import math
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from chordotomy import model
 from chordotomy.chords import LABELS
+from chordotomy.features import HOP, SR
 from chordotomy.model import QUALITY, available, beat_scores, beat_states, fold, to_label
 
 # The submission dictionary's 26 entries on Eb, as the decoder spells them, and the v4 label each
@@ -91,3 +94,56 @@ def test_beat_scores_are_the_mean_over_each_beat() -> None:
     scores = beat_scores(frame_scores, [0, 2, 5])
 
     np.testing.assert_allclose(scores, [[1.0, 6.0], [2.0, -2.0]])
+
+
+@pytest.mark.parametrize("length", [4 * SR + 1, 5 * SR + 300, 6 * SR + 511])
+def test_the_model_cqt_has_the_frames_of_the_beat_grid(length) -> None:
+    # The DSP's CQTs and beat tracker frame the signal centred at HOP, 1 + length // HOP frames.
+    y = (np.random.default_rng(0).standard_normal(length) * 0.1).astype(np.float32)
+
+    assert model._cqt(y).shape == (1 + length // HOP, 288)
+
+
+class _IndexNet:
+    """A stand-in net: every head gives each input frame's index plus a shift, and the call number.
+
+    The index is read from the input's first bin, so the stitched output shows which input row
+    each frame came from, and the call number which window.
+    """
+
+    def __init__(self, shift: float) -> None:
+        self.shift = shift
+        self.windows = []  # (first, end) frame of each input
+
+    def inference(self, cqt: np.ndarray) -> tuple[np.ndarray, ...]:
+        index = cqt[:, 0]
+        self.windows.append((int(index[0]), int(index[-1]) + 1))
+        out = np.column_stack([index + self.shift, np.full(len(index), len(self.windows) - 1)])
+        return (out,) * 6
+
+
+CHUNK = int(model.CHUNK_SECONDS * SR / HOP)
+OVERLAP = round(model.OVERLAP_SECONDS * SR / HOP)
+
+
+@pytest.mark.parametrize("n", [1, CHUNK - 1, CHUNK, CHUNK + 1, 2 * CHUNK + 1])
+def test_chunked_inference_keeps_every_frame_once_with_its_context(monkeypatch, n) -> None:
+    nets = (_IndexNet(0.0), _IndexNet(1.0))
+    monkeypatch.setattr(model, "_networks", lambda: nets)
+    cqt = np.zeros((n, 288), dtype=np.float32)
+    cqt[:, 0] = np.arange(n)
+
+    heads = model._probabilities(cqt)
+
+    windows = np.array(nets[0].windows)
+    assert len(windows) == math.ceil(n / CHUNK)
+    assert np.all(windows[:, 1] - windows[:, 0] <= CHUNK + 2 * OVERLAP)
+    frames = np.arange(n)
+    assert len(heads) == 6
+    for head in heads:
+        # Each frame once, in order, from its own input row, averaged over the two nets.
+        np.testing.assert_array_equal(head[:, 0], frames + 0.5)
+        # Kept only where its window holds OVERLAP frames either side of it, or the track's edge.
+        first, end = windows[head[:, 1].astype(int)].T
+        assert np.all(first <= np.maximum(frames - OVERLAP, 0))
+        assert np.all(end >= np.minimum(frames + OVERLAP + 1, n))

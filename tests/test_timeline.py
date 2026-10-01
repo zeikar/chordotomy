@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 import soundfile
 
-from chordotomy import __version__, timeline
-from chordotomy.features import SR, NoBeatsError
+from chordotomy import __version__, model, timeline
+from chordotomy.chords import LABELS
+from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.timeline import analyze
 
 
@@ -44,8 +45,12 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 5
-    assert result["generator"] == {"name": "chordotomy", "version": __version__}
+    assert result["schema_version"] == 6
+    assert result["generator"] == {
+        "name": "chordotomy",
+        "version": __version__,
+        "engine": {"name": "dsp", "version": __version__},
+    }
     assert result["source"]["path"] == str(path)
     duration = result["source"]["duration"]
     assert abs(duration - 6.0) <= 0.01
@@ -348,6 +353,50 @@ def test_edge_silence_is_n(synth, tmp_path) -> None:
 def test_all_silent_audio_has_no_beats(tmp_path) -> None:
     with pytest.raises(NoBeatsError):
         analyze(_write(tmp_path, np.zeros(4 * SR, dtype=np.float32)))
+
+
+def test_an_unknown_engine_is_rejected_before_the_audio_is_read(tmp_path) -> None:
+    with pytest.raises(ValueError, match="cnn"):
+        analyze(tmp_path / "missing.wav", engine="cnn")
+
+
+def test_the_model_engine_runs_on_the_dsp_grid(synth, chord_at, tmp_path, monkeypatch) -> None:
+    # The fake model hears other chords than the audio holds, so the chords can only come from it
+    # and the bass only from the DSP.
+    heard = [("A:min", 4), ("D:min", 4), ("G:7", 4), ("C:maj", 4)]
+    runner_up = LABELS.index("E:min")
+
+    def recognize(y):
+        times = np.arange(1 + len(y) // HOP) * HOP / SR
+        states = np.array([LABELS.index(chord_at(heard, t)) for t in times])
+        scores = np.full((len(LABELS), len(times)), -5.0)
+        scores[runner_up] = -1.0
+        scores[states, np.arange(len(times))] = 0.0
+        return states, scores
+
+    monkeypatch.setattr(model, "recognize", recognize)
+    monkeypatch.setattr(model, "version", lambda: "9.9")
+    progression = [("C:maj", 4, 40), ("F:maj", 4, 41), ("G:maj", 4, 43), ("C:maj", 4, 36)]
+
+    result = analyze(_write(tmp_path, synth(progression)), engine="model")
+
+    json.dumps(result)
+    segments = result["segments"]
+    assert [s["chord"] for s in segments] == ["A:min", "D:min", "G:7", "C:maj"]
+    assert [s["candidates"][1] for s in segments] == ["E:min"] * 4
+    assert [s["bass"] for s in segments] == ["E", "F", "G", "C"]
+    assert [s["inversion"] for s in segments] == ["second", "first", "root", "root"]
+    assert result["generator"]["engine"] == {"name": "lv-chordia", "version": "9.9"}
+
+
+def test_no_beats_fails_before_the_model_loads(tmp_path, monkeypatch) -> None:
+    def recognize(y):
+        pytest.fail("the model ran on audio without beats")
+
+    monkeypatch.setattr(model, "recognize", recognize)
+
+    with pytest.raises(NoBeatsError):
+        analyze(_write(tmp_path, np.zeros(4 * SR, dtype=np.float32)), engine="model")
 
 
 def test_a_mix_like_clip_keeps_its_chords(mix, chord_at, tmp_path) -> None:

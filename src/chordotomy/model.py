@@ -11,27 +11,36 @@ module loads neither and the DSP path never pays for them.
 
 from __future__ import annotations
 
+import functools
 import importlib.metadata
+import importlib.resources
 import importlib.util
+import math
+import pickle
+import warnings
 from itertools import pairwise
+from pathlib import Path
 
+import librosa
 import numpy as np
 from scipy.special import logsumexp
 
 from .chords import LABELS
+from .features import HOP, SR
 from .harmony import FLATS
 
 NAME = "lv-chordia"
 # lv_chordia/data/submission_chord_list.txt: 25 qualities on C, which the decoder transposes to
 # 12 roots spelled C C# D Eb E F F# G Ab A Bb B, and N.
 DICTIONARY = "submission"
-# The nets' memory peak (CNN activations and im2col buffers) grows linearly with length, 3.5 GB
-# at 3 min, so they run over windows of at most CHUNK_SECONDS, each with OVERLAP_SECONDS of
-# context on both sides whose outputs are discarded, and the HMM decodes the stitched
-# probabilities once. InstanceNorm and the BiLSTM then see at most 70 s, closer to the 23 s
-# segments the nets were trained on than a whole song.
+# The nets' memory peak (CNN activations and im2col buffers) grows linearly with length, so
+# they run over windows of at most CHUNK_SECONDS, each with OVERLAP_SECONDS of context on both
+# sides whose outputs are discarded, and the HMM decodes the stitched probabilities once.
+# InstanceNorm and the BiLSTM then see at most 70 s, closer to the 23 s segments the nets were
+# trained on than a whole song.
 CHUNK_SECONDS = 60
 OVERLAP_SECONDS = 5
+_REINSTALL = "reinstall lv-chordia with `uv sync --extra model --reinstall-package lv-chordia`"
 # The dictionary's qualities, the slash dropped, to v4's; nothing maps to min6.
 QUALITY = {
     "maj": "maj",
@@ -115,3 +124,125 @@ def beat_scores(frame_scores: np.ndarray, boundaries: list[int]) -> np.ndarray:
     return np.stack(
         [frame_scores[:, start:end].mean(axis=1) for start, end in pairwise(boundaries)], axis=1
     )
+
+
+def _cqt(y: np.ndarray) -> np.ndarray:
+    """The nets' input: the (n_frames, 288) float32 CQT magnitude of a mono signal at SR.
+
+    This is the package's own front end, extractors/cqt.py's CQTV2, run on the signal load_audio
+    already decoded: CQTV2 reads the file through librosa.load at SR, mono, as load_audio does.
+    The DSP's chord CQT runs on the harmonic part of the same signal, which has its length; same
+    length, hop and centring, so the frame count is the same, 1 + len(y) // HOP, and frame k of
+    one is frame k of the other.
+    """
+    cqt = librosa.hybrid_cqt(
+        y,
+        sr=SR,
+        hop_length=HOP,
+        fmin=librosa.note_to_hz("F#0"),
+        n_bins=288,
+        bins_per_octave=36,
+        tuning=None,
+    )
+    return np.abs(cqt.T).astype(np.float32)
+
+
+@functools.cache
+def _networks() -> tuple:
+    """The ensemble's five NetworkInterfaces, their bundled checkpoints loaded on the CPU."""
+    try:
+        # Outside the block below: catch_warnings restores the filter list on exit, which would
+        # drop the filters torch installs when it is imported.
+        import torch  # noqa: F401
+
+        # pydub, which lv_chordia imports, has invalid escape sequences that Python warns about
+        # when it compiles them on first import; they are pydub's to fix, not the user's. A
+        # compile-time warning's module is its file path, hence the leading wildcard.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=SyntaxWarning, module=r".*pydub")
+            from lv_chordia.chord_recognition import MODEL_NAMES
+            from lv_chordia.chordnet_ismir_naive import ChordNet
+            from lv_chordia.mir.common import CACHE_DATA_PATH
+            from lv_chordia.mir.nn.train import NetworkInterface
+    except ImportError as exc:
+        raise EngineError(
+            f"lv_chordia cannot be imported ({exc}); install the model extra with "
+            "`uv sync --extra model`, or pass --engine dsp"
+        ) from exc
+
+    networks = []
+    for name in MODEL_NAMES:
+        path = Path(CACHE_DATA_PATH) / f"{name}.sdict"
+        net = ChordNet(None)
+        # NetworkBehavior sets use_gpu from torch.cuda.device_count(), and the interface's
+        # placement, torch.load's map_location, inference and the LSTM's initial state all follow
+        # it; cleared before the interface loads, the nets run on the CPU whatever torch is
+        # installed.
+        net.use_gpu = False
+        try:
+            # load_checkpoint=False only skips the training-time .cp.sdict fallback.
+            interface = NetworkInterface(net, name, load_checkpoint=False)
+        except (
+            OSError,
+            EOFError,
+            RuntimeError,
+            pickle.UnpicklingError,
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise EngineError(f"{path} cannot be loaded ({exc!r}); {_REINSTALL}") from exc
+        # The interface builds an untrained net without a word when the file is missing.
+        if not interface.finalized:
+            raise EngineError(f"{path} is missing from {CACHE_DATA_PATH}; {_REINSTALL}")
+        networks.append(interface)
+    return tuple(networks)
+
+
+def _probabilities(cqt: np.ndarray) -> list[np.ndarray]:
+    """The ensemble's six heads per frame of a (n_frames, 288) CQT, averaged over the nets.
+
+    The nets run over ceil(length / CHUNK_SECONDS) equal windows, each with OVERLAP_SECONDS of
+    context on both sides (clipped to the track) whose outputs are dropped. inference already
+    runs under torch.no_grad().
+    """
+    n = cqt.shape[0]
+    count = math.ceil(n / int(CHUNK_SECONDS * SR / HOP))
+    size = math.ceil(n / count)
+    overlap = round(OVERLAP_SECONDS * SR / HOP)
+    windows = [(start, min(start + size, n)) for start in range(0, n, size)]
+    nets = []
+    for interface in _networks():
+        parts = []
+        for start, end in windows:
+            low = max(start - overlap, 0)
+            heads = interface.inference(cqt[low : min(end + overlap, n)])
+            parts.append([head[start - low : end - low] for head in heads])
+        nets.append([np.concatenate(head) for head in zip(*parts, strict=True)])
+    # As chord_recognition averages them.
+    return [np.mean(head, axis=0) for head in zip(*nets, strict=True)]
+
+
+def _decoder():
+    """The package's XHMMDecoder on the DICTIONARY chord list."""
+    from lv_chordia.extractors.xhmm_ismir import XHMMDecoder
+
+    template = importlib.resources.files("lv_chordia") / "data" / f"{DICTIONARY}_chord_list.txt"
+    with importlib.resources.as_file(template) as path:
+        return XHMMDecoder(template_file=str(path))
+
+
+def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-frame LABELS indices and (109, n_frames) label scores of a mono signal at SR.
+
+    The states are the decoder's smoothed labels, decoded without beats as chord_recognition
+    does, so a chord can change on any frame; the scores are fold()'s, from the same
+    probabilities before smoothing. Raises EngineError when the nets cannot be loaded.
+    """
+    probs = _probabilities(_cqt(y))
+    decoder = _decoder()
+    names, logprob = decoder.get_chord_tag_obs(probs)
+    decoded = decoder.decode(probs, np.ones(logprob.shape[0], dtype=np.int8))
+    index = {name: LABELS.index(to_label(name)) for name in names}
+    return np.array([index[name] for name in decoded]), fold(names, logprob)

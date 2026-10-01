@@ -71,6 +71,7 @@ class Features(NamedTuple):
 
     times: (n,) beat starts in seconds. Beat i spans [times[i], times[i + 1]); the last beat
         runs to the end of the audio.
+    frames: (n,) the same beat starts as frame indices at HOP, which times is computed from.
     treble, bass: (12, n) whitened chroma through the treble and bass pitch windows, C first,
         the median per beat. bass is all zero on beats where pick_bass finds no note: the
         correlation that scores it is scale-free, so leakage there would count as a bass.
@@ -81,6 +82,7 @@ class Features(NamedTuple):
     """
 
     times: np.ndarray
+    frames: np.ndarray
     treble: np.ndarray
     bass: np.ndarray
     cqt: np.ndarray
@@ -198,6 +200,7 @@ def beat_features(y: np.ndarray) -> Features:
     bass[:, np.array([pick_bass(column) is None for column in cqt.T])] = 0.0
     return Features(
         times=librosa.frames_to_time(beat_frames, sr=SR, hop_length=HOP),
+        frames=beat_frames,
         treble=treble,
         bass=bass,
         cqt=cqt,
