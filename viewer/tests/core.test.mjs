@@ -261,7 +261,22 @@ test("chord and bass labels outside the schema are refused, not half-rendered", 
   }
   assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:maj6" })), /chord C:maj6/);
   assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:min9" })), /chord C:min9/);
+  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "E#:maj" })), /chord E#:maj/);
+  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "B#:7" })), /chord B#:7/);
   assert.match(Core.timelineProblem(timeline({ ...ok, bass: "Db" })), /bass Db/);
+});
+
+test("a key label outside the 24 keys chordotomy writes is refused", () => {
+  const timeline = (label) => ({
+    schema_version: 4,
+    key: { label, source: "estimated", candidates: [] },
+    beats: [],
+    segments: [],
+  });
+  assert.equal(Core.timelineProblem(timeline("A#:min")), null);
+  assert.equal(Core.timelineProblem({ ...timeline("C:maj"), key: null }), null);
+  assert.match(Core.timelineProblem(timeline("Bb:maj")), /key Bb:maj/);
+  assert.match(Core.timelineProblem(timeline("C:dorian")), /key C:dorian/);
 });
 
 test("times format as m:ss", () => {

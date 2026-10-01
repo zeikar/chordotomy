@@ -1,5 +1,6 @@
 // The viewer's DOM side: opening files, the timeline, the current-chord panel and playback.
-// A classic script like core.js (see there for why); both are deferred, so core.js runs first.
+// A classic script like core.js (see there for why). The scripts are deferred, so they run in
+// document order: harmony.js, core.js, then this one.
 "use strict";
 
 (() => {

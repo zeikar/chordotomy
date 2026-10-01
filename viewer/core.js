@@ -4,13 +4,19 @@
 //
 // A classic script, not an ES module: Chrome and Firefox refuse module scripts on file:// pages,
 // and the viewer must also work opened straight from disk. In the browser it defines the global
-// `Core`; under Node it is a CommonJS module.
+// `Core` and reads the global `Harmony` that harmony.js, loaded first, defines; under Node it is
+// a CommonJS module that requires harmony.js.
 "use strict";
 
-const Core = (() => {
+const Core = ((Harmony) => {
   const SCHEMA_VERSION = 4;
-  const SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const CHORD_LABEL = /^[A-G]#?:(maj|min|7|maj7|min7|min6|hdim7|dim7|sus4)$/;
+  // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
+  // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
+  // and, if its numeral suffix is new, in NUMERAL_SUFFIX and numeralParts' pattern.
+  const SHARPS = Harmony.ROOTS;
+  const CHORD_LABEL = new RegExp(
+    `^(${Harmony.ROOTS.join("|")}):(${Harmony.QUALITY_NAMES.join("|")})$`,
+  );
   const LETTERS = "CDEFGAB";
   const NATURAL = [0, 2, 4, 5, 7, 9, 11];
   // The key's own scale by degree, which a numeral's accidentals are relative to: bIII in C
@@ -29,17 +35,7 @@ const Core = (() => {
     sus4: "sus4",
   };
   // Each quality's chord tones in semitones above the root, in the order `inversion` counts them.
-  const INTERVALS = {
-    maj: [0, 4, 7],
-    min: [0, 3, 7],
-    7: [0, 4, 7, 10],
-    maj7: [0, 4, 7, 11],
-    min7: [0, 3, 7, 10],
-    min6: [0, 3, 7, 9],
-    hdim7: [0, 3, 6, 10],
-    dim7: [0, 3, 6, 9],
-    sus4: [0, 5, 7],
-  };
+  const INTERVALS = Harmony.QUALITIES;
   // Each of those tones' letter steps above the root: a third two letters up, a seventh six.
   const MEMBER_STEPS = {
     maj: [0, 2, 4],
@@ -277,6 +273,10 @@ const Core = (() => {
       return "This timeline has no beats or segments list.";
     }
     // Everything downstream (names, numerals, the chord sound) assumes the schema's vocabulary.
+    // The key is null when there is no chord to estimate it from.
+    if (data.key != null && !Harmony.KEYS.includes(data.key.label)) {
+      return `This timeline has a key chordotomy doesn't write: key ${data.key.label}.`;
+    }
     for (const { chord, bass } of data.segments) {
       if (chord !== "N" && !CHORD_LABEL.test(chord)) {
         return `This timeline has a chord chordotomy doesn't write: chord ${chord}.`;
@@ -432,6 +432,6 @@ const Core = (() => {
     timelineProblem,
     voicings,
   };
-})();
+})(typeof Harmony === "object" ? Harmony : require("./harmony.js"));
 
 if (typeof module === "object") module.exports = Core;
