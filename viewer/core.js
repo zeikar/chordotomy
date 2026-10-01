@@ -14,7 +14,8 @@ const Core = ((Harmony) => {
   const SCHEMA_VERSION = 5;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
-  // and, if its numeral suffix is new, in NUMERAL_SUFFIX and numeralParts' pattern.
+  // and, if its numeral suffix is new, in NUMERAL_SUFFIX and numeralParts' pattern; it also takes
+  // an option in index.html's Quality select.
   const SHARPS = Harmony.ROOTS;
   const CHORD_LABEL = new RegExp(
     `^(${Harmony.ROOTS.join("|")}):(${Harmony.QUALITY_NAMES.join("|")})$`,

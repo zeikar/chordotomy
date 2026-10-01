@@ -58,6 +58,7 @@
         <div class="now-chord">
           <p class="big-chord" id="now-chord"></p>
           <p class="big-numeral" id="now-numeral"></p>
+          <p class="badge" id="now-edited" hidden>Edited</p>
         </div>
         <dl class="facts">
           <div>
@@ -69,8 +70,8 @@
             <dd id="now-bass"></dd>
           </div>
           <div>
-            <dt>Also heard as</dt>
-            <dd id="now-alt"></dd>
+            <dt id="now-alt-label">Also heard as</dt>
+            <dd class="candidates" id="now-alt"></dd>
           </div>
         </dl>
 
@@ -83,6 +84,61 @@
         </aside>
       </section>
 
+      <!-- Acts on the current chord. Values are the timeline's own: sharp roots, quality names, N. -->
+      <section class="editor" id="editor" aria-label="Edit chord">
+        <label class="pick">
+          Root
+          <select id="edit-root">
+            <option value="C">C</option>
+            <option value="C#">C♯/D♭</option>
+            <option value="D">D</option>
+            <option value="D#">D♯/E♭</option>
+            <option value="E">E</option>
+            <option value="F">F</option>
+            <option value="F#">F♯/G♭</option>
+            <option value="G">G</option>
+            <option value="G#">G♯/A♭</option>
+            <option value="A">A</option>
+            <option value="A#">A♯/B♭</option>
+            <option value="B">B</option>
+          </select>
+        </label>
+        <label class="pick">
+          Quality
+          <select id="edit-quality">
+            <option value="maj">major</option>
+            <option value="min">m</option>
+            <option value="7">7</option>
+            <option value="maj7">maj7</option>
+            <option value="min7">m7</option>
+            <option value="min6">m6</option>
+            <option value="hdim7">m7♭5</option>
+            <option value="dim7">dim7</option>
+            <option value="sus4">sus4</option>
+            <option value="N">No chord</option>
+          </select>
+        </label>
+        <label class="pick">
+          Bass
+          <select id="edit-bass">
+            <option value="root">Root</option>
+            <option value="C">C</option>
+            <option value="C#">C♯/D♭</option>
+            <option value="D">D</option>
+            <option value="D#">D♯/E♭</option>
+            <option value="E">E</option>
+            <option value="F">F</option>
+            <option value="F#">F♯/G♭</option>
+            <option value="G">G</option>
+            <option value="G#">G♯/A♭</option>
+            <option value="A">A</option>
+            <option value="A#">A♯/B♭</option>
+            <option value="B">B</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+      </section>
+
       <section class="timeline" aria-label="Chord timeline">
         <div class="strip" id="strip">
           <div class="track" id="track">
@@ -91,12 +147,13 @@
             <div class="playhead" id="playhead" aria-hidden="true"></div>
           </div>
         </div>
-        <ul class="legend" aria-label="Colours">
+        <ul class="legend" aria-label="Colours and marks">
           <li data-role="diatonic">Diatonic</li>
           <li data-role="secondary_dominant">Secondary dominant / leading-tone chord</li>
           <li data-role="borrowed">Borrowed</li>
           <li data-role="chromatic">Chromatic</li>
           <li data-role="none">No chord</li>
+          <li class="edited">Edited</li>
         </ul>
       </section>
 

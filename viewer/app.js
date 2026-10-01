@@ -1,6 +1,6 @@
-// The viewer's DOM side: opening files, the timeline, the current-chord panel and playback.
-// A classic script like core.js (see there for why). The scripts are deferred, so they run in
-// document order: harmony.js, core.js, then this one.
+// The viewer's DOM side: opening files, the timeline, the current-chord panel, editing and
+// playback. A classic script like core.js (see there for why). The scripts are deferred, so they
+// run in document order: harmony.js, core.js, edit.js, then this one.
 "use strict";
 
 (() => {
@@ -39,7 +39,15 @@
   const picker = $("picker");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
+  // Every edit is a step in `history` (see Edit.history), and `timeline` is its present, set only
+  // by refreshView. `saved` is the timeline as last opened or saved.
+  let history = null;
+  let saved = null;
   let timeline = null;
+  // While a select of the picker has focus or the pointer is pressed on it, the index of the
+  // segment that was current when that began; null otherwise. Playback moving on then neither
+  // rewrites the picker nor moves its edits to the next chord.
+  let pinned = null;
   let keyLabel = null;
   let pxPerSecond = 0;
   let buttons = [];
@@ -122,20 +130,78 @@
       say(`${file.name}: ${problem}`);
       return;
     }
-    timeline = data;
-    keyLabel = data.key ? data.key.label : null;
+    // A new timeline ends a pick in progress: the picker's pinned segment belongs to the old one.
+    if ($("editor").contains(document.activeElement)) document.activeElement.blur();
+    // Opening doesn't re-analyze: the analyzer's fields stand until the first edit.
+    const opened = Edit.upgrade(data);
+    history = Edit.history(opened);
+    saved = opened;
     showName("json-name", file.name);
-    renderKey();
-    renderTimeline();
-    stopChords();
-    chordStrikes = Core.strikes(data);
-    chordVoicings = Core.voicings(data.segments);
-    startChords();
     $("empty").hidden = true;
     $("viewer").hidden = false;
+    strip.scrollLeft = 0;
+    refreshView();
+    checkDurations();
+  }
+
+  // Draw everything that comes from the timeline again, from history.present: after opening a
+  // file, an edit, or a step through the history. The strip keeps its scroll position, a focused
+  // chord keeps the focus, and the chord sound picks up from where the recording is.
+  function refreshView(announcement = "") {
+    timeline = history.present;
+    keyLabel = timeline.key ? timeline.key.label : null;
+    chordStrikes = Core.strikes(timeline);
+    chordVoicings = Core.voicings(timeline.segments);
+    // Mid-play, the strike under way starts again at once with what is left of it, so an edit to
+    // the chord sounding now is heard right away.
+    stopChords();
+    startChords();
+    renderKey();
+    const focused = strip.contains(document.activeElement);
+    renderTimeline();
     current = null;
     update();
-    checkDurations();
+    if (focused && buttons[current]) buttons[current].focus({ preventScroll: true });
+    $("announce").textContent = announcement;
+  }
+
+  // The one way an edit enters the history. Undo and redo step through it without this, so they
+  // never add a step or clear what there is to redo. Paused with the chords on, the chord now in
+  // place sounds once, as a click on it would.
+  function commitEdit(next, announcement) {
+    if (next === history.present) return;
+    history = Edit.commit(history, next);
+    refreshView(announcement);
+    auditionChord(current);
+  }
+
+  // A segment's chord and bass, as the picker or a candidate sets them.
+  function setChord(index, chord, bass) {
+    const next = Edit.setChord(timeline, index, chord, bass);
+    if (next === timeline) return; // a timeline with no segments: nothing to set
+    const segment = next.segments[index];
+    const key = next.key ? next.key.label : null;
+    const name = Core.chordName(segment.chord, key, segment.bass, segment.inversion);
+    commitEdit(next, `Chord set to ${name}`);
+  }
+
+  // The bass the Bass select reads for a chord on `root`: Root follows the chord's root, so a
+  // root or quality change carries it along; None is no bass; a note stays as it is.
+  function pickedBass(root) {
+    const value = $("edit-bass").value;
+    if (value === "root") return root;
+    return value === "none" ? null : value;
+  }
+
+  // A pick applies at once, to the chord the picker shows (see `pinned`). Over silence the picker
+  // reads a root, No chord and Root, so a root or bass picked there also makes the chord major:
+  // entering a chord into silence is one pick.
+  function applyPicker(event) {
+    const quality = $("edit-quality");
+    if (event.currentTarget !== quality && quality.value === "N") quality.value = "maj";
+    const root = $("edit-root").value;
+    const chord = quality.value === "N" ? "N" : `${root}:${quality.value}`;
+    setChord(pinned ?? current, chord, pickedBass(root));
   }
 
   // Files are paired by the user, so a length mismatch is the one hint that they don't belong
@@ -228,6 +294,7 @@
       button.tabIndex = -1;
       button.dataset.index = index;
       button.dataset.role = segment.role || "none";
+      if (segment.edited) button.dataset.edited = "";
       place(button, segment.start_time, segment.end_time);
       const name = Core.chordName(segment.chord, keyLabel, segment.bass, segment.inversion);
       const chord = document.createElement("span");
@@ -255,7 +322,12 @@
         ? `${name}  ${Core.numeralText(segment.numeral, segment.inversion)}`
         : name;
       const spoken = segment.numeral ? spokenNumeral(segment) : "";
-      const label = [name, spoken, Core.formatTime(segment.start_time)].filter(Boolean);
+      const label = [
+        name,
+        spoken,
+        Core.formatTime(segment.start_time),
+        segment.edited && "edited",
+      ].filter(Boolean);
       button.setAttribute("aria-label", label.join(", "));
       return button;
     });
@@ -274,7 +346,6 @@
       marks.push(time);
     }
     $("ruler").replaceChildren(...marks);
-    strip.scrollLeft = 0;
   }
 
   function roleText(segment) {
@@ -309,13 +380,72 @@
     $("now-role").textContent = isChord ? roleText(segment) : "No chord";
     const bass = Core.bassName(segment.chord, keyLabel, segment.bass);
     $("now-bass").textContent = bass ? `${bass}, ${INVERSION_TEXT[segment.inversion]}` : "None heard";
-    $("now-alt").textContent = segment.candidates
-      .slice(1)
-      .map((label) => {
+    $("now-edited").hidden = !segment.edited;
+    $("now-alt-label").textContent = segment.edited ? "Analyzer heard" : "Also heard as";
+    renderCandidates(segment);
+    renderPicker(pinned === null ? segment : timeline.segments[pinned]);
+  }
+
+  // The picker shows the segment. Over silence it still holds a root, the key's tonic, so a
+  // quality picked there makes a chord on it.
+  function renderPicker(segment) {
+    const isChord = segment.chord !== "N";
+    const [root, quality] = isChord
+      ? segment.chord.split(":")
+      : [keyLabel ? keyLabel.split(":")[0] : "C", "N"];
+    $("edit-root").value = root;
+    $("edit-quality").value = quality;
+    // The root's own note is what Root reads, so it is not offered twice. Arrowing through the
+    // notes (a pick per step on Windows and Linux) then passes it instead of snapping back to
+    // Root, and reaches every note after it and None. A root moved onto a fixed bass note makes
+    // that bass Root from then on.
+    const bass = $("edit-bass");
+    for (const option of bass.options) option.disabled = option.value === root;
+    bass.value =
+      !isChord || segment.bass === root ? "root" : segment.bass === null ? "none" : segment.bass;
+  }
+
+  // The analyzer's other readings, each a button that makes it the chord. Once the chord is the
+  // user's, everything it heard is on offer, its first reading included, bar the chord itself.
+  function renderCandidates(segment) {
+    const list = $("now-alt");
+    const labels = segment.edited
+      ? segment.candidates.filter((label) => label !== segment.chord)
+      : segment.candidates.slice(1);
+    // A focused candidate keeps the focus at its place in the list, when a keyboard click or
+    // playback moving on draws the list again.
+    const focused = [...list.querySelectorAll(".candidate")].indexOf(document.activeElement);
+    list.replaceChildren(
+      ...labels.map((label) => {
+        const item = document.createElement("span");
+        const button = document.createElement("button");
         const name = Core.alternativeName(label, segment.chord, keyLabel);
-        return Core.sameNotes(label, segment.chord) ? `${name} (same notes)` : name;
-      })
-      .join(", ");
+        const sameNotes = Core.sameNotes(label, segment.chord);
+        const action = `Set chord to ${name}${sameNotes ? ", same notes" : ""}`;
+        button.type = "button";
+        button.className = "button candidate";
+        button.textContent = name;
+        button.setAttribute("aria-label", action);
+        button.title = action;
+        button.addEventListener("click", (event) => {
+          releaseFocus(event);
+          setChord(current, label, label === "N" ? null : pickedBass(label.split(":")[0]));
+        });
+        item.append(button);
+        if (sameNotes) {
+          // The button's name already says it.
+          const note = document.createElement("span");
+          note.setAttribute("aria-hidden", "true");
+          note.textContent = " (same notes)";
+          item.append(note);
+        }
+        return item;
+      }),
+    );
+    const choices = list.querySelectorAll(".candidate");
+    if (focused >= 0 && choices.length) {
+      choices[Math.min(focused, choices.length - 1)].focus({ preventScroll: true });
+    }
   }
 
   // A long name (D♯m7♭5/C♯) is wider than the chord column at full size; it shrinks to fit rather
@@ -564,6 +694,32 @@
     if (button) seek(Number(button.dataset.index));
   });
 
+  // A pick takes a moment (a menu is open, or the arrows step through it), and playback may move
+  // on meanwhile: the picker stays on the chord it showed when the press or the focus began, and
+  // lets go when the select loses focus. Picked with the mouse, a select lets go of focus as the
+  // buttons do, so Space goes back to playing and pausing; picked from the keyboard, it keeps it.
+  let pointerPick = false;
+  const pin = () => {
+    if (pinned === null) pinned = current;
+  };
+  for (const id of ["edit-root", "edit-quality", "edit-bass"]) {
+    const select = $(id);
+    select.addEventListener("pointerdown", () => {
+      pointerPick = true;
+      pin();
+    });
+    select.addEventListener("focus", pin);
+    select.addEventListener("blur", () => {
+      pinned = null;
+      show(current);
+    });
+    select.addEventListener("keydown", () => (pointerPick = false));
+    select.addEventListener("change", (event) => {
+      applyPicker(event);
+      if (pointerPick) select.blur();
+    });
+  }
+
   $("play-chords").addEventListener("click", (event) => {
     releaseFocus(event);
     setPlayChords(!playChords);
@@ -597,8 +753,12 @@
   document.addEventListener("keydown", (event) => {
     if (!timeline || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target;
-    // Letter shortcuts work from any control; none of them takes letters. The physical key is the
-    // fallback, so they also work with a non-Latin layout on (Korean input sends "ㅊ" for C).
+    // A select (or a text field) keeps every key: letters pick by name, Space opens it, arrows
+    // step through it.
+    if (target.closest("select, input[type=text]")) return;
+    // Letter shortcuts work from every other control; none of them takes letters. The physical
+    // key is the fallback, so they also work with a non-Latin layout on (Korean input sends "ㅊ"
+    // for C).
     const letter = /^[a-z]$/i.test(event.key)
       ? event.key.toLowerCase()
       : { KeyC: "c", KeyM: "m" }[event.code];

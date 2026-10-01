@@ -300,12 +300,17 @@ body:has(#empty:not([hidden])) .status {
   --mark-height: 6px;
 }
 
+/* The Edited badge shares the numeral's line, so showing it moves nothing. */
 .now-chord {
   grid-area: chord;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   min-width: 0;
 }
 
 .big-chord {
+  flex: 0 0 100%;
   margin: 0;
   font: 400 112px/1 var(--serif);
   letter-spacing: -0.02em;
@@ -323,6 +328,32 @@ body:has(#empty:not([hidden])) .status {
   margin: 10px 0 0;
   font: 400 47.4px/1.2 var(--serif);
   color: var(--role, var(--ink));
+}
+
+/* Quiet, with the turned-down corner that marks an edited chord in the strip. */
+.badge {
+  position: relative;
+  margin: 10px 0 0 16px;
+  padding: 1px 14px 1px 8px;
+  border: 1px solid var(--pencil);
+  border-radius: 3px 0 3px 3px;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+.badge::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(to bottom left, var(--ink) 50%, transparent 50%);
+}
+
+/* No numeral (N.C.): the badge starts the line. */
+.big-numeral:empty + .badge {
+  margin-left: 0;
 }
 
 .figures {
@@ -359,6 +390,19 @@ body:has(#empty:not([hidden])) .status {
   color: var(--role, var(--ink));
 }
 
+/* Compact, so a row of them stays the height of a line of text. */
+.candidates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+}
+
+.candidate {
+  padding: 0 8px;
+  line-height: 1.3;
+}
+
 .key {
   grid-area: key;
   padding-left: 28px;
@@ -384,6 +428,39 @@ body:has(#empty:not([hidden])) .status {
   margin: 4px 0 0;
   padding: 0;
   list-style-position: inside;
+}
+
+/* Editing the current chord */
+
+.editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 0 32px 16px;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+/* Drawn like the buttons beside them, with the browser's own menu and arrow. */
+.pick select {
+  font: 15px/1.5 var(--sans);
+  color: var(--ink);
+  background-color: transparent;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.pick select:hover {
+  background-color: color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
 /* Timeline */
@@ -455,6 +532,17 @@ body:has(#empty:not([hidden])) .status {
 
 .segment:focus-visible {
   outline-offset: -5px;
+}
+
+/* A chord the user set: its corner turned down in ink, over any role's colour or hatching. */
+.segment[data-edited]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(to bottom left, var(--ink) 50%, transparent 50%);
 }
 
 /* Labels stay in view while the start of a long chord is scrolled off to the left. */
@@ -590,6 +678,13 @@ body:has(#empty:not([hidden])) .status {
 
 .legend [data-role="none"]::before {
   background: repeating-linear-gradient(-45deg, var(--sheet) 0 3px, var(--hatch) 3px 4px);
+}
+
+/* A plain cell with the corner an edited chord has in the strip. */
+.legend .edited::before {
+  background:
+    linear-gradient(to bottom left, var(--ink) 50%, transparent 50%) top right / 8px 8px no-repeat,
+    var(--cell);
 }
 
 /* Playback */
@@ -738,10 +833,24 @@ body:has(#empty:not([hidden])) .status {
 
   .bar,
   .now,
+  .editor,
   .timeline,
   .transport {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  /* The pickers stack full width, their selects lined up with the facts' values above. */
+  .editor {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .pick {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    gap: 0;
   }
 
   .privacy {
