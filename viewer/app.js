@@ -199,11 +199,11 @@
     return history !== null && history.present !== saved;
   }
 
-  // Saving downloads a new file named after the opened one (Edit.saveName): the page never writes
+  // Saving downloads a new file named after the recording (Edit.saveName): the page never writes
   // to the file it opened, so what the analyzer wrote stays as it was. The object URL is revoked
   // a tick later, once the download has started.
   function save() {
-    const name = Edit.saveName(timelineName);
+    const name = Edit.saveName(history.present, timelineName);
     const blob = new Blob([Edit.serialize(history.present)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

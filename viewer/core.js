@@ -327,6 +327,10 @@ const Core = ((Harmony) => {
     ) {
       return "This timeline's key has a missing or invalid source or candidates.";
     }
+    const { beats, segments } = data;
+    if (beats.some((time, index) => index > 0 && time <= beats[index - 1])) {
+      return "This timeline's beats aren't in ascending order.";
+    }
     const fields = data.schema_version === 5 ? SEGMENT_FIELDS_5 : SEGMENT_FIELDS;
     for (const [index, segment] of data.segments.entries()) {
       const where = `segment ${index + 1}`;
@@ -347,6 +351,15 @@ const Core = ((Harmony) => {
       const { start_beat: start, end_beat: end } = segment;
       if (start < 0 || end <= start || end > data.beats.length) {
         return `This timeline's ${where} lies outside its beats.`;
+      }
+      // Beat lookup, split and merge rely on segments that tile the beats and carry their times.
+      if (start !== (index ? segments[index - 1].end_beat : 0)) {
+        return `This timeline's ${where} doesn't start where the one before it ends.`;
+      }
+      const last = index === segments.length - 1;
+      if (last && end !== beats.length) return `This timeline's ${where} stops short of the last beat.`;
+      if (segment.start_time !== beats[start] || segment.end_time !== (last ? data.source.duration : beats[end])) {
+        return `This timeline's ${where} has times that don't match its beats.`;
       }
     }
     return null;

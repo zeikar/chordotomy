@@ -374,13 +374,27 @@ test("serialize writes the file as the CLI does", () => {
   assert.ok(text.includes('"numeral": "viiø7/V"'));
 });
 
-test("the save name marks the file as edited", () => {
-  assert.equal(Edit.saveName("song.chords.json"), "song.edited.chords.json");
-  assert.equal(Edit.saveName("song.edited.chords.json"), "song.edited.chords.json");
-  assert.equal(Edit.saveName("song.json"), "song.edited.chords.json");
-  assert.equal(Edit.saveName("song.prototype.chords.json"), "song.prototype.edited.chords.json");
-  assert.equal(Edit.saveName("Song.CHORDS.JSON"), "Song.edited.chords.json");
-  assert.equal(Edit.saveName("Song.Edited.Chords.json"), "Song.edited.chords.json");
+test("the save name is the audio stem plus .edited.chords.json", () => {
+  const at = (path) => ({ source: { path } });
+  const name = (path, opened = "x.chords.json") => Edit.saveName(at(path), opened);
+  assert.equal(name("song.mp3"), "song.edited.chords.json");
+  assert.equal(name("song.edited.mp3"), "song.edited.edited.chords.json");
+  assert.equal(name("song.chords.mp3"), "song.chords.edited.chords.json");
+  assert.equal(name("/music/dir.d/song.prototype.wav"), "song.prototype.edited.chords.json");
+  assert.equal(name("C:\\Music\\My Songs\\song.mp3"), "song.edited.chords.json");
+  assert.equal(name("song"), "song.edited.chords.json");
+});
+
+test("without a source path the save name follows the opened file's", () => {
+  const name = (opened, source) => Edit.saveName({ source }, opened);
+  for (const source of [undefined, {}, { path: "" }, { path: "/music/" }, { path: 5 }]) {
+    assert.equal(name("song.chords.json", source), "song.edited.chords.json");
+    assert.equal(name("song.edited.chords.json", source), "song.edited.chords.json");
+    assert.equal(name("song.chords.chords.json", source), "song.chords.edited.chords.json");
+    assert.equal(name("Song.Edited.Chords.json", source), "Song.edited.chords.json");
+    assert.equal(name("out.json", source), "out.edited.chords.json");
+    assert.equal(name("out", source), "out.edited.chords.json");
+  }
 });
 
 test("a saved file passes the checks the viewer opens files with", () => {

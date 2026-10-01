@@ -52,7 +52,7 @@ In every case other than 5, tell the user that the timeline comes from a differe
 
 The fields:
 
-- **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means no chord was found at all; say so. With `source: given`, mention when `candidates[0]` differs from the given key.
+- **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
 - **Per segment:**
   - `start_time`, `end_time`
   - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on nine qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7` and `sus4`.

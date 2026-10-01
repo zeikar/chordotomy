@@ -338,7 +338,7 @@ test("every segment field the viewer reads must be there and hold what chordotom
     const timeline = { ...withSegment({}), segments: [segment] };
     assert.match(Core.timelineProblem(timeline), /segment 1 isn't an object/);
   }
-  const second = withSegment({});
+  const second = withSegment({ end_beat: 1, end_time: 1.0 });
   second.segments.push({ ...SEGMENT, start_beat: 2, end_beat: 2 });
   assert.match(Core.timelineProblem(second), /segment 2 lies outside its beats/);
   assert.match(problem({ start_beat: -1 }), /outside its beats/);
@@ -363,6 +363,27 @@ test("the beats, the source duration and the key must hold what chordotomy write
   assert.match(key({ candidates: undefined }), /key has a missing or invalid/);
   assert.match(key({ candidates: ["F#:maj", "Gb:maj"] }), /key has a missing or invalid/);
   assert.match(Core.timelineProblem({ ...timeline, key: 5 }), /key undefined/);
+});
+
+test("beats must ascend and segments must tile them with matching times", () => {
+  const timeline = withSegment({ end_beat: 1, end_time: 1.0 });
+  const second = { ...SEGMENT, start_beat: 1, end_beat: 2, start_time: 1.0, end_time: 1.5 };
+  const two = { ...timeline, segments: [...timeline.segments, second] };
+  assert.equal(Core.timelineProblem(two), null);
+  assert.match(Core.timelineProblem({ ...two, beats: [1.0, 0.5] }), /beats aren't in ascending/);
+  assert.match(Core.timelineProblem({ ...two, beats: [0.5, 0.5] }), /beats aren't in ascending/);
+  const gap = { ...two, beats: [0.5, 1.0, 1.2], segments: [two.segments[0], { ...second, start_beat: 2, end_beat: 3, start_time: 1.2 }] };
+  assert.match(Core.timelineProblem(gap), /segment 2 doesn't start where/);
+  const late = { ...two, segments: [{ ...two.segments[0], start_beat: 1, end_beat: 2 }, second] };
+  assert.match(Core.timelineProblem(late), /segment 1 doesn't start where/);
+  assert.match(Core.timelineProblem({ ...two, beats: [0.5, 1.0, 1.2] }), /segment 2 stops short/);
+  const off = (index, fields) => ({
+    ...two,
+    segments: two.segments.map((seg, at) => (at === index ? { ...seg, ...fields } : seg)),
+  });
+  assert.match(Core.timelineProblem(off(0, { start_time: 0.4 })), /segment 1 has times/);
+  assert.match(Core.timelineProblem(off(0, { end_time: 0.9 })), /segment 1 has times/);
+  assert.match(Core.timelineProblem(off(1, { end_time: 1.4 })), /segment 2 has times/);
 });
 
 test("an odd value anywhere gets a reason, never a throw", () => {

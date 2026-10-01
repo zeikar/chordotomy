@@ -185,10 +185,19 @@ const Edit = ((Harmony) => {
     return JSON.stringify(timeline, null, 2) + "\n";
   }
 
-  // song.chords.json → song.edited.chords.json, so saving never replaces what the analyzer wrote;
-  // an opened .edited.chords.json keeps its name, whatever the case of its suffixes.
-  function saveName(fileName) {
-    return fileName.replace(/(\.(edited|chords|json))+$/i, "") + ".edited.chords.json";
+  // <audio stem>.edited.chords.json, the name the skill looks for next to the recording, so saving
+  // never replaces what the analyzer wrote. The stem comes from the timeline's source path: the
+  // opened file's name can't tell a stem ending in .edited or .chords from the viewer's own
+  // suffixes. Without a usable source path, song.chords.json → song.edited.chords.json, and an
+  // opened .edited.chords.json keeps its name; a name from -o without .chords.json loses its .json.
+  function saveName(timeline, fileName) {
+    const base = typeof timeline.source?.path === "string" ? timeline.source.path.split(/[\\/]/).pop() : "";
+    const dot = base.lastIndexOf(".");
+    const audioStem = dot > 0 ? base.slice(0, dot) : base;
+    const stem =
+      audioStem ||
+      fileName.replace(/(\.edited)?\.chords\.json$/i, "").replace(/\.json$/i, "");
+    return stem + ".edited.chords.json";
   }
 
   return {
