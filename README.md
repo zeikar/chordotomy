@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** first three slices work. `chordotomy analyze` writes a chord timeline of maj / min / 7 chords and `N` on detected beats, with the estimated key and Roman numerals; secondary dominants and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** everything on the roadmap below works except chord editing and manual entry. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. Its chords are major, minor, dominant 7th, major 7th, minor 7th, minor 6th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 
@@ -20,7 +20,7 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 
 ## Roadmap
 
-- [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th)
+- [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th / major 7th / minor 7th / minor 6th / half-diminished 7th / diminished 7th / sus4)
 - [x] Roman-numeral analysis, with highlights for secondary dominants and borrowed chords
 - [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
 - [x] Short explanations of the highlighted moves (a Claude Code skill)

@@ -37,25 +37,26 @@ The analyzer writes `<audio stem>.chords.json` next to the audio (or to `-o`) an
 The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines. Read a compact view instead of the raw file:
 
 ```bash
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("schema", d.get("schema_version"), "| key", json.dumps(d.get("key"))); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","candidates")])) for s in d["segments"]]' "<file>.chords.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 3:
+Check `schema_version`. This skill is written for version 4:
 
+- **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
 - **Below 3:** there is no `bass` and no `inversion`.
 - **Below 2:** there is no key and there are no numerals either.
-- **Above 3:** this skill may be out of date. Explain only the fields listed here.
+- **Above 4:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 3, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+In every case other than 4, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
 
 The fields:
 
 - **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means no chord was found at all; say so. With `source: given`, mention when `candidates[0]` differs from the given key.
 - **Per segment:**
   - `start_time`, `end_time`
-  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord`)
+  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord`). Both draw on nine qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7` and `sus4`.
   - `bass`, `inversion`
-  - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`
+  - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`. `secondary_dominant` also covers secondary leading-tone chords: numeral `vii°7/x` or `viiø7/x`, with `target` set.
 - **`N`:** a segment with no chord: silence, or a passage with no clear harmony, such as a drum break.
 
 ## Step 3: Pick the moves worth noticing
@@ -64,7 +65,7 @@ Consecutive segments can repeat a `chord` when the bass changes under it. Treat 
 
 Highlight, in time order:
 
-1. **Every `secondary_dominant` run, with its next chord.** An `N` next means the chord did not resolve.
+1. **Every secondary dominant or leading-tone run (`role: secondary_dominant`), with its next chord.** An `N` next means the chord did not resolve.
 2. **Every `borrowed` run.**
 3. **Every `chromatic` run.**
 4. **Bass lines.** Look for three or more consecutive `bass` values, each 1 or 2 semitones from the last, with no `null` in between. The bass has no octave, so call a line descending or ascending only when every step goes the same way around the pitch-class circle.
@@ -81,8 +82,8 @@ Rules:
 
 - **Ground every claim in the JSON:** the numeral, role, target, next chord and bass. Music theory explains why those facts work. It never adds facts the JSON does not contain. The analyzer knows nothing about melody, lyrics, instrumentation or phrase boundaries, so claim none of them.
 - **Be brief:** one to three sentences per move.
-- **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. Never state percentages or confidence numbers. The candidates are a ranking, not probabilities.
-- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
+- **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. A candidate on the same notes as `chord` (`A:min6` beside `F#:hdim7`) is a spelling, not an alternative; see `references/moves.md`. Never state percentages or confidence numbers. The candidates are a ranking, not probabilities.
+- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, `F:maj7` → Fmaj7, `D:min7` → Dm7, `G:min6` → Gm6, `F#:hdim7` → F♯m7♭5, `C#:dim7` → C♯dim7, `G:sus4` → Gsus4, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
 - **Write times as m:ss** from `start_time`.
 - **Answer in the user's language.**
 
