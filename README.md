@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. The model engine's chords are major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; the DSP engine also recognizes minor 6th. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. The model engine's chords are major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; the DSP engine also recognizes minor 6th. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. The DSP engine keeps a quiet passage's chords and calls bars of drums alone `N`. When the beat tracker locks at half tempo with the chord changes falling between its beats, the beat grid is doubled; a half-tempo grid whose beats fall on the chord changes is left as it is, since it costs no chord. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 
@@ -70,7 +70,7 @@ Working in this repo, `.claude/settings.json` registers the checkout itself as a
 
 ## Viewer
 
-The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. Chords are colored by role, so secondary dominants and borrowed chords stand out. The header names the engine that heard the chords (lv-chordia or the DSP).
+The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. Chords are colored by role, so secondary dominants and borrowed chords stand out. Every beat gets the same width, so a chord's width is its length in beats; where the beats come faster or slower, the seconds on the ruler bunch up or spread out instead. The header names the engine that heard the chords (lv-chordia or the DSP).
 
 Open it at <https://zeikar.github.io/chordotomy/>, or open `viewer/index.html` from a checkout. Drop the recording and its `.chords.json` on the page, or pick them with **Open files**. The files stay in your browser. The page reads them locally and makes no network requests.
 
@@ -119,7 +119,7 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
 
 ## License
 
