@@ -59,7 +59,7 @@ def no_offsets(monkeypatch) -> None:
     """Every QUALITY_OFFSET entry 0, for tests that feed hand-built binary chromas.
 
     The offsets are sized for chromas that carry partials, as audio does. A binary chroma has
-    none: against the templates a binary Cmaj7 beats C:maj by only 0.12, under the maj7 offset.
+    none: against the templates a binary Cmaj7 beats C:maj by only 0.099, under the maj7 offset.
     """
     for quality in QUALITY_OFFSET:
         monkeypatch.setitem(QUALITY_OFFSET, quality, 0.0)
@@ -165,10 +165,10 @@ def _labels(scores: np.ndarray, level: np.ndarray | None = None, period: float =
     return [LABELS[i] for i in smooth(scores, level, period)]
 
 
-# At period 0.5 the self-loop is about 0.80 and the rest is spread over 108 other labels, so a
-# switch costs about 6.05 nats and leaving a chord and coming back about 12.1; a score gap of g
-# on one beat is worth g / TEMPERATURE = 50 g nats. The gaps below hold the verdict by at least 2
-# nats.
+# At period 0.5 the self-loop is about 0.84 and the rest is spread over 108 other labels, so a
+# switch costs about 6.31 nats and leaving a chord and coming back about 12.6; a score gap of g
+# on one beat is worth g / TEMPERATURE = 33.3 g nats. The gaps below hold the verdict by at least
+# 2 nats.
 
 
 def test_smooth_suppresses_one_beat_sibling_change() -> None:
@@ -208,8 +208,8 @@ def test_no_chord_above_the_n_score_is_n() -> None:
 
 
 def test_the_self_loop_follows_seconds_not_beats() -> None:
-    # 10 nats against a round trip of about 12.1 at period 0.5 and about 7.2 at period 3.0.
-    scores = _scores({2: {"C:maj": 0.6, "C:7": 0.8}})
+    # 10.3 nats against a round trip of about 12.6 at period 0.5 and about 8.1 at period 3.0.
+    scores = _scores({2: {"C:maj": 0.49, "C:7": 0.8}})
 
     assert _labels(scores, period=0.5) == ["C:maj"] * 6
     assert _labels(scores, period=3.0) == ["C:maj", "C:maj", "C:7", "C:maj", "C:maj", "C:maj"]

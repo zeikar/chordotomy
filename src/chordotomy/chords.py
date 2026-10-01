@@ -39,7 +39,7 @@ PARTIALS = (0, 12, 19, 24)
 # C, C -> G under A:min), the fifth's on the ninth, and whitening lifts a lone partial in a
 # sparse region. A template that expects those partials stops reading them as a tetrad. 0 gives
 # binary templates; a sweep rebuilds the table for each decay it tries.
-PARTIAL_DECAY = 0.6
+PARTIAL_DECAY = 0.8
 
 
 def _build_templates(decay: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -71,25 +71,28 @@ TONES, TEMPLATES, ROOT_TEMPLATES = _build_templates(PARTIAL_DECAY)
 # other bins, which a real mix's chroma always is (research pitfall 1). Instead a chord has to
 # beat this constant, and correlation gives a flat chroma 0 against every chord.
 N_SCORE = 0.3
-# BASS_WEIGHT, BASS_TONE and CHORD_SECONDS are stage 1's tuned values: the best Tiny AAM majmin
-# among those that kept the synthesized suite green, with its two-beat A:min/C inside a run of
-# C:maj as the binding case. TEMPERATURE and QUALITY_OFFSET are v4 starting values, not yet tuned.
+# BASS_WEIGHT, BASS_TONE, TEMPERATURE, CHORD_SECONDS, QUALITY_OFFSET and PARTIAL_DECAY are tuned
+# together on the planned grid: GuitarSet sevenths under Tiny AAM's floors, with the synthesized
+# suite green. PARTIAL_DECAY then moved from 0.6 to 0.8 at a cost (0.3 pp of GuitarSet sevenths,
+# 0.5-0.6 pp of Tiny AAM) so that no one-step move breaks the two-beat A:min/C inside C:maj.
+# TEMPERATURE 0.035, BASS_TONE 0.6 and maj7/min7 -0.05 score higher, but give up that margin or
+# Tiny AAM's sevenths floor a step later; see "Tuning the v4 constants" in docs/ARCHITECTURE.md.
 # The weight of the bass chroma's evidence for a chord, against the treble's correlation.
-BASS_WEIGHT = 0.45
+BASS_WEIGHT = 0.3
 # A chord's bass profile is 1 on its root and BASS_TONE on its other tones. A bass on the third
 # or fifth still supports the chord, so the treble decides Am/C against C and G/B against Bm;
 # the root counts more, so a root bass settles the ties the treble cannot (G:min6 against
 # E:hdim7).
-BASS_TONE = 0.8
+BASS_TONE = 0.7
 # Sharpens score gaps into likelihood ratios: a gap g on one beat is worth g / TEMPERATURE nats
 # against the transition cost. Too high and two-beat chord changes are smoothed away. The
 # self-loop spreads what it leaves over the other 108 labels, so at period 0.5 leaving a chord and
-# coming back costs about 12.1 nats (9.9 with stage 1's 37 labels). The suite's binding case, the
-# two-beat A:min/C inside C:maj at 0.22 per beat, holds up to 0.035.
-TEMPERATURE = 0.02
+# coming back costs about 12.6 nats. The suite's binding case, the two-beat A:min/C inside C:maj
+# at 0.24 per beat, holds up to 0.039.
+TEMPERATURE = 0.03
 # The expected chord length in seconds, not beats, so a tracker locked at half or double tempo
 # does not halve or double it (research pitfall 3).
-CHORD_SECONDS = 2.2
+CHORD_SECONDS = 2.8
 # A beat this far below the track's loud beats is no chord. Whitening is scale-free, so without
 # the gate a silent beat's residual ringing would whiten into a chord.
 N_GATE_DB = 40
@@ -100,19 +103,23 @@ QUALITY_OFFSET = {
     "min": 0.0,
     # The templates model four partials at one decay; a real tone's higher ones still land on its
     # triad's seventh (the fifth's 5th harmonic on the major seventh, the root's 7th just under
-    # the minor seventh). Each has to stay under what a played seventh gains over its triad.
-    "7": -0.05,
-    "maj7": -0.15,
-    "min7": -0.15,
+    # the minor seventh). Each has to stay under what a played seventh gains over its triad; the 7
+    # needs none to hold Tiny AAM's floors.
+    "7": 0.0,
+    "maj7": -0.1,
+    "min7": -0.1,
     # One value for both twins (G:min6 is E:hdim7's pitch set), so the bass, not the offset, tells
     # them apart.
-    "min6": -0.05,
-    "hdim7": -0.05,
+    "min6": -0.1,
+    "hdim7": -0.1,
     # A 7 chord with a weak root leaves three of a dim7's four tones (E G Bb of C:7 in C#:dim7).
-    "dim7": -0.2,
+    "dim7": -0.1,
     # The largest: Tiny AAM, annotated in maj and min only, scores every sus4 call as a miss, and a
-    # played sus4 clears its maj by more than a played seventh clears its triad.
-    "sus4": -0.3,
+    # played sus4 clears its maj by more than a played seventh clears its triad. Pinned from both
+    # sides: at -0.2 Tiny AAM's root falls under its floor; the suite's four-beat G:sus4 clears
+    # G:maj by 0.27 over its beats here, so at -0.3 it falls under the 0.19 an extra chord change
+    # costs and is smoothed into the G:maj after it.
+    "sus4": -0.25,
 }
 
 

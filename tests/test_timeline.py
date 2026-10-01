@@ -268,12 +268,6 @@ def test_a_ii_v_i_of_sevenths_keeps_its_sevenths(synth, tmp_path) -> None:
     assert [s["inversion"] for s in segments] == ["root", "root", "root"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QUALITY_OFFSET['sus4'] -0.3 binds: G:sus4 clears G:maj by 0.006-0.025 a beat, 0.045 "
-    "over its four beats, short of the 0.12 an extra chord change costs at TEMPERATURE 0.02; "
-    "-0.25 passes, and Tiny AAM's root floor needs -0.3",
-)
 def test_a_suspension_resolves_to_its_triad(synth, tmp_path) -> None:
     progression = [("C:maj", 4, 36), ("G:sus4", 4, 43), ("G:maj", 4, 43), ("C:maj", 4, 36)]
 
