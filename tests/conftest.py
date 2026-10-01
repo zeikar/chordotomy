@@ -180,6 +180,45 @@ def drums() -> Callable[[int], np.ndarray]:
     return make
 
 
+# Hat positions in beats of a 4/4 bar: eighths; 3-3-2 sixteenths, a 4:3 period over the pulse;
+# quarter-note triplets, a 3:2 period.
+STRAIGHT = tuple(i / 2 for i in range(8))
+TRESILLO = (0, 0.75, 1.5, 2, 2.75, 3.5)
+TRIPLETS = tuple(i * 2 / 3 for i in range(6))
+
+
+@pytest.fixture
+def syncopated() -> Callable[[int, int, float], np.ndarray]:
+    """Drums alone at one tempo: a kick on 1 and 3 of every bar, hats on the eighths for
+    n_straight bars, then for n_syncopated bars in 3-3-2 sixteenths and in quarter-note triplets,
+    two bars each. As long as `synth` at the same tempo and n_straight + n_syncopated bars.
+
+    The pulse never changes, but the syncopated hats make librosa's local tempo flicker between
+    the pulse's levels and the 4:3 and 3:2 readings, as a syncopated pop track does. Normalised
+    like `synth`. Seeded, so the clip is identical on every run.
+    """
+    rng = np.random.default_rng(0)
+
+    def make(n_straight: int, n_syncopated: int, bpm: float) -> np.ndarray:
+        beat = int(round(60 / bpm * SR))  # samples, rounded as `synth` rounds them
+        syncopations = [(TRESILLO, TRIPLETS)[i // 2 % 2] for i in range(n_syncopated)]
+        bars = [STRAIGHT] * n_straight + syncopations
+        y = np.zeros(len(bars) * 4 * beat + SR)
+        kick = _kick()
+        for i, hats in enumerate(bars):
+            for at in (0, 2):
+                start = (4 * i + at) * beat
+                y[start : start + len(kick)] += kick
+            for at in hats:
+                hat = _hat(rng)
+                start = int(round((4 * i + at) * beat))
+                y[start : start + len(hat)] += hat
+        y = y[: len(bars) * 4 * beat]
+        return (y / np.abs(y).max() * 0.5).astype(np.float32)
+
+    return make
+
+
 DETUNE = 2 ** (0.4 / 12)  # +40 cents: real recordings are never at A440 to the cent
 
 

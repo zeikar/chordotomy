@@ -133,8 +133,8 @@ def test_a_single_beat_extends_the_grid_at_the_tempo_period(synth, monkeypatch) 
 
 
 def test_the_grid_extends_at_the_edge_gaps(synth, monkeypatch) -> None:
-    # Known frames, because a real tracker cannot change tempo on so short a clip (the tempo rule
-    # needs a 16 s departure), so this proves the extension and nothing else.
+    # Known frames, because the tracker keeps one tempo per file and bends it only slowly, so this
+    # proves the extension and nothing else.
     silence = np.zeros(2 * SR, dtype=np.float32)
     y = np.concatenate([silence, synth([("C:maj", 16)]), silence])
     fast, slow = round(0.5 * SR / HOP), round(0.75 * SR / HOP)

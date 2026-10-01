@@ -417,18 +417,13 @@ def test_a_decaying_chord_tail_ends_as_n(synth, tmp_path) -> None:
 CYCLE = ("C:maj", "F:maj", "G:maj", "A:min", "D:min", "E:min")
 
 
-def _two_beat_chords(render, sections: list[tuple[float, int]]):
-    """Two-beat chords cycling through CYCLE, (bpm, n_chords) per section, rendered by `synth` or
-    `half_locked`, and every strike's time and chord."""
-    clips, strikes, struck, start, chords = [], [], [], 0.0, 0
-    for bpm, n in sections:
-        progression = [(CYCLE[(chords + i) % len(CYCLE)], 2) for i in range(n)]
-        clips.append(render(progression, bpm=bpm))
-        strikes += [start + k * 60 / bpm for k in range(2 * n)]
-        struck += [label for label, n_beats in progression for _ in range(n_beats)]
-        start += 2 * n * 60 / bpm
-        chords += n
-    return np.concatenate(clips), np.array(strikes), struck
+def _two_beat_chords(render, bpm: float, n: int):
+    """n two-beat chords cycling through CYCLE at bpm, rendered by `synth` or `half_locked`, and
+    every strike's time and chord."""
+    progression = [(CYCLE[i % len(CYCLE)], 2) for i in range(n)]
+    strikes = np.arange(2 * n) * 60 / bpm
+    struck = [label for label, n_beats in progression for _ in range(n_beats)]
+    return render(progression, bpm=bpm), strikes, struck
 
 
 def _nearest(beats: np.ndarray, times: np.ndarray) -> np.ndarray:
@@ -448,40 +443,11 @@ def _matched(result: dict, strikes: np.ndarray, struck: list[str]) -> tuple[floa
     return float(hit.mean()), float(np.mean(correct))
 
 
-@pytest.fixture
-def tracked(monkeypatch) -> dict:
-    """The keywords of the beat tracker's call, recorded around the real tracker."""
-    seen = {}
-    real = librosa.beat.beat_track
-
-    def spy(**kwargs):
-        seen.update(kwargs)
-        return real(**kwargs)
-
-    monkeypatch.setattr("chordotomy.features.librosa.beat.beat_track", spy)
-    return seen
-
-
-def test_the_grid_follows_a_sustained_tempo_change(synth, tracked, tmp_path) -> None:
-    # 24 s at 100 BPM, then 24 s at 140: the tempo rule needs a 16 s departure.
-    y, strikes, struck = _two_beat_chords(synth, [(100, 20), (140, 28)])
+def test_a_constant_tempo_keeps_the_global_grid(synth, tmp_path) -> None:
+    y, strikes, struck = _two_beat_chords(synth, 120, 48)
 
     result = analyze(_write(tmp_path, y))
 
-    assert isinstance(tracked["bpm"], np.ndarray)
-    hit, correct = _matched(result, strikes, struck)
-    # Measured: 95 of 96 strikes have a beat within 70 ms (58 at the global tempo alone), and
-    # every matched beat carries the chord struck on it.
-    assert hit >= 0.9, hit
-    assert correct >= 0.9, correct
-
-
-def test_a_constant_tempo_keeps_the_global_grid(synth, tracked, tmp_path) -> None:
-    y, strikes, struck = _two_beat_chords(synth, [(120, 48)])
-
-    result = analyze(_write(tmp_path, y))
-
-    assert tracked["bpm"] is None
     hit, _ = _matched(result, strikes, struck)
     # Measured: all 96 strikes hit, on 96 beats.
     assert hit >= 0.95, hit
@@ -489,9 +455,32 @@ def test_a_constant_tempo_keeps_the_global_grid(synth, tracked, tmp_path) -> Non
     assert abs(len(result["beats"]) - len(strikes)) <= 2, (len(result["beats"]), len(strikes))
 
 
+def test_a_syncopated_constant_tempo_keeps_the_global_grid(synth, syncopated, tmp_path) -> None:
+    # 86 BPM throughout: 8 bars of hats on the eighths, then 8 of syncopated hats.
+    chords, strikes, struck = _two_beat_chords(synth, 86, 32)
+    y = chords + syncopated(8, 8, 86)
+    y = y / np.abs(y).max() * 0.5
+
+    result = analyze(_write(tmp_path, y))
+
+    hit, _ = _matched(result, strikes, struck)
+    assert hit >= 0.95, hit
+    gaps = np.diff(result["beats"])
+    # Measured: the tracker counts eighths, 128 beats of 0.33 to 0.37 s. The removed tempo switch
+    # followed the local tempo here: 113 beats of 0.35 to 0.53 s, eighths and wider beats by turns.
+    assert gaps.max() < 1.2 * gaps.min(), (gaps.min(), gaps.max())
+
+    flux = librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP)
+    local = librosa.feature.tempo(onset_envelope=flux, sr=SR, hop_length=HOP, aggregate=None)
+    # The premise: a local tempo flickers between metrical levels here (measured: 172, 129 and 112
+    # BPM on 53, 28 and 19 % of the frames), which a tempo-following rule takes for a change.
+    _, counts = np.unique(np.round(local), return_counts=True)
+    assert np.sum(counts >= 0.1 * len(local)) >= 3, counts
+
+
 def test_a_half_tempo_lock_is_doubled(half_locked, tmp_path, monkeypatch) -> None:
     # 72 beats of 0.333 s, 24 s, 35 chord changes: above OCTAVE_MIN_CHANGES.
-    y, strikes, struck = _two_beat_chords(half_locked, [(180, 36)])
+    y, strikes, struck = _two_beat_chords(half_locked, 180, 36)
     path = _write(tmp_path, y)
 
     hit, correct = _matched(analyze(path), strikes, struck)

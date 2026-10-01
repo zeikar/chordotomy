@@ -477,6 +477,21 @@ The suite is green and both engines' Tiny AAM floors hold at all 16 neighbours, 
 
 Runtime of `chordotomy analyze` on the runtime table's 3-minute mix, before the stage and at this commit, measured in one session (the mean of two runs after a warm-up, start-up included): `dsp` 2.32 and 2.39 s per audio minute, the model 4.12 and 4.23, with peak RSS 0.99 and 2.36 GB at both commits. Both commits run faster in this session than in the table above, on the same machine and clip, so the stage's cost is the difference: 0.07 and 0.10 s per audio minute.
 
+### Tempo changes are not followed
+
+The tracker keeps one tempo per file. Two rules that followed a tempo change inside a file were built and measured, and both are out. The hybrid, the Stage II rows above: the tempogram's local tempo, median-filtered over 10 s, replaced the global tempo when it stayed more than 10 % off it, folded to the octave, for 16 s. It switched 9 Tiny AAM tracks and raised Tiny AAM's CMLt from 0.686 to 0.785. It also switched four of GuitarSet's 180 constant-tempo takes and an 86 BPM pop recording whose local tempo flickers between metrical levels (86, 112, 129 and 172 BPM): the median departs without any change, and following it gave the recording 668 beats of 0.30 to 0.88 s for the global tracker's 437 of 0.60 to 0.74 s. A gate that also required the departure to read one tempo (at least 0.75 of its unsmoothed frames within 10 % of its median) stopped all five and raised CMLt to 0.813, but a syncopated figure held over an unchanged pulse reads one tempo too. Synthesized at 74 to 105 BPM, 22 s of hats in 3-3-2 sixteenths or in quarter-note triplets after 22 s on the eighths switched 39 of 40 clips under both rules, hats at a tenth of the kick's level included. Seven of GuitarSet's 30 s takes already hold one steady off-tempo reading for 10 to 15.6 s, and with the gate, one step of the hybrid's window, departure or hold switched takes or the pop recording again. Tiny AAM's tempo changes are 4:3 and 3:2 metric modulations, the ratios syncopation reads, and nothing measured told them apart: not the tempogram's support for the global period inside the departure, not the global grid's onset strength there, and not a curve read from the harmonic part instead. Syncopation is everyday in pop and a tempo change inside a song is rare, so the beat grid stays on the pulse. `test_a_syncopated_constant_tempo_keeps_the_global_grid` holds it there.
+
+The rows at the commit that adds them, scored by `evaluate.run`, the model's from its cached frames:
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.839 | 0.795 | 0.750 | 0.750 | 0.692 | 0.003 | 0.032 | 0.819 | 0.072 | 0.827 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `dsp` | 0.721 | 0.662 | 0.531 | 0.347 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.449 | 0.827 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `model` | 0.826 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+
+The beat columns are the corrected-reference rows' again, within 0.001. Unrounded, the `dsp` Tiny AAM root is 0.83931 against its floor of 0.83942, the corrected-reference row's 0.84761 less the tonal-tail price of 0.00819: 0.01 pp under. Its majmin, 0.79472, clears its floor of 0.79419. The model's 0.93895 and 0.92438 clear its corrected-reference row's 0.93877 and 0.92420. The octave check doubled no track on either dataset, at its chosen point or at any one-step neighbour of its two constants. The highest shares among tracks with 20 or more changes are 0.61 on Tiny AAM and 0.71 on GuitarSet.
+
 ## Design decisions
 
 ### An analyzer, not a transcriber
