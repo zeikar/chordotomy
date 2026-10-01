@@ -6,7 +6,7 @@ It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
 Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
-> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. Its chords are major, minor, dominant 7th, major 7th, minor 7th, minor 6th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
+> **Status:** everything on the roadmap below works. `chordotomy analyze` writes a chord timeline on detected beats, with the estimated key and Roman numerals. The chords come from the lv-chordia model when the `model` extra is installed, and from chordotomy's DSP front end otherwise. Its chords are major, minor, dominant 7th, major 7th, minor 7th, minor 6th, half-diminished 7th, diminished 7th and sus4, with `N` for no chord; secondary dominants, secondary leading-tone chords and borrowed chords are labeled. Each chord segment also carries its bass note and inversion. In the viewer, chords can be corrected and entered on the analyzer's beat grid. The `explain-harmony` skill explains the highlighted moves in Claude Code.
 
 Everything runs locally. Your audio never leaves your machine.
 
@@ -21,6 +21,7 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 ## Roadmap
 
 - [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th / major 7th / minor 7th / minor 6th / half-diminished 7th / diminished 7th / sus4)
+- [x] A pretrained model as the recognizer when installed (`uv sync --extra model`)
 - [x] Roman-numeral analysis, with highlights for secondary dominants and borrowed chords
 - [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
 - [x] Short explanations of the highlighted moves (a Claude Code skill)
@@ -33,11 +34,26 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 uv run chordotomy analyze song.mp3            # writes song.chords.json
 uv run chordotomy analyze song.mp3 -o out.json
 uv run chordotomy analyze song.mp3 --key A:min   # analyze in A minor instead of the estimated key
+uv run chordotomy analyze song.mp3 --engine dsp  # the DSP front end, even with the model installed
 ```
 
 `--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates.
 
+`--engine` picks the chord recognizer. `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` takes the model, and `dsp` the DSP. `--engine model` without the model installed is an error that names the install command. A broken model install is an error too, naming the reinstall and `--engine dsp`; it never quietly falls back to the DSP. The beats, the bass note and the harmonic analysis are chordotomy's own with either engine, and the JSON records which engine heard the chords.
+
 `analyze` refuses to overwrite an existing output unless you pass `--force`. An input with no detectable beats is reported as an error, not written as an empty timeline. The JSON format is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-chord-timeline-json).
+
+### The model engine (optional)
+
+```sh
+uv sync --extra model
+```
+
+This adds lv-chordia, the chord recognizer of Jiang, Chen, Li and Xia (ISMIR 2019), and torch. On macOS the environment grows by about 630 MB, 542 MB of it torch. On an Apple M4 the model engine takes 6.3 to 6.8 s per minute of audio and peaks at 2.36 GB of RAM on a 3-minute song and 3.17 GB on a 6-minute one, against the DSP's 3.1 to 3.3 s per minute and 1.00 and 1.77 GB. The weights, five files of about 5.7 MB, come inside the lv-chordia wheel, so nothing is downloaded at run time. The model runs on the CPU even when torch sees a GPU, and it reads the audio chordotomy has already decoded, so your audio stays on your machine. It scores above the DSP on both evaluation datasets; the numbers are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#model-engine).
+
+On Linux, uv takes torch from the PyTorch CPU index, as `pyproject.toml` sets it up, rather than PyPI's build with CUDA. With pip, add `--extra-index-url https://download.pytorch.org/whl/cpu` to the install command. Python 3.13 dropped the `audioop` module that pydub, one of lv-chordia's dependencies, needs; the extra includes `audioop-lts` in its place.
+
+The weights are MIT, like lv-chordia's code. lv-chordia's authors trained them on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. If you would rather not use a model trained that way, leave the extra out, and the DSP front end recognizes the chords.
 
 ### Explanations in Claude Code
 
@@ -54,7 +70,7 @@ Working in this repo, `.claude/settings.json` registers the checkout itself as a
 
 ## Viewer
 
-The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. Chords are colored by role, so secondary dominants and borrowed chords stand out.
+The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. Chords are colored by role, so secondary dominants and borrowed chords stand out. The header names the engine that heard the chords (lv-chordia or the DSP).
 
 Open it at <https://zeikar.github.io/chordotomy/>, or open `viewer/index.html` from a checkout. Drop the recording and its `.chords.json` on the page, or pick them with **Open files**. The files stay in your browser. The page reads them locally and makes no network requests.
 
@@ -84,6 +100,8 @@ uv run ruff check . && uv run ruff format --check .
 node --test viewer/tests/
 ```
 
+The model tests need the extra and skip without it; the rest of the suite runs the DSP either way. `uv sync` installs exactly the extras it is given, so name every one you want, as in `uv sync --extra dev --extra model`.
+
 The viewer is plain HTML, CSS, and JavaScript with no build step. Its tests need Node and no packages.
 
 The viewer re-analyzes edited chords with a JavaScript port of the Python harmonic analysis, and `tests/harmony_vectors.json` pins the port to it. After changing the analysis in Python, regenerate that file; pytest fails until you do:
@@ -101,7 +119,7 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. The scores are numbers for development only.
 
 ## License
 

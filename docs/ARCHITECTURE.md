@@ -1,21 +1,24 @@
 # Architecture
 
-Implemented so far: chords on the beat, key estimation and Roman-numeral analysis, the bass note and inversions, explanations through the `explain-harmony` skill, a viewer that plays the recording with its chords, chord editing in that viewer, and an opt-in evaluation on real audio. The chord vocabulary is v4. This records the design decided before the first line of code (2026-09-29) and the reasons behind it.
+Implemented so far: chords on the beat, from the lv-chordia model when the optional `model` extra is installed and from a DSP front end otherwise, key estimation and Roman-numeral analysis, the bass note and inversions, explanations through the `explain-harmony` skill, a viewer that plays the recording with its chords, chord editing in that viewer, and an opt-in evaluation on real audio. The chord vocabulary is v4. This records the design decided before the first line of code (2026-09-29), the decisions since, and the reasons behind them.
 
 ## Pipeline
 
 ```text
 audio ─→ beat tracking
            │
-           ├─→ harmonic signal ─→ one tuning estimate ─┬─→ CQT, 36 bins per octave ─→ whitening
-           │                                           │      ─→ treble and bass chroma, level, per beat
-           │                                           │                    │
-           │                                           │                    ↓
-           │                                           │   template correlation + quality offsets
-           │                                           │              + gated N + Viterbi
-           │                                           │                    │
-           │                                           └─→ CQT, 12 bins per octave ─→ bass note,
-           │                                                                 segment cuts ─→ segments
+           ├─→ CQT ─→ five ChordNets, averaged ─→ HMM ─→ frame labels ─→ beat majority ───────────────────┐
+           │                                                             (model engine)                   │
+           │                                                                                              │
+           ├─→ harmonic signal ─→ one tuning estimate ─┬─→ CQT, 36 bins per octave ─→ whitening           │
+           │                                           │      ─→ treble and bass chroma, level, per beat  │
+           │                                           │                    │                             │
+           │                                           │                    ↓                             │
+           │                                           │   template correlation + quality offsets         │
+           │                                           │              + gated N + Viterbi (dsp engine)    │
+           │                                           │                    │                             │
+           │                                           └─→ CQT, 12 bins per octave ─→ bass note,          │
+           │                                                                 segment cuts ─→ segments ←───┘
            │                                                                                  │
            │                                                                                  ↓
            │                                                                  respell diminished twins
@@ -25,7 +28,7 @@ viewer ←── chord-timeline JSON ←─────────────�
 ```
 
 - Chords are called per beat, not per frame, so a passing note doesn't become a chord change.
-- There is no ML: a whitened chroma from librosa's CQT and beat tracking, then templates for nine chord qualities, from triads to sevenths, a minor sixth and sus4. See "Whitened chroma and an energy-gated N" and "Chord vocabulary v4" under Design decisions.
+- Two engines recognize the chords. `--engine auto`, the default, takes the lv-chordia model when it is installed (the `model` extra) and the DSP front end otherwise; `--engine model` and `--engine dsp` pick one. The model is a pretrained ensemble whose frame labels are snapped to the beats. The DSP front end is a whitened chroma from librosa's CQT, then templates for nine chord qualities, from triads to sevenths, a minor sixth and sus4. The beats, the bass, the segmentation and the harmony are the same in both. See "A pretrained model as the recognizer", "Whitened chroma and an energy-gated N" and "Chord vocabulary v4" under Design decisions.
 - The bass note comes from a low-register CQT of the mix. It settles slash chords and inversions (`F#7/A#`), which the chroma can't: it folds all octaves together and can't tell which note is lowest. See "Bass from DSP, not Demucs" under Design decisions.
 - Analysis marks secondary dominants, secondary leading-tone chords and borrowed chords. The analyzer writes no prose: the explanations come from a Claude Code skill that reads the JSON. See "Explanations from an agent skill" under Design decisions.
 - A Python CLI (uv, Typer) writes the JSON. A static HTML viewer (`viewer/`) plays the audio, highlights the current chord, and corrects chords on the analyzer's beats, re-analyzing them in the browser. See "Editing in the viewer".
@@ -73,6 +76,38 @@ The bass also feeds the chord choice, through the bass chroma and its weight in 
 The bass chroma is zeroed on beats where that pick finds no note. The correlation is scale-free, so otherwise the leakage under a chord voiced above the register would vote at full strength; it pulled a bass-less `C:maj` toward `C:maj7`.
 
 Last, a diminished chord is respelled by where it leads (`resolve_twins`). This works on chord runs, consecutive segments with the same chord, and the next chord is the following run's. A `dim7` run becomes the twin whose root is a semitone below the next chord's root whenever one exists, whatever its bass. A `dim7` is symmetric, so the bass profile roots it on its lowest tone, and that tone is its inversion, not its root: a `C#:dim7` played over E decodes as `E:dim7`, and before `D:min` it is respelled `C#:dim7` in first inversion. A `dim7` run followed by a `dim7` on the same notes is one chord over a moved bass, and takes the following run's label. A `min6` run becomes its `hdim7` twin when that twin leads into the next chord, so a bass-less `A:min6` before `G:maj` is `F#:hdim7`. It stays `min6` if any of its segments has the bass on the `min6`'s root, the evidence for that reading. An `hdim7` is never respelled. A run with no twin that leads, and a run before `N` or at the end, keeps the recognizer's label. The runs are taken from the last back, so each one leads into the next chord as that chord will be written. A respelled segment's candidates lead with the new label, then the recognizer's, and its `inversion` follows the new label.
+
+#### The model engine
+
+With `--engine model`, or `--engine auto` when lv-chordia is installed, the per-beat chord states and scores come from lv-chordia, the ensemble of Jiang, Chen, Li & Xia (ISMIR 2019), instead of the templates and the Viterbi decode above. Everything else is the DSP path described above: the beats, `pick_bass` and the bass cuts, `segment` and its candidates, `resolve_twins`, and the harmonic analysis below. `auto` looks for the package with `importlib.util.find_spec`, which imports neither lv_chordia nor torch. `--engine model` without the extra is a usage error that names `uv sync --extra model`. An extra that is installed but cannot run, because an import fails or a checkpoint is missing or damaged, is an error that names the reinstall and `--engine dsp`. It never falls back to the DSP on its own, which would hand the user the other engine's chords without asking.
+
+The nets read the decoded mono signal, not its harmonic part, through the package's own front end, `CQTV2`, run on the signal `load_audio` already decoded rather than on the file: a hybrid CQT from F#0, 288 bins at 36 per octave, on the DSP's hop of 512 samples at 22050 Hz. So its frame k is frame k of the DSP's chord CQT.
+
+They run over windows of at most `CHUNK_SECONDS` = 60 s. The track is cut into equal windows, and each runs with `OVERLAP_SECONDS` = 5 s of context on both sides, clipped to the track, whose outputs are dropped. The windows bound the nets' memory, which grows with the length they see. They also keep the nets' InstanceNorm and BiLSTM to at most 70 s, closer to the 23 s segments the nets were trained on than a whole song. "Model engine" under Evaluation has the memory, and the scores with and without the windows.
+
+Each of the five nets has six heads, each a softmax per frame: the root and triad (or none), the bass, and the seventh, ninth, eleventh and thirteenth. Each head is averaged over the five nets, as the package's `chord_recognition` averages them. The decoder is the package's `XHMMDecoder` on its `submission` dictionary: 25 qualities on 12 roots, and `N`. Its `get_chord_tag_obs` scores every dictionary name on every frame by the log of the product of the probabilities its heads give it, not normalized over the names. The HMM is a Viterbi decode over those names that charges a fixed cost for every change. It runs without beats, as `chord_recognition` runs it, so a chord can change on any frame, and gives one name per frame.
+
+`QUALITY` in `model.py` maps the dictionary's qualities to v4's, with the slash dropped, and the decoder's flat roots (`Eb`, `Ab`, `Bb`) become sharps:
+
+| lv-chordia | v4 | loses |
+| --- | --- | --- |
+| `maj`, `min`, `7`, `maj7`, `min7`, `hdim7`, `dim7`, `sus4` | the same | nothing |
+| `9` | `7` | the ninth |
+| `11` | `7` | the ninth and eleventh |
+| `13` | `7` | the ninth, eleventh and thirteenth |
+| `maj9` | `maj7` | the ninth |
+| `min9` | `min7` | the ninth |
+| `sus4(b7)` | `sus4` | the seventh |
+| `sus2` | `maj` | the suspension, a third where a second sounds; root and function stay |
+| `aug` | `maj` | the raised fifth; root and function stay |
+| `dim` | `dim7` | nothing, but it gains a diminished seventh: "dim" on a pop chart usually means the seventh chord, and a diatonic vii° in major then reads as a borrowed `vii°7` |
+| `maj/3`, `maj/5`, `maj/b7`, `maj/2`, `min/b3`, `min/5`, `min/b7`, `min/2` | `maj`, `min` | the bass, which comes from `pick_bass` instead |
+
+On the two evaluation datasets the model emitted no `9`, `11`, `13`, `sus2`, `aug` or `sus4(b7)` at all. It emitted `dim` on 0.7 % of GuitarSet's duration, and a slash chord on 2.5 % of Tiny AAM's and 1.9 % of GuitarSet's. No quality maps to `min6`, so the model engine never calls one.
+
+Each beat takes the label that covers most of its frames, ties to the lowest label index as in the DSP's decoder (`beat_states`). The scores are folded onto v4's 109 labels (`fold`, `beat_scores`): a label's score on a frame is the log of the summed probability of the names that map to it, a log-sum-exp of `get_chord_tag_obs`'s log-scores, and its score on a beat is the mean over the beat's frames. A label no name maps to, every `min6`, scores -inf. The states come from the HMM and the scores from the probabilities before it, as the DSP's states come from its Viterbi and its scores from the correlation, and `segment` ranks a segment's candidates by these scores as it does the DSP's.
+
+The DSP's level gate and `N_SCORE` are not applied. The gate exists because whitening is scale-free; the model's `N` is its own, a dictionary name the HMM decodes like any other. The bass is `pick_bass`'s even when it lies outside the model's chord. In band music such a bass is often real, a pedal point or a descending line; on the two evaluation datasets it only costs, as "Model engine" under Evaluation shows.
 
 ### Harmonic analysis
 
@@ -339,7 +374,7 @@ People will feed it commercial recordings. A hosted upload service would mean st
 
 ### Bass from DSP, not Demucs
 
-The bass note comes from a low-register CQT (see Stages implemented), not from a Demucs bass stem. Demucs's code is MIT, but its pretrained weights on Hugging Face (`adefossez/HTDemucs`) carry no license statement. They were trained on MUSDB18-HQ, which is licensed for non-commercial research, plus private songs, so the terms of the output could not be stated. DSP also avoids a multi-gigabyte torch dependency.
+The bass note comes from a low-register CQT (see Stages implemented), not from a Demucs bass stem. Demucs's code is MIT, but its pretrained weights on Hugging Face (`adefossez/HTDemucs`) carry no license statement. They were trained on MUSDB18-HQ, which is licensed for non-commercial research, plus private songs, so the terms of the output could not be stated. DSP also keeps the bass off torch, which only the optional model engine installs (see "A pretrained model as the recognizer").
 
 The tradeoff is lower accuracy than a separated stem when other low instruments or kick drums share the register. HPSS removes most of the kick.
 
@@ -382,13 +417,36 @@ Templates carry partials. Through v3 they were binary: 1 on each chord tone, 0 e
 
 NNLS note profiles (Mauch & Dixon 2010, from the paper, not the GPL plugin) were tried during planning and rejected. Each frame of the whitened spectrum was decomposed into 84 note profiles with partials by non-negative least squares, then folded through the same pitch windows. On Tiny AAM that cost 2 pp of majmin at every offset tried; on GuitarSet it gained 2 pp. This stage's bar was to lift sevenths without costing majmin, so no code implements it.
 
+### A pretrained model as the recognizer
+
+Until this stage the chords came from DSP alone. Pretrained models were never ruled out (see "An analyzer, not a transcriber"), but the one weighed before, Demucs for the bass, was turned down for its weights' terms, which could not be stated, and for torch's size (see "Bass from DSP, not Demucs"). lv-chordia answers both. Its weights are MIT: the authors committed them to the same MIT repository as the code, and the lv-chordia wheel ships them, so nothing is downloaded at run time. torch comes only with the optional `model` extra, so the default install, `chordotomy --version` and the DSP engine never import it or lv_chordia. What moved the stance was a local comparison on the two evaluation datasets, where the model scored above the DSP on every metric (see "Model engine" under Evaluation). On 2026-10-01 the user decided that the model is the default when it is installed.
+
+The training data, stated plainly: lv-chordia's authors trained the nets on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. Nothing is trained here. The user accepted weights trained that way. The README states the training data, so that anyone who would rather not can leave the extra out and keep the DSP.
+
+The model replaces the chord recognizer only. The rest stays DSP:
+
+- The beats. The model labels frames, while the timeline, the bass and the viewer's edits are on beats, so its labels are snapped to the DSP's.
+- The bass. `pick_bass` reads the lowest note sounding and keeps a bass outside the chord, which in band music is often real. The model's own bass is off the root on under 3 % of the evaluation datasets' duration, closer to a root-position prior than a heard bass (see "Model engine" under Evaluation).
+- The `N` gate, for the DSP engine only. Whitening is scale-free, so the DSP needs the level to keep silence `N`; the model decodes its own `N`.
+- The twin respelling and the harmony. They read chord labels, not audio, so they treat both engines' chords, and the viewer's edits, alike (see "Key from chords, not audio").
+
+Importing any lv_chordia submodule runs its `__init__`, which imports `chord_recognition`, `audio_utils` and `mir`, and with them pydub and the package's cache module. The package also has a URL download, a disk cache, and a path that runs Chordino through an external sonic-annotator (Vamp). The engine never calls any of them and never imports the Vamp extractor. It passes the nets the signal it already decoded, so the audio stays local.
+
+Inference is pinned to the CPU. The package moves the nets to CUDA whenever torch has it; the engine clears that choice before it loads them. A run then has one runtime and memory profile, the one measured under Evaluation, on the one path the tests exercise. Needing no CUDA, the Linux install takes torch from the PyTorch CPU index, where PyPI's Linux wheel would pull in CUDA. And the model engine takes about twice the DSP's time per audio minute, so a GPU would have little to win.
+
+The heads are softmaxes, but nothing calibrated them, so the scores folded from them only rank the labels. They are not written out, and the candidates stay a ranking (see "Confidence is a rank, not a percentage").
+
+For a later vocabulary stage: the dictionary has no `maj6`, `add9` or `min6`, so the model never emits them, and it emitted no `sus2` on either evaluation dataset. A wider vocabulary would gain nothing from those under the model engine. `dim` is the one model quality a wider vocabulary could take as is, instead of mapping it to `dim7`.
+
 ### Confidence is a rank, not a percentage
 
-Template similarity is not a probability. Showing "GM7 81%" would claim precision the method doesn't have. Candidates are shown as a ranked list. Percentages appear only if a calibrated model produces them.
+Template similarity is not a probability. Showing "GM7 81%" would claim precision the method doesn't have. Candidates are shown as a ranked list. Percentages appear only if a calibrated model produces them. lv-chordia's probabilities are not calibrated either, so the model engine's candidates are a ranking too.
 
 ### Licenses
 
 The project is MIT, so it takes no GPL or AGPL dependencies. That rules out Essentia (AGPL-3.0) and Chordino / NNLS Chroma (GPL); their ideas get reimplemented on librosa instead. librosa (ISC) and music21 (BSD-3) are fine. Demucs's code is MIT, but its pretrained weights are a separate question; see "Bass from DSP, not Demucs". Pretrained weights can carry terms separate from their code, such as non-commercial model files, so check both.
+
+The `model` extra was checked from the installed packages' metadata. lv-chordia's code is MIT ("Copyright (c) 2023 Music X Lab", the LICENSE in the wheel). Its weights are MIT as well: the authors committed them to the same repository, and the wheel redistributes them. Their training data is a separate question from their license; see "A pretrained model as the recognizer". torch is permissive, with the License-Expression `Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT`. The extra also brings audioop-lts (PSF-2.0) on Python 3.13 and later, h5py (BSD-3), pydub (MIT), and pretty-midi and mido (MIT). Nothing in the extra is GPL or AGPL. soxr (LGPL-2.1-or-later) is in the environment as librosa's dependency, not a new one. The package's Chordino path is never called.
 
 ### Synthesized test fixtures
 
