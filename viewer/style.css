@@ -115,8 +115,8 @@ kbd {
   cursor: pointer;
 }
 
-/* Hover is a light tint on every button: a filled ink face means a toggle that is on, nothing
-   else. */
+/* Hover is a light tint on every button: a filled face means a toggle that is on, or Save with
+   edits unsaved, nothing else. */
 .button:hover {
   background: color-mix(in srgb, var(--ink) 10%, transparent);
 }
@@ -484,6 +484,26 @@ body:has(#empty:not([hidden])) .status {
   gap: 8px;
 }
 
+/* Saving acts on the file, not the chord, so it stands apart at the end of the row. */
+.save {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.unsaved {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pencil);
+}
+
+/* Hidden, the status text keeps its room, so the first edit or a save never rewraps the row. */
+.unsaved[hidden] {
+  display: block !important;
+  visibility: hidden;
+}
+
 /* Timeline */
 
 .timeline {
@@ -756,7 +776,8 @@ body:has(#empty:not([hidden])) .status {
 
 /* A toggle shows its state with a dot, hollow when off and filled when on. On also takes the
    ink underline that marks the current chord in the timeline: a mode that may stay on for
-   minutes shouldn't outweigh the chords it is there to check. */
+   minutes shouldn't outweigh the chords it is there to check. Save takes the same face and
+   underline while there are unsaved edits, so they show without reading the text beside it. */
 .toggle::before {
   content: "";
   display: inline-block;
@@ -769,12 +790,14 @@ body:has(#empty:not([hidden])) .status {
   border-radius: 50%;
 }
 
-.toggle[aria-pressed="true"] {
+.toggle[aria-pressed="true"],
+.save:has(#unsaved:not([hidden])) .button {
   background: var(--sheet);
   box-shadow: inset 0 -3px 0 var(--ink);
 }
 
-.toggle[aria-pressed="true"]:hover {
+.toggle[aria-pressed="true"]:hover,
+.save:has(#unsaved:not([hidden])) .button:hover {
   background: color-mix(in srgb, var(--ink) 8%, var(--sheet));
 }
 

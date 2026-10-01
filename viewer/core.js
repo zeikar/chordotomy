@@ -270,7 +270,29 @@ const Core = ((Harmony) => {
     return Math.max(0, index - 1);
   }
 
-  // A reason the parsed JSON can't be shown, or null if it can.
+  const isLabel = (value) =>
+    value === "N" || (typeof value === "string" && CHORD_LABEL.test(value));
+  const isText = (value) => typeof value === "string";
+  const nullOr = (check) => (value) => value === null || check(value);
+  const INVERSION_NAMES = [...Harmony.INVERSIONS, "non_chord"];
+  // What the segment fields the viewer reads may hold, chord and bass aside: timelineProblem names
+  // those two in its message. `edited` came with schema 5; Edit.upgrade adds it to a 4.
+  const SEGMENT_FIELDS = {
+    start_beat: Number.isInteger,
+    end_beat: Number.isInteger,
+    start_time: Number.isFinite,
+    end_time: Number.isFinite,
+    candidates: (value) => Array.isArray(value) && value.every(isLabel),
+    inversion: nullOr((value) => INVERSION_NAMES.includes(value)),
+    numeral: nullOr(isText),
+    role: nullOr(isText),
+    function: nullOr(isText),
+    target: nullOr(isText),
+  };
+  const SEGMENT_FIELDS_5 = { ...SEGMENT_FIELDS, edited: (value) => typeof value === "boolean" };
+
+  // A reason the parsed JSON can't be shown, or null if it can. Whatever passes is safe to draw and
+  // edit: every field the viewer reads is there and holds what chordotomy writes.
   function timelineProblem(data) {
     if (!data || typeof data !== "object" || !("schema_version" in data)) {
       return "This isn't a chordotomy timeline: it has no schema_version.";
@@ -286,17 +308,45 @@ const Core = ((Harmony) => {
     if (!Array.isArray(data.segments) || !Array.isArray(data.beats)) {
       return "This timeline has no beats or segments list.";
     }
+    if (!data.beats.every(Number.isFinite)) return "This timeline has a beat that isn't a time.";
+    // An edit to the last segment runs it to the end of the audio.
+    if (!Number.isFinite(data.source?.duration)) return "This timeline has no source duration.";
     // Everything downstream (names, numerals, the chord sound) assumes the schema's vocabulary.
     // The key is null when there is no chord to estimate it from.
-    if (data.key != null && !Harmony.KEYS.includes(data.key.label)) {
-      return `This timeline has a key chordotomy doesn't write: key ${data.key.label}.`;
+    const { key } = data;
+    if (key != null && !Harmony.KEYS.includes(key.label)) {
+      return `This timeline has a key chordotomy doesn't write: key ${key.label}.`;
     }
-    for (const { chord, bass } of data.segments) {
-      if (chord !== "N" && !CHORD_LABEL.test(chord)) {
+    if (
+      key != null &&
+      !(
+        (key.source === "estimated" || key.source === "given") &&
+        Array.isArray(key.candidates) &&
+        key.candidates.every((label) => Harmony.KEYS.includes(label))
+      )
+    ) {
+      return "This timeline's key has a missing or invalid source or candidates.";
+    }
+    const fields = data.schema_version === 5 ? SEGMENT_FIELDS_5 : SEGMENT_FIELDS;
+    for (const [index, segment] of data.segments.entries()) {
+      const where = `segment ${index + 1}`;
+      if (!segment || typeof segment !== "object") {
+        return `This timeline's ${where} isn't an object.`;
+      }
+      const { chord, bass } = segment;
+      if (!isLabel(chord)) {
         return `This timeline has a chord chordotomy doesn't write: chord ${chord}.`;
       }
       if (bass !== null && !SHARPS.includes(bass)) {
         return `This timeline has a note chordotomy doesn't write: bass ${bass}.`;
+      }
+      const field = Object.keys(fields).find((name) => !fields[name](segment[name]));
+      if (field) return `This timeline's ${where} has a missing or invalid ${field}.`;
+      // Beats outside the list would be read as undefined times, and a huge span would hang the
+      // chord sound, which strikes every beat of it.
+      const { start_beat: start, end_beat: end } = segment;
+      if (start < 0 || end <= start || end > data.beats.length) {
+        return `This timeline's ${where} lies outside its beats.`;
       }
     }
     return null;

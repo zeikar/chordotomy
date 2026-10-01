@@ -40,10 +40,14 @@
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
   // Every edit is a step in `history` (see Edit.history), and `timeline` is its present, set only
-  // by refreshView. `saved` is the timeline as last opened or saved.
+  // by refreshView. `saved` is the timeline as last opened or saved, and `timelineName` the name
+  // of the opened file, which the saved file's name comes from.
   let history = null;
   let saved = null;
   let timeline = null;
+  let timelineName = null;
+  // Counts the batches of files taken; one still reading its timeline gives way to a later one.
+  let latestBatch = 0;
   // While a select of the picker has focus or the pointer is pressed on it, the index of the
   // segment that was current when that began; null otherwise. Playback moving on then neither
   // rewrites the picker nor moves its edits to the next chord.
@@ -81,15 +85,72 @@
     $("status").hidden = true;
   }
 
-  function takeFiles(files) {
+  // A batch of dropped or picked files opens whole or not at all, so the recording and the
+  // timeline shown are always a pair the user chose together. Its timeline is read and checked
+  // before anything changes, and unsaved edits go only when the user says so. A recording on its
+  // own replaces just the recording, which loses no edit.
+  async function takeFiles(list) {
+    // Copied before the first await: the picker empties its live list right after this call.
+    const files = [...list];
     clearMessages();
-    const skipped = [];
+    let recording = null;
+    let timelineFile = null;
+    const unknown = [];
+    const extra = [];
     for (const file of files) {
-      if (/\.json$/i.test(file.name) || file.type === "application/json") loadTimeline(file);
-      else if (file.type.startsWith("audio/") || AUDIO_NAME.test(file.name)) loadAudio(file);
-      else skipped.push(file.name);
+      if (/\.json$/i.test(file.name) || file.type === "application/json") {
+        if (timelineFile) extra.push(file.name);
+        else timelineFile = file;
+      } else if (file.type.startsWith("audio/") || AUDIO_NAME.test(file.name)) {
+        if (recording) extra.push(file.name);
+        else recording = file;
+      } else {
+        unknown.push(file.name);
+      }
     }
-    if (skipped.length) say(`Skipped ${skipped.join(", ")}: not a recording or a .chords.json.`);
+    if (unknown.length) say(`Skipped ${unknown.join(", ")}: not a recording or a .chords.json.`);
+    if (extra.length) {
+      say(`Skipped ${extra.join(", ")}: one recording and one timeline open at a time.`);
+    }
+    // Only a batch with something to open takes over from one still being read.
+    if (!recording && !timelineFile) return;
+    const batch = ++latestBatch;
+    let opened = null;
+    if (timelineFile) {
+      const read = await readTimeline(timelineFile);
+      if (batch !== latestBatch) return;
+      if (read.problem) {
+        say(read.problem);
+        return;
+      }
+      opened = read.timeline;
+      const names = [recording, timelineFile].filter(Boolean).map((file) => file.name);
+      if (dirty() && !confirm(`Discard unsaved edits and open ${names.join(" and ")}?`)) {
+        say(`Didn't open ${names.join(" and ")}: kept the unsaved edits.`);
+        return;
+      }
+    }
+    if (recording) loadAudio(recording);
+    if (opened) installTimeline(opened, timelineFile.name);
+  }
+
+  // The timeline in `file`, checked and upgraded to schema 5, or the reason it can't be shown.
+  async function readTimeline(file) {
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (error) {
+      return { problem: `Couldn't read ${file.name} as JSON (${error.message}).` };
+    }
+    // A file the checks didn't foresee can make them throw; that too opens nothing.
+    try {
+      const problem = Core.timelineProblem(data);
+      if (problem) return { problem: `${file.name}: ${problem}` };
+      // Opening doesn't re-analyze: the analyzer's fields stand until the first edit.
+      return { timeline: Edit.upgrade(data) };
+    } catch (error) {
+      return { problem: `${file.name}: This timeline can't be shown (${error.message}).` };
+    }
   }
 
   // A long name is cut before its extensions, which always show: they are where a recording and
@@ -117,31 +178,42 @@
     showName("audio-name", file.name);
   }
 
-  async function loadTimeline(file) {
-    let data;
-    try {
-      data = JSON.parse(await file.text());
-    } catch (error) {
-      say(`Couldn't read ${file.name} as JSON (${error.message}).`);
-      return;
-    }
-    const problem = Core.timelineProblem(data);
-    if (problem) {
-      say(`${file.name}: ${problem}`);
-      return;
-    }
+  // A timeline from readTimeline, shown with a fresh history and nothing unsaved.
+  function installTimeline(opened, name) {
     // A new timeline ends a pick in progress: the picker's pinned segment belongs to the old one.
     if ($("editor").contains(document.activeElement)) document.activeElement.blur();
-    // Opening doesn't re-analyze: the analyzer's fields stand until the first edit.
-    const opened = Edit.upgrade(data);
     history = Edit.history(opened);
     saved = opened;
-    showName("json-name", file.name);
+    timelineName = name;
+    showName("json-name", name);
     $("empty").hidden = true;
     $("viewer").hidden = false;
     strip.scrollLeft = 0;
     refreshView();
     checkDurations();
+  }
+
+  // Edits since the timeline was opened or last saved. Undoing back to that point gives back the
+  // very object `saved` holds (see Edit.history), so that is clean again.
+  function dirty() {
+    return history !== null && history.present !== saved;
+  }
+
+  // Saving downloads a new file named after the opened one (Edit.saveName): the page never writes
+  // to the file it opened, so what the analyzer wrote stays as it was. The object URL is revoked
+  // a tick later, once the download has started.
+  function save() {
+    const name = Edit.saveName(timelineName);
+    const blob = new Blob([Edit.serialize(history.present)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+    saved = history.present;
+    refreshEditor();
+    $("announce").textContent = `Saved ${name}`;
   }
 
   // Draw everything that comes from the timeline again, from history.present: after opening a
@@ -591,6 +663,9 @@
     );
     setButton("undo", history.past.length > 0);
     setButton("redo", history.future.length > 0);
+    // Save takes its unsaved look from this text being shown (style.css).
+    const unsaved = dirty();
+    if ($("unsaved").hidden === unsaved) $("unsaved").hidden = !unsaved;
   }
 
   // aria-disabled rather than disabled, so a button stays focusable: a keyboard click that rules
@@ -892,6 +967,18 @@
   // into a scroll) ends here, after any button's own click handler has run.
   document.addEventListener("click", () => (pressedAt = null));
   document.addEventListener("pointercancel", () => (pressedAt = null));
+
+  // Saving is allowed with nothing unsaved too: it writes an opened schema-4 file as a 5.
+  $("save").addEventListener("click", (event) => {
+    releaseFocus(event);
+    save();
+  });
+  // Closing or reloading the page would lose the unsaved edits, so the browser asks first.
+  addEventListener("beforeunload", (event) => {
+    if (!dirty()) return;
+    event.preventDefault();
+    event.returnValue = true; // what Chrome before 119 asks on instead of preventDefault
+  });
 
   $("play-chords").addEventListener("click", (event) => {
     releaseFocus(event);

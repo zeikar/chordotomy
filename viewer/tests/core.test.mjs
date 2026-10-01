@@ -252,8 +252,38 @@ test("left goes to the start of the chord, then to the one before; right to the 
   assert.equal(stepIndex([], 1, -1), -1);
 });
 
+// A one-segment timeline as `chordotomy analyze` writes it in schema 4 (no `edited`), with
+// `fields` laid over the segment.
+const SEGMENT = {
+  start_beat: 0,
+  end_beat: 2,
+  start_time: 0.5,
+  end_time: 1.5,
+  chord: "C#:7",
+  candidates: ["C#:7", "C#:maj", "F:min"],
+  bass: "G#",
+  inversion: "second",
+  numeral: "V7",
+  role: "diatonic",
+  function: "dominant",
+  target: null,
+};
+const withSegment = (fields, version = 4) => ({
+  schema_version: version,
+  generator: { name: "chordotomy", version: "0.0.0" },
+  source: { path: "song.mp3", duration: 1.5 },
+  key: { label: "F#:maj", source: "estimated", candidates: ["F#:maj", "C#:maj", "A#:min"] },
+  beats: [0.5, 1.0],
+  segments: [{ ...SEGMENT, ...fields }],
+});
+
 test("schema versions 4 and 5 are accepted", () => {
-  const ok = { schema_version: 5, beats: [], segments: [] };
+  const ok = {
+    schema_version: 5,
+    source: { path: "song.mp3", duration: 1 },
+    beats: [],
+    segments: [],
+  };
   assert.equal(Core.timelineProblem(ok), null);
   assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
@@ -264,23 +294,101 @@ test("schema versions 4 and 5 are accepted", () => {
 });
 
 test("chord and bass labels outside the schema are refused, not half-rendered", () => {
-  const timeline = (segment) => ({ schema_version: 4, beats: [0], segments: [segment] });
-  const ok = { chord: "C#:7", bass: "G#" };
-  assert.equal(Core.timelineProblem(timeline(ok)), null);
-  assert.equal(Core.timelineProblem(timeline({ chord: "N", bass: null })), null);
+  const timeline = withSegment;
+  assert.equal(Core.timelineProblem(timeline({})), null);
+  const silence = { chord: "N", bass: null, inversion: null, numeral: null, role: null };
+  assert.equal(Core.timelineProblem(timeline({ ...silence, function: null })), null);
   for (const chord of ["C:min7", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4", "F:maj7"]) {
-    assert.equal(Core.timelineProblem(timeline({ ...ok, chord })), null, chord);
+    assert.equal(Core.timelineProblem(timeline({ chord })), null, chord);
   }
-  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:maj6" })), /chord C:maj6/);
-  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:min9" })), /chord C:min9/);
-  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "E#:maj" })), /chord E#:maj/);
-  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "B#:7" })), /chord B#:7/);
-  assert.match(Core.timelineProblem(timeline({ ...ok, bass: "Db" })), /bass Db/);
+  assert.match(Core.timelineProblem(timeline({ chord: "C:maj6" })), /chord C:maj6/);
+  assert.match(Core.timelineProblem(timeline({ chord: "C:min9" })), /chord C:min9/);
+  assert.match(Core.timelineProblem(timeline({ chord: "E#:maj" })), /chord E#:maj/);
+  assert.match(Core.timelineProblem(timeline({ chord: "B#:7" })), /chord B#:7/);
+  assert.match(Core.timelineProblem(timeline({ chord: ["C:maj"] })), /chord C:maj/);
+  assert.match(Core.timelineProblem(timeline({ bass: "Db" })), /bass Db/);
+});
+
+test("every segment field the viewer reads must be there and hold what chordotomy writes", () => {
+  const problem = (fields, version) => Core.timelineProblem(withSegment(fields, version));
+  const missing = (field, version = 4) => {
+    const segment = withSegment({}, version);
+    delete segment.segments[0][field];
+    return Core.timelineProblem(segment);
+  };
+  const fields = Object.keys(SEGMENT).filter((field) => field !== "chord" && field !== "bass");
+  for (const field of fields) {
+    assert.match(missing(field), new RegExp(`segment 1 has a missing or invalid ${field}\\.`));
+  }
+  // `edited` is schema 5's: Edit.upgrade adds it to a 4.
+  assert.equal(problem({}, 4), null);
+  assert.equal(problem({ edited: true }, 5), null);
+  assert.match(problem({}, 5), /segment 1 has a missing or invalid edited/);
+  assert.match(problem({ edited: "false" }, 5), /invalid edited/);
+  assert.match(problem({ start_beat: "0" }), /invalid start_beat/);
+  assert.match(problem({ end_beat: 1.5 }), /invalid end_beat/);
+  assert.match(problem({ start_time: "0.5" }), /invalid start_time/);
+  assert.match(problem({ candidates: "C#:7" }), /invalid candidates/);
+  assert.match(problem({ candidates: ["C#:7", "C:maj6"] }), /invalid candidates/);
+  assert.equal(problem({ inversion: "non_chord" }), null);
+  assert.match(problem({ inversion: "fourth" }), /invalid inversion/);
+  assert.match(problem({ numeral: 5 }), /invalid numeral/);
+  assert.match(problem({ target: ["V"] }), /invalid target/);
+  for (const segment of [null, 7, "C:maj"]) {
+    const timeline = { ...withSegment({}), segments: [segment] };
+    assert.match(Core.timelineProblem(timeline), /segment 1 isn't an object/);
+  }
+  const second = withSegment({});
+  second.segments.push({ ...SEGMENT, start_beat: 2, end_beat: 2 });
+  assert.match(Core.timelineProblem(second), /segment 2 lies outside its beats/);
+  assert.match(problem({ start_beat: -1 }), /outside its beats/);
+  assert.match(problem({ end_beat: 3 }), /outside its beats/); // beats has 2: end_beat may be 2
+  assert.match(problem({ end_beat: 1e9 }), /outside its beats/);
+});
+
+test("the beats, the source duration and the key must hold what chordotomy writes", () => {
+  const timeline = withSegment({});
+  assert.match(
+    Core.timelineProblem({ ...timeline, beats: [0.5, "1.0"] }),
+    /beat that isn't a time/,
+  );
+  const { source, ...unsourced } = timeline;
+  assert.match(Core.timelineProblem(unsourced), /no source duration/);
+  assert.match(Core.timelineProblem({ ...timeline, source: { duration: "1.5" } }), /no source/);
+  const key = (fields) =>
+    Core.timelineProblem({ ...timeline, key: { ...timeline.key, ...fields } });
+  assert.equal(key({ source: "given" }), null);
+  assert.equal(key({ candidates: [] }), null);
+  assert.match(key({ source: "guessed" }), /key has a missing or invalid source or candidates/);
+  assert.match(key({ candidates: undefined }), /key has a missing or invalid/);
+  assert.match(key({ candidates: ["F#:maj", "Gb:maj"] }), /key has a missing or invalid/);
+  assert.match(Core.timelineProblem({ ...timeline, key: 5 }), /key undefined/);
+});
+
+test("an odd value anywhere gets a reason, never a throw", () => {
+  const odd = [null, 0, -1, "", "x", true, [], [null], {}, { label: "C:maj" }];
+  const timeline = withSegment({}, 5);
+  timeline.segments[0].edited = false;
+  const fields = ["source", "key", "beats", "segments"];
+  const places = [
+    ...fields.map((field) => (value) => ({ ...timeline, [field]: value })),
+    ...Object.keys(timeline.segments[0]).map((field) => (value) => ({
+      ...timeline,
+      segments: [{ ...timeline.segments[0], [field]: value }],
+    })),
+  ];
+  for (const place of places) {
+    for (const value of odd) {
+      const result = Core.timelineProblem(place(value));
+      assert.ok(result === null || typeof result === "string", JSON.stringify(place(value)));
+    }
+  }
 });
 
 test("a key label outside the 24 keys chordotomy writes is refused", () => {
   const timeline = (label) => ({
     schema_version: 4,
+    source: { path: "song.mp3", duration: 1 },
     key: { label, source: "estimated", candidates: [] },
     beats: [],
     segments: [],

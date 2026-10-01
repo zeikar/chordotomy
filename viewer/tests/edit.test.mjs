@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import Core from "../core.js";
 import Edit from "../edit.js";
 import Harmony from "../harmony.js";
 
@@ -380,4 +381,24 @@ test("the save name marks the file as edited", () => {
   assert.equal(Edit.saveName("song.prototype.chords.json"), "song.prototype.edited.chords.json");
   assert.equal(Edit.saveName("Song.CHORDS.JSON"), "Song.edited.chords.json");
   assert.equal(Edit.saveName("Song.Edited.Chords.json"), "Song.edited.chords.json");
+});
+
+test("a saved file passes the checks the viewer opens files with", () => {
+  assert.equal(Core.timelineProblem(v4), null);
+  // Every chord set to N: no key, no numerals.
+  const silent = [0, 1, 2, 3].reduce((next, index) => setChord(next, index, "N", null), base);
+  assert.equal(silent.key, null);
+  const edits = [
+    base,
+    setChord(base, 2, "D:7", "F#"),
+    split(base, 4, 9),
+    merge(base, 0, 1),
+    remove(base, 4),
+    setKey(base, "A:min"),
+    setKey(setKey(base, "A:min"), null),
+    silent,
+  ];
+  for (const timeline of edits) {
+    assert.equal(Core.timelineProblem(JSON.parse(Edit.serialize(timeline))), null);
+  }
 });
