@@ -23,6 +23,14 @@
     third: "third inversion",
     non_chord: "not a chord tone",
   };
+  // Screen readers would say "degree" for °, "o with stroke" for ø, and read ivadd6 as one word.
+  const QUALITY_WORDS = {
+    maj: "major seventh",
+    "ø": "half-diminished seventh",
+    "°": "diminished seventh",
+    add6: "add 6",
+    sus4: "sus 4",
+  };
 
   const $ = (id) => document.getElementById(id);
   const audio = $("audio");
@@ -180,7 +188,7 @@
     element.replaceChildren();
     if (!segment.numeral) return;
     const parts = Core.numeralParts(segment.numeral, segment.inversion);
-    element.append(parts.accidental + parts.roman);
+    element.append(parts.accidental + parts.roman + parts.quality);
     if (parts.figures.length) {
       const figures = document.createElement("span");
       figures.className = "figures";
@@ -194,10 +202,13 @@
     if (parts.target) element.append(`/${parts.target}`);
   }
 
-  // Figures read one by one ("V 6 5 of V"), not as a number.
+  // Figures read one by one ("V 6 5 of V"), not as a number, and quality markers as words
+  // ("ii half-diminished seventh 4 3"), which already say seventh, so a root-position 7 is dropped.
   function spokenNumeral(segment) {
     const parts = Core.numeralParts(segment.numeral, segment.inversion);
-    const head = [parts.accidental + parts.roman, ...parts.figures].join(" ");
+    const words = QUALITY_WORDS[parts.quality];
+    const figures = words ? parts.figures.filter((figure) => figure !== "7") : parts.figures;
+    const head = [parts.accidental + parts.roman, words, ...figures].filter(Boolean).join(" ");
     return parts.target ? `${head} of ${parts.target}` : head;
   }
 
@@ -220,10 +231,24 @@
       const name = Core.chordName(segment.chord, keyLabel, segment.bass, segment.inversion);
       const chord = document.createElement("span");
       chord.className = "segment-chord";
-      chord.textContent = name;
+      // A slash chord too long for its cell breaks before the slash, and only there. The longest
+      // heads (D♯m7♭5, B♭maj7) also take smaller type in a one-beat cell (style.css).
+      const [head, bass] = name.split("/");
+      chord.append(head);
+      if (bass) {
+        const slash = document.createElement("span");
+        slash.textContent = `/${bass}`;
+        chord.append(document.createElement("wbr"), slash);
+      }
+      chord.classList.toggle("long", head.length > 5);
       const numeral = document.createElement("span");
       numeral.className = "segment-numeral";
       renderNumeral(numeral, segment);
+      // A numeral with a quality marker (♭VIImaj7, viiø7/VII) takes smaller type in a one-beat cell.
+      if (segment.numeral) {
+        const parts = Core.numeralParts(segment.numeral, segment.inversion);
+        numeral.classList.toggle("long", parts.quality !== "");
+      }
       button.append(chord, numeral);
       button.title = segment.numeral
         ? `${name}  ${Core.numeralText(segment.numeral, segment.inversion)}`
@@ -253,8 +278,12 @@
 
   function roleText(segment) {
     if (segment.role === "secondary_dominant" && segment.target) {
-      const target = Core.targetName(segment.chord, segment.target, keyLabel);
-      return `Secondary dominant of ${segment.target} (${target})`;
+      // The role covers viiø7/x and vii°7/x too, which lead up to their target rather than down.
+      const quality = segment.chord.split(":")[1];
+      const leadingTone = quality === "dim7" || quality === "hdim7";
+      const target = Core.targetName(segment.chord, segment.target, keyLabel, leadingTone);
+      const kind = leadingTone ? "Leading-tone chord" : "Secondary dominant";
+      return `${kind} of ${segment.target} (${target})`;
     }
     if (segment.role === "borrowed") {
       return `Borrowed from the parallel ${keyLabel.endsWith(":maj") ? "minor" : "major"}`;
@@ -273,6 +302,7 @@
       segment.bass,
       segment.inversion,
     );
+    fitBigChord();
     renderNumeral($("now-numeral"), segment);
     // Every row always shows, so the panel doesn't jump on chord changes.
     $("now-role").textContent = isChord ? roleText(segment) : "No chord";
@@ -282,6 +312,20 @@
       .slice(1)
       .map((label) => Core.alternativeName(label, segment.chord, keyLabel))
       .join(", ");
+  }
+
+  // A long name (D♯m7♭5/C♯) is wider than the chord column at full size; it shrinks to fit rather
+  // than lose its bass. Text width is proportional to the font size, so one measurement sets it.
+  // The line keeps its height, so the rows below don't move when such a name comes up.
+  function fitBigChord() {
+    const element = $("now-chord");
+    element.style.fontSize = "";
+    element.style.lineHeight = "";
+    const overflow = element.scrollWidth / element.clientWidth;
+    if (!(overflow > 1)) return;
+    const size = parseFloat(getComputedStyle(element).fontSize);
+    element.style.lineHeight = `${size}px`;
+    element.style.fontSize = `${Math.floor(size / overflow)}px`;
   }
 
   function show(index) {
@@ -503,6 +547,9 @@
     });
   }
   $("dismiss").addEventListener("click", clearMessages);
+  // The column narrows with the window, and the accidentals' font can arrive after the first fit.
+  addEventListener("resize", fitBigChord);
+  document.fonts.addEventListener("loadingdone", fitBigChord);
   picker.addEventListener("change", () => {
     takeFiles(picker.files);
     picker.value = ""; // so choosing the same file again still fires change

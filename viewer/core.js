@@ -8,13 +8,50 @@
 "use strict";
 
 const Core = (() => {
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
   const SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const CHORD_LABEL = /^[A-G]#?:(maj|min|7)$/;
+  const CHORD_LABEL = /^[A-G]#?:(maj|min|7|maj7|min7|min6|hdim7|dim7|sus4)$/;
   const LETTERS = "CDEFGAB";
   const NATURAL = [0, 2, 4, 5, 7, 9, 11];
+  // The key's own scale by degree, which a numeral's accidentals are relative to: bIII in C
+  // major, a plain III in C minor.
+  const SCALE = { maj: NATURAL, min: [0, 2, 3, 5, 7, 8, 10] };
   const GLYPH = { "-1": "♭", 0: "", 1: "♯" };
-  const QUALITY_SUFFIX = { maj: "", min: "m", 7: "7" };
+  const QUALITY_SUFFIX = {
+    maj: "",
+    min: "m",
+    7: "7",
+    maj7: "maj7",
+    min7: "m7",
+    min6: "m6",
+    hdim7: "m7♭5",
+    dim7: "dim7",
+    sus4: "sus4",
+  };
+  // Each quality's chord tones in semitones above the root, in the order `inversion` counts them.
+  const INTERVALS = {
+    maj: [0, 4, 7],
+    min: [0, 3, 7],
+    7: [0, 4, 7, 10],
+    maj7: [0, 4, 7, 11],
+    min7: [0, 3, 7, 10],
+    min6: [0, 3, 7, 9],
+    hdim7: [0, 3, 6, 10],
+    dim7: [0, 3, 6, 9],
+    sus4: [0, 5, 7],
+  };
+  // Each of those tones' letter steps above the root: a third two letters up, a seventh six.
+  const MEMBER_STEPS = {
+    maj: [0, 2, 4],
+    min: [0, 2, 4],
+    7: [0, 2, 4, 6],
+    maj7: [0, 2, 4, 6],
+    min7: [0, 2, 4, 6],
+    min6: [0, 2, 4, 5],
+    hdim7: [0, 2, 4, 6],
+    dim7: [0, 2, 4, 6],
+    sus4: [0, 3, 4],
+  };
   // Seconds into a chord after which ← goes back to its start rather than to the chord before.
   const RESTART = 1;
   // Keys whose written sharp tonic is conventionally spelled flat. Every other key keeps its label.
@@ -29,15 +66,29 @@ const Core = (() => {
   // Scale degree (0 = I … 6 = VII) of each root offset from the tonic, the table chordotomy's
   // numerals use in both modes: offset 10 is bVII (a B-flat in C), offset 6 is #IV (an F-sharp).
   // A secondary dominant's root, a fifth above its diatonic target, lands on the same degree, so
-  // this also spells V/x. Above a chord's root it gives each chord tone its member's letter (a
-  // third two letters up, a seventh six), and any other note its interval's.
+  // this also spells V/x. Above a chord's root it spells a note that isn't a chord tone by its
+  // interval; chord tones go by MEMBER_STEPS instead, since by interval alone a diminished fifth
+  // would be an augmented fourth (B♯ over F♯m7♭5, not C).
   const DEGREE = [0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6];
   const FIGURES = {
     triad: { first: ["6"], second: ["6", "4"] },
     seventh: { first: ["6", "5"], second: ["4", "3"], third: ["4", "2"] },
   };
+  // A numeral's suffix: the seventh's quality marker that stays beside the figures, and which
+  // figures it takes. add6 and sus4 take none: their inversions are not stacks of thirds, so no
+  // figure names them, and the chord name already shows the bass.
+  const NUMERAL_SUFFIX = {
+    "": { quality: "", figures: "triad" },
+    7: { quality: "", figures: "seventh" },
+    maj7: { quality: "maj", figures: "seventh" },
+    "ø7": { quality: "ø", figures: "seventh" },
+    "°7": { quality: "°", figures: "seventh" },
+    add6: { quality: "add6", figures: null },
+    sus4: { quality: "sus4", figures: null },
+  };
 
   const mod = (n, m) => ((n % m) + m) % m;
+  const isDiminished = (quality) => quality === "dim7" || quality === "hdim7";
 
   // Name pitch class `pc` on letter `letter` (0 = C … 6 = B). Chord symbols avoid double
   // accidentals, so a spelling that needs one moves to the neighbouring letter (E𝄫 → D, F𝄪 → G).
@@ -76,15 +127,32 @@ const Core = (() => {
   }
 
   function spellRoot(chord, key) {
-    return spellInKey(SHARPS.indexOf(chord.split(":")[0]), key);
+    const [root, quality] = chord.split(":");
+    const pc = SHARPS.indexOf(root);
+    // A diminished or half-diminished seventh leads up a semitone, so its numeral names the raised
+    // degree below rather than the lowered one above (C#:dim7 in C is #i°7, not bii°7). The name
+    // is spelled the same way, C♯dim7 rather than D♭dim7, so the two agree, except where that
+    // would take a double sharp: then the enharmonic letter, as for any root (G:dim7 in F♯ is
+    // Gdim7 under #i°7, not F𝄪dim7).
+    if (key && isDiminished(quality)) {
+      const offset = mod(pc - key.pc, 12);
+      if (offset < SCALE[key.mode][DEGREE[offset]]) {
+        return spell(pc, key.letter + DEGREE[offset] - 1);
+      }
+    }
+    return spellInKey(pc, key);
   }
 
-  // Spell a note against a chord (not N) by its interval above the chord's spelled root, so the
-  // bass and the other candidates agree with the chord: a chord tone as the member it is (F♯ under
-  // D7, not G♭), any other note by its interval (Bm/A♯, not Bm/B♭).
+  // Spell a note against a chord (not N) from the chord's spelled root, so the bass and the other
+  // candidates agree with the chord: a chord tone as the member it is (F♯ under D7, not G♭; C
+  // under F♯m7♭5, not B♯), any other note by its interval (Bm/A♯, not Bm/B♭).
   function spellAgainst(pc, chord, keyLabel) {
-    const root = spellRoot(chord, parseKey(keyLabel));
-    return spellAbove(pc, SHARPS.indexOf(chord.split(":")[0]), root.letter).name;
+    const [root, quality] = chord.split(":");
+    const rootPc = SHARPS.indexOf(root);
+    const letter = spellRoot(chord, parseKey(keyLabel)).letter;
+    const member = INTERVALS[quality].indexOf(mod(pc - rootPc, 12));
+    if (member >= 0) return spell(pc, letter + MEMBER_STEPS[quality][member]).name;
+    return spellAbove(pc, rootPc, letter).name;
   }
 
   function bassName(chord, keyLabel, bass) {
@@ -92,8 +160,8 @@ const Core = (() => {
     return spellAgainst(SHARPS.indexOf(bass), chord, keyLabel);
   }
 
-  // `C:maj` → C, `A:min` → Am, `G:7` → G7, `N` → N.C.; over a bass that isn't the root, a slash
-  // chord (C/E).
+  // `C:maj` → C, `A:min` → Am, `G:7` → G7, `F#:hdim7` → F♯m7♭5, `N` → N.C.; over a bass that
+  // isn't the root, a slash chord (C/E).
   function chordName(chord, keyLabel, bass = null, inversion = null) {
     if (chord === "N") return "N.C.";
     const name = spellRoot(chord, parseKey(keyLabel)).name + QUALITY_SUFFIX[chord.split(":")[1]];
@@ -102,37 +170,60 @@ const Core = (() => {
   }
 
   // Another candidate for a segment, spelled against the segment's chord (G♯m beside E7/G♯, not
-  // A♭m). Beside N there is no chord to agree with, so it is a degree of the key.
+  // A♭m). Beside N there is no chord to agree with, so it is a degree of the key. A diminished
+  // candidate is spelled against the chord only when it is a twin on the same notes (E♭dim7
+  // beside Cdim7); on other notes it is named as it would be if chosen, its root raised as its
+  // numeral's is (C♯dim7 beside C, not D♭dim7).
   function alternativeName(candidate, chord, keyLabel) {
     if (candidate === "N" || chord === "N") return chordName(candidate, keyLabel);
     const [root, quality] = candidate.split(":");
+    if (isDiminished(quality) && noteSet(candidate) !== noteSet(chord)) {
+      return chordName(candidate, keyLabel);
+    }
     return spellAgainst(SHARPS.indexOf(root), chord, keyLabel) + QUALITY_SUFFIX[quality];
+  }
+
+  function noteSet(chord) {
+    return pitchClasses(chord)
+      .sort((a, b) => a - b)
+      .join();
   }
 
   // Split a numeral into parts for display, with the figured bass its inversion calls for:
   // I + first → I6, V7 + first → V65, V7/V + first → V65/V (the figure goes before the slash).
-  // A non-chord or unknown bass keeps the root-position figure.
+  // A seventh's quality marker stays (IVmaj7 + first → IVmaj65, iiø7 + second → iiø43). A
+  // non-chord or unknown bass keeps the root-position figure.
   function numeralParts(numeral, inversion) {
     const [head, target = null] = numeral.split("/");
-    const match = /^([b#]?)([IViv]+)(7?)$/.exec(head);
-    if (!match) return { accidental: "", roman: numeral, figures: [], target: null };
-    const [, accidental, roman, seventh] = match;
-    const figures = seventh
-      ? FIGURES.seventh[inversion] || ["7"]
-      : FIGURES.triad[inversion] || [];
-    return { accidental: accidental && GLYPH[accidental === "b" ? -1 : 1], roman, figures, target };
+    const match = /^([b#]?)([IViv]+)(maj7|7|ø7|°7|add6|sus4)?$/.exec(head);
+    if (!match) return { accidental: "", roman: numeral, quality: "", figures: [], target: null };
+    const [, accidental, roman, suffix = ""] = match;
+    const { quality, figures: table } = NUMERAL_SUFFIX[suffix];
+    let figures = [];
+    if (table === "seventh") figures = FIGURES.seventh[inversion] || ["7"];
+    else if (table === "triad") figures = FIGURES.triad[inversion] || [];
+    return {
+      accidental: accidental && GLYPH[accidental === "b" ? -1 : 1],
+      roman,
+      quality,
+      figures,
+      target,
+    };
   }
 
   function numeralText(numeral, inversion) {
     const p = numeralParts(numeral, inversion);
-    return p.accidental + p.roman + p.figures.join("") + (p.target ? "/" + p.target : "");
+    const head = p.accidental + p.roman + p.quality + p.figures.join("");
+    return head + (p.target ? "/" + p.target : "");
   }
 
-  // The chord a secondary dominant points at, a fifth below its root: V7/V in C → G, V/vi → Am.
-  function targetName(chord, target, keyLabel) {
+  // The chord a secondary dominant points at, a fifth below its root (V7/V in C → G, V/vi → Am),
+  // or a secondary leading-tone chord's, a semitone above its root (viiø7/V in C → G).
+  function targetName(chord, target, keyLabel, leadingTone = false) {
     const root = SHARPS.indexOf(chord.split(":")[0]);
     const minor = target === target.toLowerCase();
-    return spellInKey(mod(root - 7, 12), parseKey(keyLabel)).name + (minor ? "m" : "");
+    const resolution = mod(root + (leadingTone ? 1 : -7), 12);
+    return spellInKey(resolution, parseKey(keyLabel)).name + (minor ? "m" : "");
   }
 
   // Index of the segment sounding at time `t`, or -1 before the first one. Segments are
@@ -194,7 +285,6 @@ const Core = (() => {
 
   // Hearing the chords. Voicings are MIDI note numbers: 60 is middle C.
 
-  const INTERVALS = { maj: [0, 4, 7], min: [0, 3, 7], 7: [0, 4, 7, 10] };
   const MIDDLE_C = 60;
   // The lowest upper voice stays in G3–F♯4, one candidate per inversion, so a long progression
   // can't creep up or down the keyboard. The bass stays in C2–E3, always below it.

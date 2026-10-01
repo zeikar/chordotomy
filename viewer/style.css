@@ -470,10 +470,17 @@ body:has(#empty:not([hidden])) .status {
   font-family: var(--serif);
 }
 
-/* Line heights in px, so the smaller type of a narrow segment keeps its neighbours' rows. */
+/* Line heights in px, so the smaller type of a narrow segment keeps its neighbours' rows. A slash
+   chord too long for its cell wraps before the slash, the one break app.js allows; its two lines
+   and the numeral just fill the cell. */
 .segment-chord {
   font-size: 20px;
   line-height: 24px;
+  white-space: normal;
+}
+
+.segment-chord span {
+  white-space: nowrap;
 }
 
 .segment-numeral {
@@ -499,6 +506,24 @@ body:has(#empty:not([hidden])) .status {
 
   .segment-numeral {
     font-size: 15px;
+  }
+
+  .segment-numeral.long {
+    font-size: 14px;
+  }
+}
+
+/* The six-character heads (D♯m7♭5, B♭maj7) take about 74px at 20px and 59px at 16px, so they step
+   down in wider cells than the other names do. */
+@container (max-width: 80px) {
+  .segment-chord.long {
+    font-size: 16px;
+  }
+}
+
+@container (max-width: 64px) {
+  .segment-chord.long {
+    font-size: 14px;
   }
 }
 

@@ -32,6 +32,33 @@ test("chord names use lead-sheet symbols", () => {
   assert.equal(chordName("C:maj", "C:maj", null, null), "C");
 });
 
+test("sevenths, sixths, diminished and sus chords use pop-chart symbols", () => {
+  assert.equal(chordName("F:maj7", "C:maj"), "Fmaj7");
+  assert.equal(chordName("D:min7", "C:maj"), "Dm7");
+  assert.equal(chordName("G:min6", "C:maj"), "Gm6");
+  assert.equal(chordName("F#:hdim7", "C:maj"), "F♯m7♭5");
+  assert.equal(chordName("C#:dim7", "C:maj"), "C♯dim7");
+  assert.equal(chordName("G:sus4", "C:maj"), "Gsus4");
+  assert.equal(chordName("G:min6", "C:maj", "E", "third"), "Gm6/E");
+  assert.equal(chordName("G:sus4", "C:maj", "C", "first"), "Gsus4/C");
+});
+
+test("a diminished root on a lowered degree is spelled raised, as its numeral is", () => {
+  assert.equal(chordName("C#:dim7", "C:maj"), "C♯dim7"); // #i°7, not bii°7
+  assert.equal(chordName("D#:hdim7", "C:maj"), "D♯m7♭5"); // #iiø7
+  assert.equal(chordName("G#:dim7", "C:maj"), "G♯dim7"); // #v°7
+  assert.equal(chordName("A#:dim7", "A:min"), "A♯dim7"); // #i°7 in A minor
+  assert.equal(chordName("F:dim7", "E:maj"), "E♯dim7"); // #i°7 in E major, though F is natural
+  // A flat that is the key's own degree is no lowered degree: iv°7 in F, iii°7 in C minor.
+  assert.equal(chordName("A#:dim7", "F:maj"), "B♭dim7");
+  assert.equal(chordName("D#:dim7", "C:min"), "E♭dim7");
+  // Where agreement would take a double sharp, the enharmonic letter, as for any root: #i°7 in F♯.
+  assert.equal(chordName("G:dim7", "F#:maj"), "Gdim7");
+  // Other qualities keep the key's spelling.
+  assert.equal(chordName("C#:maj", "C:maj"), "D♭");
+  assert.equal(chordName("D#:maj7", "C:maj"), "E♭maj7");
+});
+
 test("a root takes its letter from the numeral's degree", () => {
   assert.equal(chordName("A#:maj", "C:maj"), "B♭"); // bVII
   assert.equal(chordName("F#:maj", "C:maj"), "F♯"); // #IV
@@ -59,6 +86,15 @@ test("the bass is spelled as the chord member its inversion names", () => {
   assert.equal(chordName("C:maj", "C:maj", "G", "second"), "C/G");
   assert.equal(chordName("G#:maj", "C#:min", "C", "first"), "G♯/B♯");
   assert.equal(chordName("D#:maj", "A#:maj", "G", "first"), "E♭/G");
+});
+
+test("a diminished fifth in the bass is spelled as a fifth", () => {
+  assert.equal(chordName("F#:hdim7", "C:maj", "C", "second"), "F♯m7♭5/C"); // not /B♯
+  assert.equal(chordName("B:dim7", "C:maj", "F", "second"), "Bdim7/F");
+  assert.equal(chordName("C#:dim7", "C:maj", "G", "second"), "C♯dim7/G");
+  assert.equal(Core.bassName("F#:hdim7", "C:maj", "C"), "C");
+  // The diminished seventh would be a double flat (B𝄫 above C), so it moves to the next letter.
+  assert.equal(chordName("C:dim7", "C:maj", "A", "third"), "Cdim7/A");
 });
 
 test("the bass alone, for the now-playing panel", () => {
@@ -99,6 +135,16 @@ test("a candidate is spelled by its interval above the segment's chord", () => {
   assert.equal(alternativeName("C#:maj", "F:min", "C:maj"), "D♭");
   assert.equal(alternativeName("N", "G:7", "C:maj"), "N.C.");
   assert.equal(alternativeName("C#:7", "N", "C:maj"), "D♭7"); // no chord: a degree of the key
+  assert.equal(alternativeName("D#:dim7", "C:dim7", "C:maj"), "E♭dim7"); // the third it is
+  assert.equal(alternativeName("E:hdim7", "G:min6", "D:maj"), "Em7♭5"); // the sixth it is
+});
+
+test("a diminished candidate on other notes is named as it would be if chosen", () => {
+  const { alternativeName } = Core;
+  assert.equal(alternativeName("C#:dim7", "C:maj", "C:maj"), "C♯dim7"); // not D♭dim7
+  assert.equal(alternativeName("D#:hdim7", "C:min", "C:maj"), "D♯m7♭5"); // not the E♭ of Cm
+  assert.equal(alternativeName("A#:dim7", "F:maj", "F:maj"), "B♭dim7"); // iv°7: no raised root
+  assert.equal(alternativeName("C#:maj", "C:maj", "C:maj"), "D♭"); // other qualities as before
 });
 
 test("numerals take figured bass from the inversion", () => {
@@ -114,6 +160,25 @@ test("numerals take figured bass from the inversion", () => {
   assert.equal(numeralText("IV7", "non_chord"), "IV7");
 });
 
+test("seventh figures keep the seventh's quality marker", () => {
+  assert.equal(numeralText("IVmaj7", "root"), "IVmaj7");
+  assert.equal(numeralText("IVmaj7", "first"), "IVmaj65");
+  assert.equal(numeralText("ii7", "second"), "ii43");
+  assert.equal(numeralText("iiø7", "root"), "iiø7");
+  assert.equal(numeralText("viiø7", "first"), "viiø65");
+  assert.equal(numeralText("vii°7", "root"), "vii°7");
+  assert.equal(numeralText("vii°7", "third"), "vii°42");
+  assert.equal(numeralText("viiø7/V", "first"), "viiø65/V");
+  assert.equal(numeralText("vii°7/ii", "non_chord"), "vii°7/ii");
+});
+
+test("add6 and sus4 numerals take no figures", () => {
+  for (const inversion of ["root", "first", "second", "third", "non_chord", null]) {
+    assert.equal(numeralText("ivadd6", inversion), "ivadd6");
+    assert.equal(numeralText("Vsus4", inversion), "Vsus4");
+  }
+});
+
 test("a secondary dominant puts the figure before the slash", () => {
   assert.equal(numeralText("V7/V", "first"), "V65/V");
   assert.equal(numeralText("V7/vi", "root"), "V7/vi");
@@ -125,6 +190,8 @@ test("numeral accidentals become glyphs", () => {
   assert.equal(numeralText("bVII7", "root"), "♭VII7");
   assert.equal(numeralText("#iv", "first"), "♯iv6");
   assert.equal(numeralText("bII", "first"), "♭II6");
+  assert.equal(numeralText("#ivø7", "root"), "♯ivø7");
+  assert.equal(numeralText("bVIImaj7", "root"), "♭VIImaj7");
 });
 
 test("a secondary dominant's target chord is a fifth below it", () => {
@@ -133,6 +200,12 @@ test("a secondary dominant's target chord is a fifth below it", () => {
   assert.equal(targetName("G:7", "ii", "A#:maj"), "Cm");
   assert.equal(targetName("G:maj", "III", "A:min"), "C");
   assert.equal(targetName("A#:maj", "iv", "D#:min"), "E♭m");
+});
+
+test("a leading-tone chord's target is a semitone above it", () => {
+  assert.equal(targetName("F#:hdim7", "V", "C:maj", true), "G");
+  assert.equal(targetName("C#:dim7", "ii", "C:maj", true), "Dm");
+  assert.equal(targetName("D#:dim7", "V", "A:min", true), "E");
 });
 
 test("the segment at a time is the last one starting at or before it", () => {
@@ -168,22 +241,26 @@ test("left goes to the start of the chord, then to the one before; right to the 
   assert.equal(stepIndex([], 1, -1), -1);
 });
 
-test("only schema version 3 is accepted", () => {
-  const ok = { schema_version: 3, beats: [], segments: [] };
+test("only schema version 4 is accepted", () => {
+  const ok = { schema_version: 4, beats: [], segments: [] };
   assert.equal(Core.timelineProblem(ok), null);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 2 }), /schema version 2.*analyze again/);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 4 }), /newer chordotomy/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 5 }), /newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
-  assert.match(Core.timelineProblem({ schema_version: 3 }), /no beats or segments/);
+  assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);
 });
 
 test("chord and bass labels outside the schema are refused, not half-rendered", () => {
-  const timeline = (segment) => ({ schema_version: 3, beats: [0], segments: [segment] });
+  const timeline = (segment) => ({ schema_version: 4, beats: [0], segments: [segment] });
   const ok = { chord: "C#:7", bass: "G#" };
   assert.equal(Core.timelineProblem(timeline(ok)), null);
   assert.equal(Core.timelineProblem(timeline({ chord: "N", bass: null })), null);
-  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:min7" })), /chord C:min7/);
+  for (const chord of ["C:min7", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4", "F:maj7"]) {
+    assert.equal(Core.timelineProblem(timeline({ ...ok, chord })), null, chord);
+  }
+  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:maj6" })), /chord C:maj6/);
+  assert.match(Core.timelineProblem(timeline({ ...ok, chord: "C:min9" })), /chord C:min9/);
   assert.match(Core.timelineProblem(timeline({ ...ok, bass: "Db" })), /bass Db/);
 });
 
@@ -197,6 +274,9 @@ test("a label's pitch classes, root first", () => {
   assert.deepEqual(Core.pitchClasses("C:maj"), [0, 4, 7]);
   assert.deepEqual(Core.pitchClasses("A:min"), [9, 0, 4]);
   assert.deepEqual(Core.pitchClasses("G:7"), [7, 11, 2, 5]);
+  assert.deepEqual(Core.pitchClasses("G:min6"), [7, 10, 2, 4]);
+  assert.deepEqual(Core.pitchClasses("F#:hdim7"), [6, 9, 0, 4]);
+  assert.deepEqual(Core.pitchClasses("G:sus4"), [7, 0, 2]);
   assert.deepEqual(Core.pitchClasses("N"), []);
 });
 
