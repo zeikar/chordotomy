@@ -42,6 +42,9 @@ INTERVALS = {
     "hdim7": (0, 3, 6, 10),
     "dim7": (0, 3, 6, 9),
     "sus4": (0, 5, 7),
+    "aug": (0, 4, 8),
+    "dim": (0, 3, 6),
+    "sus2": (0, 2, 7),
 }
 
 Progression = list[tuple[str, int] | tuple[str, int, int] | tuple[str, int, int, int]]

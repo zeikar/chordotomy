@@ -25,12 +25,16 @@
     non_chord: "not a chord tone",
   };
   // Screen readers would say "degree" for °, "o with stroke" for ø, and read ivadd6 as one word.
+  // Keyed by the numeral's suffix, not its marker: vii° and vii°7 share the °.
   const QUALITY_WORDS = {
-    maj: "major seventh",
-    "ø": "half-diminished seventh",
-    "°": "diminished seventh",
+    maj7: "major seventh",
+    "ø7": "half-diminished seventh",
+    "°7": "diminished seventh",
+    "°": "diminished",
+    "+": "augmented",
     add6: "add 6",
     sus4: "sus 4",
+    sus2: "sus 2",
   };
 
   const $ = (id) => document.getElementById(id);
@@ -134,7 +138,7 @@
     if (opened) installTimeline(opened, timelineFile.name);
   }
 
-  // The timeline in `file`, checked and upgraded to schema 6, or the reason it can't be shown.
+  // The timeline in `file`, checked and upgraded to schema 7, or the reason it can't be shown.
   async function readTimeline(file) {
     let data;
     try {
@@ -412,7 +416,7 @@
   // ("ii half-diminished seventh 4 3"), which already say seventh, so a root-position 7 is dropped.
   function spokenNumeral(segment) {
     const parts = Core.numeralParts(segment.numeral, segment.inversion);
-    const words = QUALITY_WORDS[parts.quality];
+    const words = QUALITY_WORDS[parts.suffix];
     const figures = words ? parts.figures.filter((figure) => figure !== "7") : parts.figures;
     const head = [parts.accidental + parts.roman, words, ...figures].filter(Boolean).join(" ");
     return parts.target ? `${head} of ${parts.target}` : head;
@@ -453,10 +457,11 @@
       const numeral = document.createElement("span");
       numeral.className = "segment-numeral";
       renderNumeral(numeral, segment);
-      // A numeral with a quality marker (♭VIImaj7, viiø7/VII) takes smaller type in a one-beat cell.
+      // A numeral with a quality marker (♭VIImaj7, viiø7/VII) takes smaller type in a one-beat cell;
+      // a one-character suffix (V+, vii°, V7) keeps the normal size.
       if (segment.numeral) {
         const parts = Core.numeralParts(segment.numeral, segment.inversion);
-        numeral.classList.toggle("long", parts.quality !== "");
+        numeral.classList.toggle("long", parts.suffix.length > 1);
       }
       button.append(chord, numeral);
       button.title = segment.numeral
@@ -491,9 +496,10 @@
 
   function roleText(segment) {
     if (segment.role === "secondary_dominant" && segment.target) {
-      // The role covers viiø7/x and vii°7/x too, which lead up to their target rather than down.
+      // The role covers viiø7/x, vii°7/x and vii°/x too, which lead up to their target rather than
+      // down.
       const quality = segment.chord.split(":")[1];
-      const leadingTone = quality === "dim7" || quality === "hdim7";
+      const leadingTone = quality === "dim7" || quality === "hdim7" || quality === "dim";
       const target = Core.targetName(segment.chord, segment.target, keyLabel, leadingTone);
       const kind = leadingTone ? "Leading-tone chord" : "Secondary dominant";
       return `${kind} of ${segment.target} (${target})`;
@@ -966,7 +972,7 @@
   document.addEventListener("click", () => (pressedAt = null));
   document.addEventListener("pointercancel", () => (pressedAt = null));
 
-  // Saving is allowed with nothing unsaved too: it writes an opened schema-4 or 5 file as a 6.
+  // Saving is allowed with nothing unsaved too: it writes an opened schema-4, 5 or 6 file as a 7.
   $("save").addEventListener("click", (event) => {
     releaseFocus(event);
     save();

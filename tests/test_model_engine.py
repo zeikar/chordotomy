@@ -52,7 +52,7 @@ def test_the_model_engine_writes_its_chords_and_version(mix, chord_at, tmp_path)
 
     result = analyze(_write(tmp_path, mix(progression)), engine="model")
 
-    assert result["schema_version"] == 6
+    assert result["schema_version"] == 7
     assert result["generator"]["engine"] == {
         "name": "lv-chordia",
         "version": importlib.metadata.version("lv-chordia"),

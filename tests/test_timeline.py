@@ -46,7 +46,7 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 6
+    assert result["schema_version"] == 7
     assert result["generator"] == {
         "name": "chordotomy",
         "version": __version__,

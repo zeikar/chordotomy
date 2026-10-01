@@ -29,6 +29,9 @@ const Harmony = (() => {
     ["hdim7", [0, 3, 6, 10]],
     ["dim7", [0, 3, 6, 9]],
     ["sus4", [0, 5, 7]],
+    ["aug", [0, 4, 8]],
+    ["dim", [0, 3, 6]],
+    ["sus2", [0, 2, 7]],
   ];
   // Wherever order matters, read QUALITY_NAMES: Object.keys(QUALITIES) lists "7" first, as JS
   // enumerates integer-like keys before the others.
@@ -48,8 +51,9 @@ const Harmony = (() => {
     maj: ["I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"],
     min: ["I", "bII", "II", "III", "#III", "IV", "#IV", "V", "VI", "#VI", "VII", "#VII"],
   };
-  // Case shows the third: lowercase for a minor or diminished one; sus4 has none and stays upper.
-  const LOWERCASE = new Set(["min", "min7", "min6", "hdim7", "dim7"]);
+  // Case shows the third: lowercase for a minor or diminished one; sus4 and sus2 have none and
+  // stay upper.
+  const LOWERCASE = new Set(["min", "min7", "min6", "hdim7", "dim7", "dim"]);
   // min6 is `add6` because `iv6` is the first-inversion figure. ø and ° are the characters
   // themselves: core.js turns only the b and # accidentals into glyphs, so an ASCII stand-in
   // would reach the reader as a letter.
@@ -63,6 +67,9 @@ const Harmony = (() => {
     hdim7: "ø7",
     dim7: "°7",
     sus4: "sus4",
+    aug: "+",
+    dim: "°",
+    sus2: "sus2",
   };
   // Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
   const FUNCTIONS = {
@@ -150,10 +157,10 @@ const Harmony = (() => {
 
   function numeral(offset, quality, mode) {
     let text = NUMERALS[mode][offset];
-    // A diminished or half-diminished seventh leads up a semitone, so its root is the raised
-    // degree below, never the flattened one above: C#:dim7 in C major is #i°7, pointing at ii,
-    // not bii°7. The degree below a flat one is always plain.
-    if ((quality === "dim7" || quality === "hdim7") && text.startsWith("b")) {
+    // A diminished chord or a half-diminished seventh leads up a semitone, so its root is the raised
+    // degree below, never the flattened one above: C#:dim7 in C major is #i°7, pointing at ii, not
+    // bii°7. The degree below a flat one is always plain.
+    if ((quality === "dim7" || quality === "hdim7" || quality === "dim") && text.startsWith("b")) {
       text = "#" + NUMERALS[mode][offset - 1];
     }
     if (LOWERCASE.has(quality)) text = text.toLowerCase();

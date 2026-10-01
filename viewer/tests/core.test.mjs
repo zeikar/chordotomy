@@ -43,6 +43,14 @@ test("sevenths, sixths, diminished and sus chords use pop-chart symbols", () => 
   assert.equal(chordName("G:sus4", "C:maj", "C", "first"), "Gsus4/C");
 });
 
+test("augmented, diminished and sus2 triads are spelled out in letters", () => {
+  assert.equal(chordName("C:aug", "C:maj"), "Caug");
+  assert.equal(chordName("B:dim", "C:maj"), "Bdim");
+  assert.equal(chordName("C:sus2", "C:maj"), "Csus2");
+  assert.equal(chordName("C:sus2", "C:maj", "D", "first"), "Csus2/D");
+  assert.equal(chordName("C:aug", "C:maj", "G#", "second"), "Caug/G♯");
+});
+
 test("a diminished root on a lowered degree is spelled raised, as its numeral is", () => {
   assert.equal(chordName("C#:dim7", "C:maj"), "C♯dim7"); // #i°7, not bii°7
   assert.equal(chordName("D#:hdim7", "C:maj"), "D♯m7♭5"); // #iiø7
@@ -54,6 +62,9 @@ test("a diminished root on a lowered degree is spelled raised, as its numeral is
   assert.equal(chordName("D#:dim7", "C:min"), "E♭dim7");
   // Where agreement would take a double sharp, the enharmonic letter, as for any root: #i°7 in F♯.
   assert.equal(chordName("G:dim7", "F#:maj"), "Gdim7");
+  // A diminished triad leads up too: C♯dim under #i°; iv° in F is plain, B♭dim.
+  assert.equal(chordName("C#:dim", "C:maj"), "C♯dim");
+  assert.equal(chordName("A#:dim", "F:maj"), "B♭dim");
   // Other qualities keep the key's spelling.
   assert.equal(chordName("C#:maj", "C:maj"), "D♭");
   assert.equal(chordName("D#:maj7", "C:maj"), "E♭maj7");
@@ -142,6 +153,7 @@ test("a candidate is spelled by its interval above the segment's chord", () => {
 test("a diminished candidate on other notes is named as it would be if chosen", () => {
   const { alternativeName } = Core;
   assert.equal(alternativeName("C#:dim7", "C:maj", "C:maj"), "C♯dim7"); // not D♭dim7
+  assert.equal(alternativeName("C#:dim", "C:maj", "C:maj"), "C♯dim"); // a triad too
   assert.equal(alternativeName("D#:hdim7", "C:min", "C:maj"), "D♯m7♭5"); // not the E♭ of Cm
   assert.equal(alternativeName("A#:dim7", "F:maj", "F:maj"), "B♭dim7"); // iv°7: no raised root
   assert.equal(alternativeName("C#:maj", "C:maj", "C:maj"), "D♭"); // other qualities as before
@@ -172,10 +184,24 @@ test("seventh figures keep the seventh's quality marker", () => {
   assert.equal(numeralText("vii°7/ii", "non_chord"), "vii°7/ii");
 });
 
-test("add6 and sus4 numerals take no figures", () => {
+test("diminished and augmented triads take triad figures", () => {
+  assert.equal(numeralText("vii°", "root"), "vii°");
+  assert.equal(numeralText("vii°", "first"), "vii°6");
+  assert.equal(numeralText("vii°", "second"), "vii°64");
+  assert.equal(numeralText("III+", "first"), "III+6");
+  assert.equal(numeralText("#i°", "root"), "♯i°");
+  assert.equal(numeralText("vii°/ii", "first"), "vii°6/ii");
+  // °7 is matched before °, so a diminished seventh keeps its seventh figures.
+  assert.equal(numeralText("vii°7", "third"), "vii°42");
+  assert.equal(Core.numeralParts("vii°", "root").suffix, "°");
+  assert.equal(Core.numeralParts("vii°7", "root").suffix, "°7");
+});
+
+test("add6, sus4 and sus2 numerals take no figures", () => {
   for (const inversion of ["root", "first", "second", "third", "non_chord", null]) {
     assert.equal(numeralText("ivadd6", inversion), "ivadd6");
     assert.equal(numeralText("Vsus4", inversion), "Vsus4");
+    assert.equal(numeralText("Vsus2", inversion), "Vsus2");
   }
 });
 
@@ -204,6 +230,7 @@ test("a secondary dominant's target chord is a fifth below it", () => {
 
 test("a leading-tone chord's target is a semitone above it", () => {
   assert.equal(targetName("F#:hdim7", "V", "C:maj", true), "G");
+  assert.equal(targetName("C#:dim", "ii", "C:maj", true), "Dm");
   assert.equal(targetName("C#:dim7", "ii", "C:maj", true), "Dm");
   assert.equal(targetName("D#:dim7", "V", "A:min", true), "E");
 });
@@ -291,19 +318,20 @@ const withSegment = (fields, version = 4) => ({
   segments: [{ ...SEGMENT, ...fields }],
 });
 
-test("schema versions 4, 5 and 6 are accepted", () => {
+test("schema versions 4, 5, 6 and 7 are accepted", () => {
   const ok = {
-    schema_version: 6,
+    schema_version: 7,
     generator: { name: "chordotomy", version: "0.0.0", engine: DSP },
     source: { path: "song.mp3", duration: 1 },
     beats: [],
     segments: [],
   };
   assert.equal(Core.timelineProblem(ok), null);
+  assert.equal(Core.timelineProblem({ ...ok, schema_version: 6 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 5 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
   assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 7 }), /versions 4 to 6.*newer chordotomy/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 8 }), /versions 4 to 7.*newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
   assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);
@@ -339,7 +367,8 @@ test("chord and bass labels outside the schema are refused, not half-rendered", 
   assert.equal(Core.timelineProblem(timeline({})), null);
   const silence = { chord: "N", bass: null, inversion: null, numeral: null, role: null };
   assert.equal(Core.timelineProblem(timeline({ ...silence, function: null })), null);
-  for (const chord of ["C:min7", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4", "F:maj7"]) {
+  const chords = ["C:min7", "G:min6", "F#:hdim7", "C#:dim7", "G:sus4", "F:maj7", "C:aug"];
+  for (const chord of [...chords, "B:dim", "C:sus2"]) {
     assert.equal(Core.timelineProblem(timeline({ chord })), null, chord);
   }
   assert.match(Core.timelineProblem(timeline({ chord: "C:maj6" })), /chord C:maj6/);
@@ -363,7 +392,7 @@ test("every segment field the viewer reads must be there and hold what chordotom
   }
   // `edited` came with schema 5: Edit.upgrade adds it to a 4.
   assert.equal(problem({}, 4), null);
-  for (const version of [5, 6]) {
+  for (const version of [5, 6, 7]) {
     assert.equal(problem({ edited: true }, version), null);
     assert.match(problem({}, version), /segment 1 has a missing or invalid edited/);
     assert.match(problem({ edited: "false" }, version), /invalid edited/);

@@ -121,6 +121,12 @@ def test_estimate_key_takes_every_quality() -> None:
         ("D:min7", "A:min", "iv7", "predominant"),
         ("F:maj7", "A:min", "VImaj7", "tonic"),
         ("G#:dim7", "A:min", "#vii°7", "dominant"),
+        # The scale test admits the diminished triads as they are.
+        ("B:dim", "C:maj", "vii°", "dominant"),
+        ("B:dim", "A:min", "ii°", "predominant"),
+        ("C:sus2", "C:maj", "Isus2", "tonic"),
+        ("G:sus2", "C:maj", "Vsus2", "dominant"),
+        ("D:sus2", "C:maj", "IIsus2", "predominant"),
     ],
 )
 def test_analyze_chord_diatonic(label: str, key: str, numeral: str, function: str) -> None:
@@ -254,6 +260,8 @@ def test_leading_tone_chord_resolves_only_on_a_diatonic_chord_on_the_target_root
         ("D:hdim7", "C:maj", "iiø7"),
         ("D:maj7", "A:min", "IVmaj7"),
         ("G#:hdim7", "A:min", "#viiø7"),
+        # D F Ab lies in C minor as it is.
+        ("D:dim", "C:maj", "ii°"),
     ],
 )
 def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
@@ -294,6 +302,13 @@ def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
         ("A#:dim7", "A:min", "#i°7"),
         ("G:dim7", "A:min", "vii°7"),
         ("D#:dim7", "A:min", "#iv°7"),
+        # An augmented triad is in neither mode of C, on any root.
+        ("G:aug", "C:maj", "V+"),
+        ("C:aug", "C:maj", "I+"),
+        # A diminished triad's root is raised too.
+        ("C#:dim", "C:maj", "#i°"),
+        ("D#:dim", "C:maj", "#ii°"),
+        ("E:sus2", "C:maj", "IIIsus2"),
     ],
 )
 def test_analyze_chord_chromatic(label: str, key: str, numeral: str) -> None:

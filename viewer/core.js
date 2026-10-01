@@ -9,13 +9,13 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  // The viewer reads 4 to 6 and writes 6; an older file is upgraded in memory (see Edit.upgrade).
+  // The viewer reads 4 to 7 and writes 7; an older file is upgraded in memory (see Edit.upgrade).
   const MIN_SCHEMA_VERSION = 4;
-  const SCHEMA_VERSION = 6;
+  const SCHEMA_VERSION = 7;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
-  // and, if its numeral suffix is new, in NUMERAL_SUFFIX and numeralParts' pattern; it also takes
-  // an option in index.html's Quality select.
+  // and, if its numeral suffix is new, in NUMERAL_SUFFIX, numeralParts' pattern and app.js's
+  // QUALITY_WORDS; it also takes an option in index.html's Quality select.
   const SHARPS = Harmony.ROOTS;
   const CHORD_LABEL = new RegExp(
     `^(${Harmony.ROOTS.join("|")}):(${Harmony.QUALITY_NAMES.join("|")})$`,
@@ -36,6 +36,9 @@ const Core = ((Harmony) => {
     hdim7: "m7♭5",
     dim7: "dim7",
     sus4: "sus4",
+    aug: "aug",
+    dim: "dim",
+    sus2: "sus2",
   };
   // Each quality's chord tones in semitones above the root, in the order `inversion` counts them.
   const INTERVALS = Harmony.QUALITIES;
@@ -50,6 +53,9 @@ const Core = ((Harmony) => {
     hdim7: [0, 2, 4, 6],
     dim7: [0, 2, 4, 6],
     sus4: [0, 3, 4],
+    aug: [0, 2, 4],
+    dim: [0, 2, 4],
+    sus2: [0, 1, 4],
   };
   // Seconds into a chord after which ← goes back to its start rather than to the chord before.
   const RESTART = 1;
@@ -75,21 +81,24 @@ const Core = ((Harmony) => {
     triad: { first: ["6"], second: ["6", "4"] },
     seventh: { first: ["6", "5"], second: ["4", "3"], third: ["4", "2"] },
   };
-  // A numeral's suffix: the seventh's quality marker that stays beside the figures, and which
-  // figures it takes. add6 and sus4 take none: their inversions are not stacks of thirds, so no
-  // figure names them, and the chord name already shows the bass.
+  // A numeral's suffix: the quality marker that stays beside the figures, and which figures it
+  // takes. add6, sus4 and sus2 take none: their inversions are not stacks of thirds, so no figure
+  // names them, and the chord name already shows the bass.
   const NUMERAL_SUFFIX = {
     "": { quality: "", figures: "triad" },
     7: { quality: "", figures: "seventh" },
     maj7: { quality: "maj", figures: "seventh" },
     "ø7": { quality: "ø", figures: "seventh" },
     "°7": { quality: "°", figures: "seventh" },
+    "°": { quality: "°", figures: "triad" },
+    "+": { quality: "+", figures: "triad" },
     add6: { quality: "add6", figures: null },
     sus4: { quality: "sus4", figures: null },
+    sus2: { quality: "sus2", figures: null },
   };
 
   const mod = (n, m) => ((n % m) + m) % m;
-  const isDiminished = (quality) => quality === "dim7" || quality === "hdim7";
+  const isDiminished = (quality) => quality === "dim7" || quality === "hdim7" || quality === "dim";
 
   // Name pitch class `pc` on letter `letter` (0 = C … 6 = B). Chord symbols avoid double
   // accidentals, so a spelling that needs one moves to the neighbouring letter (E𝄫 → D, F𝄪 → G).
@@ -130,9 +139,9 @@ const Core = ((Harmony) => {
   function spellRoot(chord, key) {
     const [root, quality] = chord.split(":");
     const pc = SHARPS.indexOf(root);
-    // A diminished or half-diminished seventh leads up a semitone, so its numeral names the raised
-    // degree below rather than the lowered one above (C#:dim7 in C is #i°7, not bii°7). The name
-    // is spelled the same way, C♯dim7 rather than D♭dim7, so the two agree, except where that
+    // A diminished chord or a half-diminished seventh leads up a semitone, so its numeral names the
+    // raised degree below rather than the lowered one above (C#:dim7 in C is #i°7, not bii°7). The
+    // name is spelled the same way, C♯dim7 rather than D♭dim7, so the two agree, except where that
     // would take a double sharp: then the enharmonic letter, as for any root (G:dim7 in F♯ is
     // Gdim7 under #i°7, not F𝄪dim7).
     if (key && isDiminished(quality)) {
@@ -197,12 +206,15 @@ const Core = ((Harmony) => {
 
   // Split a numeral into parts for display, with the figured bass its inversion calls for:
   // I + first → I6, V7 + first → V65, V7/V + first → V65/V (the figure goes before the slash).
-  // A seventh's quality marker stays (IVmaj7 + first → IVmaj65, iiø7 + second → iiø43). A
-  // non-chord or unknown bass keeps the root-position figure.
+  // A quality marker stays (IVmaj7 + first → IVmaj65, iiø7 + second → iiø43, vii° + first →
+  // vii°6). A non-chord or unknown bass keeps the root-position figure. `suffix` is the numeral's
+  // own, which tells vii° from vii°7 where the marker alone cannot.
   function numeralParts(numeral, inversion) {
     const [head, target = null] = numeral.split("/");
-    const match = /^([b#]?)([IViv]+)(maj7|7|ø7|°7|add6|sus4)?$/.exec(head);
-    if (!match) return { accidental: "", roman: numeral, quality: "", figures: [], target: null };
+    const match = /^([b#]?)([IViv]+)(maj7|7|ø7|°7|°|\+|add6|sus4|sus2)?$/.exec(head);
+    if (!match) {
+      return { accidental: "", roman: numeral, quality: "", suffix: "", figures: [], target: null };
+    }
     const [, accidental, roman, suffix = ""] = match;
     const { quality, figures: table } = NUMERAL_SUFFIX[suffix];
     let figures = [];
@@ -212,6 +224,7 @@ const Core = ((Harmony) => {
       accidental: accidental && GLYPH[accidental === "b" ? -1 : 1],
       roman,
       quality,
+      suffix,
       figures,
       target,
     };

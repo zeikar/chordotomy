@@ -17,8 +17,9 @@ NUMERALS = {
     "maj": ("I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"),
     "min": ("I", "bII", "II", "III", "#III", "IV", "#IV", "V", "VI", "#VI", "VII", "#VII"),
 }
-# Case shows the third: lowercase for a minor or diminished one; sus4 has none and stays upper.
-LOWERCASE = {"min", "min7", "min6", "hdim7", "dim7"}
+# Case shows the third: lowercase for a minor or diminished one; sus4 and sus2 have none and stay
+# upper.
+LOWERCASE = {"min", "min7", "min6", "hdim7", "dim7", "dim"}
 # min6 is `add6` because `iv6` is the first-inversion figure, and `add6` cannot be read as one.
 # ø and ° are the characters themselves, not ASCII stand-ins: the viewer turns only the b and #
 # accidentals into glyphs, so a stand-in would reach the reader as a letter.
@@ -32,6 +33,9 @@ NUMERAL_SUFFIX = {
     "hdim7": "ø7",
     "dim7": "°7",
     "sus4": "sus4",
+    "aug": "+",
+    "dim": "°",
+    "sus2": "sus2",
 }
 # Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
 FUNCTIONS = {
@@ -120,10 +124,10 @@ def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
 
 def numeral(offset: int, quality: str, mode: str) -> str:
     text = NUMERALS[mode][offset]
-    # A diminished or half-diminished seventh leads up a semitone, so its root is the raised degree
-    # below, never the flattened one above: C#:dim7 in C major is #i°7, pointing at ii, not bii°7.
-    # The degree below a flat one is always plain.
-    if quality in ("dim7", "hdim7") and text.startswith("b"):
+    # A diminished chord or a half-diminished seventh leads up a semitone, so its root is the raised
+    # degree below, never the flattened one above: C#:dim7 in C major is #i°7, pointing at ii, not
+    # bii°7. The degree below a flat one is always plain.
+    if quality in ("dim7", "hdim7", "dim") and text.startswith("b"):
         text = "#" + NUMERALS[mode][offset - 1]
     if quality in LOWERCASE:
         text = text.lower()

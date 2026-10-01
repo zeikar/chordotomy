@@ -106,8 +106,8 @@ const assertFieldOrder = (timeline) => {
 };
 const spans = (timeline) => timeline.segments.map((s) => [s.start_beat, s.end_beat]);
 
-test("upgrade turns a schema-4 timeline into a 6 by the DSP with nothing edited", () => {
-  assert.equal(base.schema_version, 6);
+test("upgrade turns a schema-4 timeline into a 7 by the DSP with nothing edited", () => {
+  assert.equal(base.schema_version, 7);
   assert.deepEqual(Object.keys(base), Object.keys(v4));
   // In the CLI's order: the engine follows the chordotomy version, which is the DSP's.
   assert.deepEqual(Object.entries(base.generator), [
@@ -124,20 +124,29 @@ test("upgrade turns a schema-4 timeline into a 6 by the DSP with nothing edited"
   assert.equal(Edit.upgrade(base), base);
 });
 
-test("upgrade turns a schema-5 timeline into a 6 by the DSP, keeping its edits", () => {
+test("upgrade turns a schema-5 timeline into a 7 by the DSP, keeping its edits", () => {
   const v5 = deepFreeze({
     ...setChord(base, 2, "D:7", "F#"),
     schema_version: 5,
     generator: { name: "chordotomy", version: "0.1.0" },
   });
   const upgraded = Edit.upgrade(v5);
-  assert.equal(upgraded.schema_version, 6);
+  assert.equal(upgraded.schema_version, 7);
   assert.deepEqual(upgraded.generator, {
     name: "chordotomy",
     version: "0.1.0",
     engine: { name: "dsp", version: "0.1.0" },
   });
   assert.equal(upgraded.segments, v5.segments);
+  assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
+});
+
+test("upgrade turns a schema-6 timeline into a 7 that keeps its generator and segments", () => {
+  const v6 = deepFreeze({ ...setChord(base, 2, "D:7", "F#"), schema_version: 6 });
+  const upgraded = Edit.upgrade(v6);
+  assert.equal(upgraded.schema_version, 7);
+  assert.equal(upgraded.generator, v6.generator);
+  assert.equal(upgraded.segments, v6.segments);
   assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
 });
 
@@ -192,6 +201,15 @@ test("re-picking a segment's own chord and bass is no edit", () => {
   assert.equal(setChord(base, 4, "N", null), base);
   assert.equal(setChord(base, 4, "N", "C"), base); // N takes no bass, so this is N again
   assert.notEqual(setChord(base, 1, "C:maj", "C"), base); // a new bass is an edit
+});
+
+test("a diminished or sus2 triad is taken and analyzed", () => {
+  const fields = (s) => [s.chord, s.bass, s.inversion, s.numeral, s.role, s.function, s.edited];
+  const dim = setChord(base, 2, "B:dim", "D");
+  assert.equal(dim.key.label, "C:maj");
+  assert.deepEqual(fields(dim.segments[2]), ["B:dim", "D", "first", "vii°", "diatonic", "dominant", true]);
+  const sus2 = setChord(base, 2, "C:sus2", "D");
+  assert.deepEqual(fields(sus2.segments[2]), ["C:sus2", "D", "first", "Isus2", "diatonic", "tonic", true]);
 });
 
 test("a chord or bass outside the vocabulary changes nothing", () => {
@@ -392,20 +410,23 @@ test("serialize writes the file as the CLI does", () => {
   const timeline = setChord(base, 1, "F#:hdim7", "F#");
   const text = Edit.serialize(timeline);
   assert.deepEqual(JSON.parse(text), timeline);
-  assert.ok(text.startsWith('{\n  "schema_version": 6,\n'));
+  assert.ok(text.startsWith('{\n  "schema_version": 7,\n'));
   assert.ok(text.endsWith("}\n"));
   assert.ok(text.includes('"numeral": "viiø7/V"'));
 });
 
-test("a 6 keeps the engine it was read with, through an edit to the saved file", () => {
+test("a 6 keeps the engine it was read with, through the upgrade and an edit to the saved file", () => {
   const generator = {
     name: "chordotomy",
     version: "0.0.0",
     engine: { name: "lv-chordia", version: "1.1.0" },
   };
-  const model = deepFreeze({ ...base, generator });
-  assert.equal(Edit.upgrade(model), model);
-  const saved = JSON.parse(Edit.serialize(setChord(model, 1, "F#:hdim7", "F#")));
+  const model = deepFreeze({ ...base, schema_version: 6, generator });
+  const upgraded = Edit.upgrade(model);
+  assert.equal(upgraded.generator, generator);
+  assert.equal(Edit.upgrade(upgraded), upgraded); // a 7 as it is
+  const saved = JSON.parse(Edit.serialize(setChord(upgraded, 1, "F#:hdim7", "F#")));
+  assert.equal(saved.schema_version, 7);
   assert.deepEqual(Object.entries(saved.generator), Object.entries(generator));
 });
 

@@ -13,8 +13,9 @@ from itertools import groupby, pairwise
 import numpy as np
 
 ROOTS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-# Left out, for the reasons in docs/ARCHITECTURE.md: maj6 (min7's pitch set), sus2 (sus4's), the
-# augmented and diminished triads, and extensions (9, 11, 13, add9).
+# Left out, for the reasons in docs/ARCHITECTURE.md: maj6 (min7's pitch set, I6 reads as a
+# first-inversion figure, and the model never emits it); add9 and 9/11/13 (beyond a beat-median
+# chroma, where the fifth's twelfth lands on the ninth; the model maps them to sevenths).
 QUALITIES = {
     "maj": (0, 4, 7),
     "min": (0, 3, 7),
@@ -25,11 +26,15 @@ QUALITIES = {
     "hdim7": (0, 3, 6, 10),
     "dim7": (0, 3, 6, 9),
     "sus4": (0, 5, 7),
+    "aug": (0, 4, 8),
+    "dim": (0, 3, 6),
+    "sus2": (0, 2, 7),
 }
 # Quality-major, and the order is the tie-break: smooth takes the first argmax.
 # Pitch-set twins score exactly alike without bass evidence (G:min6 and E:hdim7; the four dim7
-# labels on one set), and then the earlier label wins: min6 over hdim7, the lowest root of a dim7.
-# resolve_twins then respells a diminished twin by where it leads.
+# labels on one set; C:aug, E:aug and G#:aug; C:sus2 and G:sus4), and then the earlier label wins:
+# min6 over hdim7, the lowest root of a dim7 or an aug, sus4 over sus2. resolve_twins then
+# respells a diminished twin by where it leads.
 LABELS = [f"{root}:{quality}" for quality in QUALITIES for root in ROOTS] + ["N"]
 # A tone's first four partials in semitones above it: the fundamental, the octave, the twelfth
 # and the double octave. Partial k weighs PARTIAL_DECAY ** (k - 1) in a template.
@@ -85,9 +90,9 @@ BASS_WEIGHT = 0.3
 BASS_TONE = 0.7
 # Sharpens score gaps into likelihood ratios: a gap g on one beat is worth g / TEMPERATURE nats
 # against the transition cost. Too high and two-beat chord changes are smoothed away. The
-# self-loop spreads what it leaves over the other 108 labels, so at period 0.5 leaving a chord and
-# coming back costs about 12.6 nats. The suite's binding case, the two-beat A:min/C inside C:maj
-# at 0.24 per beat, holds up to 0.039.
+# self-loop spreads what it leaves over the other 144 labels, so at period 0.5 leaving a chord and
+# coming back costs about 13.2 nats. The suite's binding case, the two-beat A:min/C inside C:maj
+# at 0.24 per beat, holds up to 0.037.
 TEMPERATURE = 0.03
 # The expected chord length in seconds, not beats, so a tracker locked at half or double tempo
 # does not halve or double it (research pitfall 3).
@@ -130,9 +135,15 @@ QUALITY_OFFSET = {
     # The largest: Tiny AAM, annotated in maj and min only, scores every sus4 call as a miss, and a
     # played sus4 clears its maj by more than a played seventh clears its triad. Pinned from both
     # sides: at -0.2 Tiny AAM's root falls under its floor; the suite's four-beat G:sus4 clears
-    # G:maj by 0.27 over its beats here, so at -0.3 it falls under the 0.19 an extra chord change
+    # G:maj by 0.27 over its beats here, so at -0.3 it falls under the 0.20 an extra chord change
     # costs and is smoothed into the G:maj after it.
     "sus4": -0.25,
+    # Provisional, dim7's value until the v5 offsets are tuned.
+    "aug": -0.1,
+    "dim": -0.1,
+    # One value for both twins (C:sus2 is G:sus4's pitch set), so the bass, not the offset, tells
+    # them apart. Provisional until the v5 offsets are tuned.
+    "sus2": -0.25,
 }
 
 
@@ -151,7 +162,7 @@ def _correlate(templates: np.ndarray, chroma: np.ndarray) -> np.ndarray:
 
 
 def match(treble: np.ndarray, bass: np.ndarray) -> np.ndarray:
-    """Score treble and bass chroma columns (12, n) against every label, shape (109, n).
+    """Score treble and bass chroma columns (12, n) against every label, shape (145, n).
 
     A chord's score is the correlation of the treble chroma with its template, in [-1, 1], plus
     BASS_WEIGHT times the correlation of the bass chroma with its bass profile, plus its quality's
@@ -183,7 +194,7 @@ def no_chord(
 
 
 def smooth(scores: np.ndarray, forced: np.ndarray, durations: np.ndarray) -> np.ndarray:
-    """Viterbi-decode (109, n) scores into one label index per beat.
+    """Viterbi-decode (145, n) scores into one label index per beat.
 
     forced is (n,) bool, the beats that can only be N (no_chord). durations is (n - 1,) seconds,
     the gap from each beat to the next.
@@ -360,8 +371,8 @@ BASS_BINS = 36
 # needs to be both a local maximum and at least this fraction of the register's strongest.
 BASS_SALIENCE = 0.5
 # Position names index a quality's QUALITIES intervals in order: third is the seventh of a 7, maj7,
-# min7, hdim7 or dim7 and the added sixth of a min6; sus4 has no third, and its first is the
-# fourth.
+# min7, hdim7 or dim7 and the added sixth of a min6; sus4 and sus2 have no third, and their first
+# is the fourth or the second, their second the fifth.
 INVERSIONS = ("root", "first", "second", "third")
 
 
