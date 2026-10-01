@@ -83,15 +83,25 @@ def _resolves(following: str | None, root: str, tonic: str, mode: str) -> bool:
     return following_root == root and _is_diatonic(offset, quality, mode)
 
 
+def _tonic_triad(label: str) -> str:
+    # A tonic seventh chord (Cmaj7, Am7) settles a key as its triad does, so the tie-breaks
+    # compare it to the key label as that triad.
+    root, quality = label.split(":")
+    triad = {"maj7": "maj", "min7": "min"}.get(quality, quality)
+    return f"{root}:{triad}"
+
+
 def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
     """Rank all 24 keys for a list of (chord label, beats); empty if there is no chord."""
     beats = Counter[str]()
+    tonic_beats = Counter[str]()
     for label, n in progression:
         if label != "N":
             beats[label] += n
+            tonic_beats[_tonic_triad(label)] += n
     if not beats:
         return []
-    first = next(label for label, _ in progression if label != "N")
+    first = _tonic_triad(next(label for label, _ in progression if label != "N"))
 
     def rank(key: str) -> tuple[int, int, bool]:
         tonic, mode = key.split(":")
@@ -102,7 +112,7 @@ def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
             offset = (ROOTS.index(root) - tonic_index) % 12
             if _is_diatonic(offset, quality, mode):
                 score += n * DEGREE_WEIGHT.get(offset, 1)
-        return score, beats[key], first == key
+        return score, tonic_beats[key], first == key
 
     # sorted is stable, also with reverse=True, so KEYS order is the final tie-break.
     return sorted(KEYS, key=rank, reverse=True)

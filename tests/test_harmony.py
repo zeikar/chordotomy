@@ -43,6 +43,17 @@ def test_relative_keys_are_settled_by_duration() -> None:
     assert estimate_key([("A:min", 2), *loop[1:]])[0] == "A:min"
 
 
+def test_tonic_sevenths_break_ties_like_triads() -> None:
+    triads = estimate_key([("A:min", 2), ("C:maj", 2)])
+    sevenths = estimate_key([("A:min7", 2), ("C:maj7", 2)])
+    assert triads[0] == sevenths[0] == "A:min"
+
+
+def test_tonic_seventh_counts_toward_duration_tie_break() -> None:
+    loop = [("A:min7", 2), ("F:maj", 1), ("C:maj", 1), ("G:maj", 1)]
+    assert estimate_key(loop)[0] == "A:min"
+
+
 def test_first_chord_breaks_ties() -> None:
     assert estimate_key([("C:maj", 1), ("G:maj", 1)] * 2)[0] == "C:maj"
     assert estimate_key([("G:maj", 1), ("C:maj", 1)] * 2)[0] == "G:maj"

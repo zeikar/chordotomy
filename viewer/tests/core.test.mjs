@@ -380,3 +380,10 @@ test("due strikes are scheduled as audio-clock offsets from now", () => {
   // A stopped clock schedules nothing.
   assert.deepEqual(round(at(1.2, { rate: 0 })), { due: [], next: 0 });
 });
+
+test("sameNotes tells respelled twins from different pitch sets", () => {
+  assert.equal(Core.sameNotes("F#:hdim7", "A:min6"), true);
+  assert.equal(Core.sameNotes("C:dim7", "D#:dim7"), true);
+  assert.equal(Core.sameNotes("A:min", "A:min6"), false);
+  assert.equal(Core.sameNotes("N", "A:min"), false);
+});

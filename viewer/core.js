@@ -183,6 +183,11 @@ const Core = (() => {
     return spellAgainst(SHARPS.indexOf(root), chord, keyLabel) + QUALITY_SUFFIX[quality];
   }
 
+  // Two labels on the same notes (F#:hdim7 and A:min6) are respellings, not different sounds.
+  function sameNotes(a, b) {
+    return a !== "N" && b !== "N" && noteSet(a) === noteSet(b);
+  }
+
   function noteSet(chord) {
     return pitchClasses(chord)
       .sort((a, b) => a - b)
@@ -418,6 +423,7 @@ const Core = (() => {
     numeralParts,
     numeralText,
     pitchClasses,
+    sameNotes,
     segmentIndexAt,
     stepIndex,
     strikeIndexAt,

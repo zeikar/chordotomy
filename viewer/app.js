@@ -310,7 +310,10 @@
     $("now-bass").textContent = bass ? `${bass}, ${INVERSION_TEXT[segment.inversion]}` : "None heard";
     $("now-alt").textContent = segment.candidates
       .slice(1)
-      .map((label) => Core.alternativeName(label, segment.chord, keyLabel))
+      .map((label) => {
+        const name = Core.alternativeName(label, segment.chord, keyLabel);
+        return Core.sameNotes(label, segment.chord) ? `${name} (same notes)` : name;
+      })
       .join(", ");
   }
 
