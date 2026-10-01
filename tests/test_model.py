@@ -10,7 +10,7 @@ from chordotomy.chords import LABELS
 from chordotomy.features import HOP, SR
 from chordotomy.model import QUALITY, available, beat_scores, beat_states, fold, to_label
 
-# The submission dictionary's 26 entries on Eb, as the decoder spells them, and the v4 label each
+# The submission dictionary's 26 entries on Eb, as the decoder spells them, and the v5 label each
 # maps to. Literal, deliberately not built from the module's table.
 SUBMISSION_ON_EB = {
     "Eb:min/b7": "D#:min",
@@ -18,7 +18,7 @@ SUBMISSION_ON_EB = {
     "Eb:maj/b7": "D#:maj",
     "Eb:maj/2": "D#:maj",
     "Eb:sus4(b7)": "D#:sus4",
-    "Eb:sus2": "A#:sus4",
+    "Eb:sus2": "D#:sus2",
     "Eb:sus4": "D#:sus4",
     "Eb:13": "D#:7",
     "Eb:11": "D#:7",
@@ -34,8 +34,8 @@ SUBMISSION_ON_EB = {
     "Eb:min/b3": "D#:min",
     "Eb:maj/5": "D#:maj",
     "Eb:maj/3": "D#:maj",
-    "Eb:dim": "D#:dim7",
-    "Eb:aug": "D#:maj",
+    "Eb:dim": "D#:dim",
+    "Eb:aug": "D#:aug",
     "Eb:min": "D#:min",
     "Eb:maj": "D#:maj",
     "N": "N",
@@ -43,7 +43,7 @@ SUBMISSION_ON_EB = {
 
 
 @pytest.mark.parametrize(("name", "label"), SUBMISSION_ON_EB.items())
-def test_to_label_maps_the_dictionary_onto_v4(name: str, label: str) -> None:
+def test_to_label_maps_the_dictionary_onto_v5(name: str, label: str) -> None:
     assert to_label(name) == label
 
 
@@ -66,17 +66,19 @@ def test_every_dictionary_quality_is_mapped() -> None:
 
 
 def test_fold_sums_the_probability_of_every_name_on_a_label() -> None:
-    names = ["Eb:maj/3", "C:min9", "Eb:aug"]
-    probability = np.array([[0.1, 0.2, 0.3], [0.4, 0.05, 0.01]])
+    names = ["Eb:maj/3", "C:min9", "Eb:maj/5", "Eb:aug"]
+    probability = np.array([[0.1, 0.2, 0.3, 0.15], [0.4, 0.05, 0.01, 0.02]])
 
     scores = fold(names, np.log(probability))
 
     assert scores.shape == (145, 2)
     d_sharp, c_min7 = LABELS.index("D#:maj"), LABELS.index("C:min7")
+    d_sharp_aug = LABELS.index("D#:aug")
     np.testing.assert_allclose(scores[d_sharp], np.log([0.1 + 0.3, 0.4 + 0.01]))
     np.testing.assert_allclose(scores[c_min7], np.log([0.2, 0.05]))
+    np.testing.assert_allclose(scores[d_sharp_aug], np.log([0.15, 0.02]))
     assert np.isneginf(scores[LABELS.index("G:min6")]).all()
-    assert np.isneginf(np.delete(scores, [d_sharp, c_min7], axis=0)).all()
+    assert np.isneginf(np.delete(scores, [d_sharp, c_min7, d_sharp_aug], axis=0)).all()
 
 
 def test_beat_states_take_the_majority_and_break_ties_to_the_lowest_label() -> None:

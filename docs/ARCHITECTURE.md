@@ -460,6 +460,17 @@ The octave constants were planned at 0.75 and 20 changes and moved inward to 0.8
 
 The tracker keeps one tempo per file. Two rules that followed a tempo change inside a file were built and measured, and both are out. The hybrid: the tempogram's local tempo, median-filtered over 10 s, replaced the global tempo when it stayed more than 10 % off it, folded to the octave, for 16 s. It switched 9 Tiny AAM tracks and raised Tiny AAM's CMLt from 0.686 to 0.785, +9.9 pp. It also switched four of GuitarSet's 180 constant-tempo takes and an 86 BPM pop recording whose local tempo flickers between metrical levels (86, 112, 129 and 172 BPM): the median departs without any change, and following it gave the recording 668 beats of 0.30 to 0.88 s for the global tracker's 437 of 0.60 to 0.74 s. A gate that also required the departure to read one tempo (at least 0.75 of its unsmoothed frames within 10 % of its median) stopped all five and raised CMLt to 0.813, +12.7 pp, but a syncopated figure held over an unchanged pulse reads one tempo too. Synthesized at 74 to 105 BPM, 22 s of hats in 3-3-2 sixteenths or in quarter-note triplets after 22 s on the eighths switched 39 of 40 clips under both rules, hats at a tenth of the kick's level included. Seven of GuitarSet's 30 s takes already hold one steady off-tempo reading for 10 to 15.6 s, and with the gate, one step of the hybrid's window, departure or hold switched takes or the pop recording again. Tiny AAM's tempo changes are 4:3 and 3:2 metric modulations, the ratios syncopation reads, and nothing measured told them apart: not the tempogram's support for the global period inside the departure, not the global grid's onset strength there, and not a curve read from the harmonic part instead. Syncopation is everyday in pop and a tempo change inside a song is rare, so the beat grid stays on the pulse. `test_a_syncopated_constant_tempo_keeps_the_global_grid` holds it there.
 
+### Vocabulary v5
+
+Vocabulary v5 adds `aug`, `dim` and `sus2`. Model engine, at the commit that adds these rows: lv-chordia's `aug`, `dim` and `sus2` map to their own labels instead of `maj`, `dim7` and the sus4 a fifth up.
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+
+Against "Current rows", Tiny AAM is unchanged to every digit and GuitarSet's root rises from 0.826 to 0.827. Two takes move, 00_BN2-166-Ab and 03_Rock2-85-F, whose root rises by 6.3 and 6.2 pp: mapped to a `dim7`, a diminished triad could be respelled by where it leads as another root of its diminished-seventh set (`G:dim7` as `E:dim7`), and as a `dim` it keeps the model's root. The model labels `dim` on 0.03 % of Tiny AAM's duration and 0.69 % of GuitarSet's, and `aug` and `sus2` on neither.
+
 ### Current rows
 
 `chordotomy evaluate`, at the commit that adds this section, on the final reference (the last beat lasts the gap before it). The analyzer has not changed since the tempo rule was removed. The rows were scored by `evaluate.run` with the model's frames from a cache, which reproduces the CLI's rows to every digit:

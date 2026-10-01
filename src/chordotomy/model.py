@@ -1,7 +1,7 @@
 """The lv-chordia engine: the chords from a pretrained recognizer instead of the DSP's templates.
 
 lv-chordia is the ensemble of Jiang, Chen, Li & Xia (ISMIR 2019): five nets and an HMM decoder
-over a chord dictionary. Its per-frame labels and scores are mapped to the v4 vocabulary and
+over a chord dictionary. Its per-frame labels and scores are mapped to the v5 vocabulary and
 snapped to the DSP's beat grid; the beats, the bass, the twin resolution and the harmony stay
 the DSP's.
 
@@ -25,7 +25,7 @@ import librosa
 import numpy as np
 from scipy.special import logsumexp
 
-from .chords import LABELS, ROOTS
+from .chords import LABELS
 from .features import HOP, SR
 from .harmony import FLATS
 
@@ -45,7 +45,8 @@ _REINSTALL = (
     "reinstall lv-chordia with `uv sync --extra model --reinstall-package lv-chordia`, "
     "or pass --engine dsp"
 )
-# The dictionary's qualities, the slash dropped, to v4's; nothing maps to min6.
+# The dictionary's qualities, the slash dropped, to v5's; nothing maps to min6. Every triad, sus
+# and seventh maps exactly; only the extended chords lose tones.
 QUALITY = {
     "maj": "maj",
     "min": "min",
@@ -55,17 +56,15 @@ QUALITY = {
     "hdim7": "hdim7",
     "dim7": "dim7",
     "sus4": "sus4",
+    "sus2": "sus2",
+    "aug": "aug",
+    "dim": "dim",
     "9": "7",  # loses the ninth
     "11": "7",  # loses the ninth and eleventh
     "13": "7",  # loses the ninth, eleventh and thirteenth
     "maj9": "maj7",  # loses the ninth
     "min9": "min7",  # loses the ninth
     "sus4(b7)": "sus4",  # loses the seventh
-    "sus2": "sus4",  # exact: to_label moves the root up a fifth, as C:sus2 is G:sus4
-    "aug": "maj",  # approximation: keeps root and function, loses the raised fifth
-    # Approximation: "dim" on a pop chart usually means the seventh chord, so this gains a
-    # diminished seventh; a diatonic vii° in major then reads as a borrowed vii°7.
-    "dim": "dim7",
 }
 
 
@@ -87,7 +86,7 @@ def version() -> str:
 
 
 def to_label(name: str) -> str:
-    """The v4 label of a dictionary name, such as Eb:maj/3 -> D#:maj.
+    """The v5 label of a dictionary name, such as Eb:maj/3 -> D#:maj.
 
     The slash is dropped: the bass comes from pick_bass, as on the DSP path.
     """
@@ -96,9 +95,6 @@ def to_label(name: str) -> str:
     root, quality = name.split(":")
     root = FLATS.get(root, root)
     quality = quality.partition("/")[0]
-    if quality == "sus2":
-        # C D G is G C D, the sus4 on the fifth; the DSP's bass then shows C as its inversion.
-        root = ROOTS[(ROOTS.index(root) + 7) % 12]
     return f"{root}:{QUALITY[quality]}"
 
 
