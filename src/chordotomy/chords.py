@@ -32,9 +32,10 @@ QUALITIES = {
 }
 # Quality-major, and the order is the tie-break: smooth takes the first argmax.
 # Pitch-set twins score exactly alike without bass evidence (G:min6 and E:hdim7; the four dim7
-# labels on one set; C:aug, E:aug and G#:aug; C:sus2 and G:sus4), and then the earlier label wins:
-# min6 over hdim7, the lowest root of a dim7 or an aug, sus4 over sus2. resolve_twins then
-# respells a diminished twin by where it leads.
+# labels on one set; C:aug, E:aug and G#:aug), and then the earlier label wins: min6 over hdim7,
+# the lowest root of a dim7 or an aug. resolve_twins then respells a diminished or augmented twin
+# by where it leads. C:sus2 and G:sus4 are twins in the vocabulary only: the DSP never calls
+# sus2 (QUALITY_OFFSET), so it decodes sus4 alone.
 LABELS = [f"{root}:{quality}" for quality in QUALITIES for root in ROOTS] + ["N"]
 # A tone's first four partials in semitones above it: the fundamental, the octave, the twelfth
 # and the double octave. Partial k weighs PARTIAL_DECAY ** (k - 1) in a template.
@@ -138,12 +139,21 @@ QUALITY_OFFSET = {
     # G:maj by 0.27 over its beats here, so at -0.3 it falls under the 0.20 an extra chord change
     # costs and is smoothed into the G:maj after it.
     "sus4": -0.25,
-    # Provisional, dim7's value until the v5 offsets are tuned.
-    "aug": -0.1,
-    "dim": -0.1,
-    # One value for both twins (C:sus2 is G:sus4's pitch set), so the bass, not the offset, tells
-    # them apart. Provisional until the v5 offsets are tuned.
-    "sus2": -0.25,
+    # A maj with a weak fifth leaves two of an aug's three tones (C E of C:maj in C:aug). Scores
+    # are identical on both datasets from -0.20 to -0.30, so -0.25 is the middle of a plateau: the
+    # synthesized V+ needs -0.30 or higher without a bass (-0.35 or higher with one), and aug
+    # calls on the datasets (0.02 % of Tiny AAM at -0.10) only grow as it rises toward 0.
+    "aug": -0.25,
+    # A 7, hdim7 or dim7 with a weak root or fourth tone leaves a dim's three (C Eb Gb of C:hdim7).
+    # Pinned from three sides. The synthesized vii° needs -0.15 or higher. A played dim7 beats its
+    # dim only while dim is not above dim7: at -0.05, or with dim7 at -0.15, three dim7 tests
+    # fail. And the floors want -0.225 or lower; -0.10 gives up 0.24 pp of GuitarSet majmin and
+    # 0.12 pp of sevenths against never calling a dim, and calls it on 0.32 % of Tiny AAM.
+    "dim": -0.10,
+    # The DSP never calls sus2: an added ninth over a major triad scores closer to C:sus2 than a
+    # played C:sus2 does (0.30 against 0.285 over C:maj), so no offset passes both synthesized
+    # cases, and sus2 calls cost Tiny AAM majmin. The model engine and the editor still produce it.
+    "sus2": float("-inf"),
 }
 
 

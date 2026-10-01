@@ -123,7 +123,6 @@ def test_twins_tie_break_on_label_order(no_offsets) -> None:
     scores = match(_chroma("C", "D", "G"), np.zeros((12, 1)))[:, 0]
 
     assert LABELS[scores.argmax()] == "G:sus4"
-    assert scores[LABELS.index("C:sus2")] == scores[LABELS.index("G:sus4")]
 
     # C E G# is the aug on any of its three tones.
     scores = match(_chroma("C", "E", "G#"), np.zeros((12, 1)))[:, 0]
@@ -140,7 +139,6 @@ def test_twins_tie_break_on_label_order(no_offsets) -> None:
         (("G", "A#", "D", "E"), "G", "G:min6"),
         (("C", "D#", "F#", "A"), "A", "A:dim7"),
         (("C", "D#", "F#", "A"), "F#", "F#:dim7"),
-        (("C", "D", "G"), "C", "C:sus2"),
         (("C", "D", "G"), "G", "G:sus4"),
         (("C", "E", "G#"), "E", "E:aug"),
         (("C", "E", "G#"), "G#", "G#:aug"),
@@ -173,7 +171,16 @@ def test_offsets_apply_per_quality(monkeypatch) -> None:
 def test_twins_share_one_offset() -> None:
     # Otherwise the offset, not the bass, would tell G:min6 from E:hdim7.
     assert QUALITY_OFFSET["min6"] == QUALITY_OFFSET["hdim7"]
-    assert QUALITY_OFFSET["sus2"] == QUALITY_OFFSET["sus4"]
+
+
+def test_the_decoder_never_calls_sus2() -> None:
+    # The DSP cannot tell a sus2 from an added ninth (see QUALITY_OFFSET); the model engine and
+    # the editor produce sus2, the decoder does not.
+    scores = match(_chroma("C", "D", "G"), _chroma("C"))
+    sus2 = [i for i, label in enumerate(LABELS) if label.endswith(":sus2")]
+
+    assert np.all(np.isneginf(scores[sus2]))
+    assert not any(label.endswith(":sus2") for label in _labels(np.repeat(scores, 4, axis=1)))
 
 
 def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:

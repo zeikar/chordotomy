@@ -471,6 +471,32 @@ Vocabulary v5 adds `aug`, `dim` and `sus2`. Model engine, at the commit that add
 
 Against "Current rows", Tiny AAM is unchanged to every digit and GuitarSet's root rises from 0.826 to 0.827. Two takes move, 00_BN2-166-Ab and 03_Rock2-85-F, whose root rises by 6.3 and 6.2 pp: mapped to a `dim7`, a diminished triad could be respelled by where it leads as another root of its diminished-seventh set (`G:dim7` as `E:dim7`), and as a `dim` it keeps the model's root. The model labels `dim` on 0.03 % of Tiny AAM's duration and 0.69 % of GuitarSet's, and `aug` and `sus2` on neither.
 
+DSP engine, at the commit that adds these rows (`aug` -0.25, `dim` -0.10, `sus2` never called):
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.842 | 0.796 | 0.750 | 0.750 | 0.693 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `dsp` | 0.722 | 0.661 | 0.529 | 0.345 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+
+Against "Current rows" Tiny AAM's root and majmin rise by 0.2 pp, and GuitarSet's majmin and sevenths fall by 0.1 pp and 0.2 pp, with the beat columns unchanged. The DSP labels `dim` on 0.32 % of Tiny AAM's duration and 1.5 % of GuitarSet's, `aug` on neither, and never `sus2`.
+
+#### Tuning the v5 offsets
+
+The 145-state transition costs nothing and gains a little. With `aug`, `dim` and `sus2` at -1, so that they never win and the only change is that the Viterbi's switch probability now spreads over 144 other states instead of 108, Tiny AAM's root and majmin rise from 0.83937 and 0.79478 to 0.84094 and 0.79683 (+0.16 and +0.20 pp), its sevenths stay at 0.750, and GuitarSet's majmin and sevenths are 0.66298 and 0.53029 against 0.662 and 0.531. That diagnostic point is what the new qualities are priced against. It is never a candidate, since it calls no new quality at all.
+
+The DSP does not call `sus2`. `C:sus2` is `G:sus4`'s pitch set, and two synthesized cases pull its offset apart. A played Csus2 between C chords must be told from the triad: `C:sus2` clears `C:maj` by 0.285 less the offset on its beats, so the pair must stay at -0.175 or higher. A C triad with an added D, first an octave above it and then inside the voicing (an added ninth), must stay `C:maj`, and `C:sus2` clears `C:maj` by 0.30 there, more than it does on the played chord, so the pair must be -0.275 or lower. The existing four-beat `G:sus4` into `G:maj` needs -0.25 or higher. No shared value passes all three, nor does any one-step move of the decode constants. The datasets agree: at -0.25 `sus2` labels 1.5 % of Tiny AAM and costs 1.0 pp of its majmin (0.78686 against 0.79683), and holding Tiny AAM's floors takes -0.30. `sus2` stays in the vocabulary, the harmony and the viewer, and comes from the model engine or a manual edit; its offset is -inf, which `smooth` reads as a label that is never chosen and `segment` ranks last, so never a candidate. `sus4` stays at -0.25.
+
+`aug` and `dim` were swept on a 0.05 grid from 0 to -0.6, every other variable at its v4 value, against floors taken from the diagnostic point: Tiny AAM root 0.84094, majmin 0.79683, sevenths within 0.5 pp of 0.75020, `N_est` unchanged and the new qualities' share at most 1 %; GuitarSet majmin 0.66298 and sevenths 0.53029. The objective was GuitarSet sevenths, then tetrads. The points that hold the floors are all the same point: `aug` and `dim` so low that neither is ever called, which scores exactly the diagnostic row. The synthesized suite does not allow it. The `vii°` case needs `dim` at -0.15 or higher, and the floors need -0.225 or lower. The bass-less `V+` case needs `aug` at -0.30 or higher, a bound the floors do not touch: from -0.20 to -0.30 `aug` scores the same on both datasets, so it sits at -0.25, the middle of that plateau.
+
+So `aug` and `dim` are called, at a stated price: any floor may give at most 0.3 pp against the diagnostic point, Tiny AAM's root and majmin stay at or above the "Current rows" values (0.83937 and 0.79478), and the new qualities stay under 1 % of Tiny AAM. At the chosen point, against the diagnostic point:
+
+| | root | majmin | sevenths | tetrads |
+|---|---|---|---|---|
+| Tiny AAM | +0.07 pp | -0.05 pp | -0.01 pp | -0.01 pp |
+| GuitarSet | -0.07 pp | -0.24 pp | -0.12 pp | -0.24 pp |
+
+The 0.3 pp is the same price v4 paid for `PARTIAL_DECAY`. `dim` was chosen between -0.10 and -0.15 by suite margin, v4's rule. Each variable was moved one step either way, down being more negative or a smaller constant, with the suite and the floors checked at each. At `dim` -0.10, three neighbours fail the suite: `sus4` at -0.30 (the suspension test, as in v4), and `dim` at -0.05 and `dim7` at -0.15, each failing the same three `dim7` tests, because a played diminished seventh stays a `dim7` only while `dim` is not above it. At `dim` -0.15 four neighbours fail: `sus4` at -0.30, `dim` at -0.20 and `PARTIAL_DECAY` 0.9 (the `vii°` case), and `7` at +0.05 (the `vii°` case), so -0.10 is the point. `aug` at -0.20 and -0.30 keep the suite green and score the same. Elsewhere the floors bind, as in v4: one step of `sus4` up (-0.20), `TEMPERATURE` down (0.025) or `BASS_TONE` up (0.8) takes Tiny AAM's root and majmin to 0.8356 and 0.7882, 0.8360 and 0.7880, and 0.8307 and 0.7861, and `7` at +0.05 takes its majmin and sevenths to 0.7886 and 0.7403. `BASS_WEIGHT` 0.25 leaves Tiny AAM's majmin at 0.79476 against 0.79478, at its bar. On GuitarSet, `BASS_WEIGHT` 0.35, `min6`/`hdim7` at -0.05 and `PARTIAL_DECAY` 0.7 take majmin to 0.6569, 0.6564 and 0.6582, and `7` at -0.05 takes sevenths to 0.5242.
+
 ### Current rows
 
 `chordotomy evaluate`, at the commit that adds this section, on the final reference (the last beat lasts the gap before it). The analyzer has not changed since the tempo rule was removed. The rows were scored by `evaluate.run` with the model's frames from a cache, which reproduces the CLI's rows to every digit:

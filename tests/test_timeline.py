@@ -299,6 +299,60 @@ def test_a_suspension_resolves_to_its_triad(synth, tmp_path) -> None:
     assert [(s["bass"], s["inversion"]) for s in segments[1:3]] == [("G", "root"), ("G", "root")]
 
 
+def test_a_diminished_triad_on_the_leading_tone_is_diatonic(synth, tmp_path) -> None:
+    progression = [("C:maj", 4, 36), ("B:dim", 2, 38), ("C:maj", 4, 40)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "B:dim", "C:maj"]
+    assert [s["numeral"] for s in segments] == ["I", "vii°", "I"]
+    assert [s["inversion"] for s in segments] == ["root", "first", "first"]
+    assert (segments[1]["role"], segments[1]["function"]) == ("diatonic", "dominant")
+
+
+@pytest.mark.parametrize(
+    ("progression", "chord_midi"),
+    [
+        ([("C:maj", 4, 36), ("G:aug", 4, 43), ("C:maj", 4, 36)], 48),
+        ([("C:maj", 4), ("G:aug", 4), ("C:maj", 4)], 60),
+    ],
+    ids=["bass", "no-bass"],
+)
+def test_an_augmented_dominant_is_spelled_by_where_it_leads(
+    synth, tmp_path, progression, chord_midi
+) -> None:
+    # Over a G bass the recognizer decodes G:aug on the bass. Without one, the lowest root
+    # D#:aug wins the tie and resolve_twins respells it a fifth above the C.
+    segments = analyze(_write(tmp_path, synth(progression, chord_midi=chord_midi)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["C:maj", "G:aug", "C:maj"]
+    assert (segments[1]["numeral"], segments[1]["role"]) == ("V+", "chromatic")
+    if chord_midi == 60:
+        assert segments[1]["candidates"][1] == "D#:aug"
+
+
+def test_the_dsp_never_calls_a_suspended_second(synth, tmp_path) -> None:
+    # A played Csus2 and a triad with an added ninth cannot both be told from the triad, so the
+    # decoder leaves sus2 to the model engine and the editor.
+    progression = [("C:maj", 4, 36), ("C:sus2", 4, 36), ("C:maj", 4, 36)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert not any(
+        label.endswith(":sus2") for s in segments for label in [s["chord"], *s["candidates"]]
+    )
+
+
+def test_an_added_ninth_is_not_a_suspended_second(synth, tmp_path) -> None:
+    # A D an octave above the triad, then inside it, is C:sus2's second; the third still sounds,
+    # so it is C:maj.
+    progression = [("C:maj", 4, 36, 74), ("C:maj", 4, 36, 62)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert {(s["chord"], s["numeral"]) for s in segments} == {("C:maj", "I")}
+
+
 @pytest.mark.parametrize(
     ("following", "bass", "numeral", "role"),
     [("G:maj", 43, "viiø7/V", "secondary_dominant"), ("F:maj", 41, "#ivø7", "chromatic")],
