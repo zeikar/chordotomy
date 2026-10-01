@@ -55,6 +55,8 @@ TARGETS = {
     "min": {3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII"},
 }
 PARALLEL = {"maj": "min", "min": "maj"}
+# Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule.
+TRIAD = {"7": "maj", "maj7": "maj", "min7": "min", "min6": "min", "hdim7": "dim", "dim7": "dim"}
 CANDIDATES = 3
 
 
@@ -70,13 +72,36 @@ def parse_key(text: str) -> str:
 
 
 def _is_diatonic(offset: int, quality: str, mode: str) -> bool:
-    # The raised leading tone is admitted in two harmonic-minor chords only, the dominant (V, V7)
-    # and the diminished seventh on the leading tone (#vii°7), so it does not make F-G#-C diatonic.
+    # The raised leading tone is admitted in five harmonic-minor chords and nowhere else: the
+    # dominant (V, V7), the diminished triad and seventh on the leading tone (#vii°, #vii°7) and
+    # the augmented mediant (III+). So it does not make F-G#-C or E-G#-C diatonic.
     if mode == "min" and (
-        (offset == 7 and quality in ("maj", "7")) or (offset == 11 and quality == "dim7")
+        (offset == 7 and quality in ("maj", "7"))
+        or (offset == 11 and quality in ("dim", "dim7"))
+        or (offset == 3 and quality == "aug")
     ):
         return True
     return all((offset + interval) % 12 in SCALE[mode] for interval in QUALITIES[quality])
+
+
+def _is_borrowed(offset: int, quality: str, mode: str) -> bool:
+    # A chord of the parallel mode, or a tetrad on one of its triads whose fourth tone lies in
+    # either mode: a seventh the borrowed triad takes from home is still borrowed color. So in
+    # major bVIImaj7, ii°7 (the notes of the borrowed vii°7), iadd6 and vadd6 are borrowed; in
+    # minor I7 and IV7 are, and they join the overlap of I and IV with V/iv and V/VII below. A
+    # triad of the home mode with a foreign seventh stays chromatic (IV7 in major, VIImaj7 and
+    # iadd6 in minor), as do sevenths outside both scales (bIII7, bVI7, Vmaj7). This only widens
+    # what borrowed covers; the precedence stays diatonic, secondary dominant, leading-tone chord,
+    # borrowed, chromatic.
+    parallel = PARALLEL[mode]
+    if _is_diatonic(offset, quality, parallel):
+        return True
+    if quality not in TRIAD:
+        return False
+    fourth = (offset + QUALITIES[quality][3]) % 12
+    return _is_diatonic(offset, TRIAD[quality], parallel) and (
+        fourth in SCALE[mode] or fourth in SCALE[parallel]
+    )
 
 
 def _resolves(following: str | None, root: str, tonic: str, mode: str) -> bool:
@@ -150,15 +175,18 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
         function = FUNCTIONS[NUMERALS[mode][offset].lstrip("#b")]
         return {"numeral": text, "role": "diatonic", "function": function, "target": None}
     target_offset = (offset - 7) % 12
+    # An augmented triad never counts: it is symmetric, so its root is the bass's or
+    # resolve_twins's spelling, not a fifth relation that identifies it, and C+ = E+ = G#+ would be
+    # V+/IV, V+/vi or bVI+ by tie-break alone. sus2 never counts either, as sus4 does not.
     secondary = quality in ("maj", "7") and target_offset in TARGETS[mode]
-    borrowed = _is_diatonic(offset, quality, PARALLEL[mode])
+    borrowed = _is_borrowed(offset, quality, mode)
     if secondary:
         target = TARGETS[mode][target_offset]
         resolution = ROOTS[(ROOTS.index(tonic) + target_offset) % 12]
-        # Only the major triads on the tonic and subdominant of a minor key are also borrowed, and
-        # for those the very next chord being diatonic on the target's root is the one thing that
-        # tells V/VII from a borrowed IV (G:maj and G:7 both resolve it; D:7 does not resolve
-        # A:maj, as it is not diatonic); another chord or an N is no resolution.
+        # Only the major triads and dominant sevenths on the tonic and subdominant of a minor key
+        # are also borrowed, and for those the very next chord being diatonic on the target's root
+        # is the one thing that tells V/VII from a borrowed IV (G:maj and G:7 both resolve it; D:7
+        # does not resolve A:maj, as it is not diatonic); another chord or an N is no resolution.
         # Outside this overlap and the leading-tone chords below, `following` is ignored, so a
         # label depends on the chord and key alone.
         if not borrowed or _resolves(following, resolution, tonic, mode):
@@ -169,7 +197,7 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
                 "function": None,
                 "target": target,
             }
-    if quality in ("dim7", "hdim7"):
+    if quality in ("dim7", "hdim7", "dim"):
         # The fifth relation of a dominant identifies it on its own; a leading-tone chord only by
         # where it goes, so it takes the same resolution test as the overlap above, always.
         target_offset = (offset + 1) % 12

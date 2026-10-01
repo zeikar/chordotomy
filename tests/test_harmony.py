@@ -121,6 +121,9 @@ def test_estimate_key_takes_every_quality() -> None:
         ("D:min7", "A:min", "iv7", "predominant"),
         ("F:maj7", "A:min", "VImaj7", "tonic"),
         ("G#:dim7", "A:min", "#vii°7", "dominant"),
+        # Harmonic minor's raised leading tone, admitted in these two as in V and #vii°7.
+        ("G#:dim", "A:min", "#vii°", "dominant"),
+        ("C:aug", "A:min", "III+", "tonic"),
         # The scale test admits the diminished triads as they are.
         ("B:dim", "C:maj", "vii°", "dominant"),
         ("B:dim", "A:min", "ii°", "predominant"),
@@ -156,8 +159,6 @@ def test_analyze_chord_n() -> None:
         ("A:7", "C:maj", "V7/ii", "ii"),
         ("B:7", "C:maj", "V7/iii", "iii"),
         ("C:7", "C:maj", "V7/IV", "IV"),
-        ("A:7", "A:min", "V7/iv", "iv"),
-        ("D:7", "A:min", "V7/VII", "VII"),
         ("C:7", "A:min", "V7/VI", "VI"),
         ("B:7", "A:min", "V7/V", "V"),
     ],
@@ -178,6 +179,11 @@ def test_analyze_chord_secondary_dominant(label: str, key: str, numeral: str, ta
         *[("A:maj", f, "I", "borrowed", None) for f in ("D:7", "D:maj", "N", "E:maj", None)],
         *[("D:maj", f, "V/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:7")],
         *[("D:maj", f, "IV", "borrowed", None) for f in ("G:min", "A:min", "N", None)],
+        # Their dominant sevenths are borrowed too, as A major's triads with minor's seventh.
+        ("A:7", "D:min", "V7/iv", "secondary_dominant", "iv"),
+        *[("A:7", f, "I7", "borrowed", None) for f in ("D:7", "N", None)],
+        *[("D:7", f, "V7/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:7")],
+        *[("D:7", f, "IV7", "borrowed", None) for f in ("G:min", "N", None)],
     ],
 )
 def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(
@@ -195,10 +201,16 @@ def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(
     ("label", "key", "following", "numeral", "role"),
     [
         ("D:maj", "C:maj", "A:min", "V/V", "secondary_dominant"),
-        ("D:7", "A:min", "N", "V7/VII", "secondary_dominant"),
         ("A#:maj", "C:maj", "D#:maj", "bVII", "borrowed"),
         ("D:maj7", "A:min", "G:maj", "IVmaj7", "borrowed"),
         ("B:hdim7", "A:min", "C:maj", "iiø7", "diatonic"),
+        # Diatonic first: a diminished triad on a leading tone of the key's own is its degree.
+        ("B:dim", "C:maj", "C:maj", "vii°", "diatonic"),
+        ("B:dim", "A:min", "C:maj", "ii°", "diatonic"),
+        # An augmented triad is never a secondary dominant: its root is the bass's or
+        # resolve_twins's spelling of a symmetric chord, not a fifth relation.
+        ("G:aug", "C:maj", "C:maj", "V+", "chromatic"),
+        ("C:aug", "C:maj", "F:maj", "I+", "chromatic"),
     ],
 )
 def test_following_is_ignored_outside_the_overlap(
@@ -227,6 +239,15 @@ def test_following_is_ignored_outside_the_overlap(
         ("D#:dim7", "A:min", "E:maj", "vii°7/V", "secondary_dominant", "V"),
         ("C#:dim7", "A:min", "D:min", "vii°7/iv", "secondary_dominant", "iv"),
         ("B:dim7", "A:min", "C:maj", "vii°7/III", "secondary_dominant", "III"),
+        # The diminished triad leads up a semitone as its sevenths do.
+        *[
+            ("C#:dim", "C:maj", f, "vii°/ii", "secondary_dominant", "ii")
+            for f in ("D:min", "D:min7")
+        ],
+        ("C#:dim", "C:maj", "D:maj", "#i°", "chromatic", None),
+        ("F#:dim", "C:maj", "G:maj", "vii°/V", "secondary_dominant", "V"),
+        ("F#:dim", "C:maj", "F:maj", "#iv°", "chromatic", None),
+        ("D#:dim", "A:min", "E:maj", "vii°/V", "secondary_dominant", "V"),
     ],
 )
 def test_leading_tone_chord_resolves_only_on_a_diatonic_chord_on_the_target_root(
@@ -262,6 +283,15 @@ def test_leading_tone_chord_resolves_only_on_a_diatonic_chord_on_the_target_root
         ("G#:hdim7", "A:min", "#viiø7"),
         # D F Ab lies in C minor as it is.
         ("D:dim", "C:maj", "ii°"),
+        ("A#:sus2", "C:maj", "bVIIsus2"),
+        # C minor's harmonic III+.
+        ("D#:aug", "C:maj", "bIII+"),
+        # A tetrad on a C minor triad, its fourth tone in either mode of C: D:dim7 has the notes
+        # of the borrowed vii°7.
+        ("A#:maj7", "C:maj", "bVIImaj7"),
+        ("D:dim7", "C:maj", "ii°7"),
+        ("C:min6", "C:maj", "iadd6"),
+        ("G:min6", "C:maj", "vadd6"),
     ],
 )
 def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
@@ -278,17 +308,25 @@ def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
     [
         ("C#:maj", "C:maj", "bII"),
         ("F#:maj", "C:maj", "#IV"),
+        # A triad of the key's own mode with a foreign seventh or sixth is not borrowed: F A C is
+        # not in C minor, G B D and A C E are not in A major.
         ("F:7", "C:maj", "IV7"),
-        # The seventh is outside C minor, so these are not borrowed.
+        ("G:maj7", "A:min", "VIImaj7"),
+        ("A:min6", "A:min", "iadd6"),
+        # The seventh is outside both modes of C, so these are not borrowed.
         ("D#:7", "C:maj", "bIII7"),
         ("G#:7", "C:maj", "bVI7"),
-        ("A#:maj7", "C:maj", "bVIImaj7"),
+        ("G:maj7", "C:maj", "Vmaj7"),
         ("G#:min", "C:maj", "bvi"),
         ("B:min", "C:maj", "vii"),
-        # The leading tone counts only in the dominant and the diminished seventh on it.
+        # The leading tone counts only in V, V7, #vii°, #vii°7 and III+: not in these.
         ("F:min", "A:min", "vi"),
+        ("E:aug", "A:min", "V+"),
         # With no chord to lead into, a leading-tone chord is only its degree.
         ("F#:hdim7", "C:maj", "#ivø7"),
+        ("F#:dim", "C:maj", "#iv°"),
+        # D F Ab is in neither mode of A.
+        ("D:dim", "A:min", "iv°"),
         # maj7 and sus4 are never secondary dominants: not V/V, not V/iii.
         ("D:maj7", "C:maj", "IImaj7"),
         ("B:sus4", "C:maj", "VIIsus4"),
@@ -302,7 +340,8 @@ def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
         ("A#:dim7", "A:min", "#i°7"),
         ("G:dim7", "A:min", "vii°7"),
         ("D#:dim7", "A:min", "#iv°7"),
-        # An augmented triad is in neither mode of C, on any root.
+        # The parallel minor's III+ is the one borrowed augmented triad; any other is chromatic,
+        # and never a secondary dominant.
         ("G:aug", "C:maj", "V+"),
         ("C:aug", "C:maj", "I+"),
         # A diminished triad's root is raised too.

@@ -89,22 +89,43 @@ const Harmony = (() => {
     min: { 3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII" },
   };
   const PARALLEL = { maj: "min", min: "maj" };
+  // Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule.
+  const TRIAD = { 7: "maj", maj7: "maj", min7: "min", min6: "min", hdim7: "dim", dim7: "dim" };
   const CANDIDATES = 3;
 
   const mod = (n, m) => ((n % m) + m) % m;
 
   function isDiatonic(offset, quality, mode) {
-    // The raised leading tone is admitted in two harmonic-minor chords only, the dominant (V, V7)
-    // and the diminished seventh on the leading tone (#vii°7), so it does not make F-G#-C
-    // diatonic.
+    // The raised leading tone is admitted in five harmonic-minor chords and nowhere else: the
+    // dominant (V, V7), the diminished triad and seventh on the leading tone (#vii°, #vii°7) and
+    // the augmented mediant (III+). So it does not make F-G#-C or E-G#-C diatonic.
     if (
       mode === "min" &&
       ((offset === 7 && (quality === "maj" || quality === "7")) ||
-        (offset === 11 && quality === "dim7"))
+        (offset === 11 && (quality === "dim" || quality === "dim7")) ||
+        (offset === 3 && quality === "aug"))
     ) {
       return true;
     }
     return QUALITIES[quality].every((interval) => SCALE[mode].has((offset + interval) % 12));
+  }
+
+  // A chord of the parallel mode, or a tetrad on one of its triads whose fourth tone lies in
+  // either mode: a seventh the borrowed triad takes from home is still borrowed color. So in major
+  // bVIImaj7, ii°7 (the notes of the borrowed vii°7), iadd6 and vadd6 are borrowed; in minor I7
+  // and IV7 are, and they join the overlap of I and IV with V/iv and V/VII. A triad of the home
+  // mode with a foreign seventh stays chromatic (IV7 in major, VIImaj7 and iadd6 in minor), as do
+  // sevenths outside both scales (bIII7, bVI7, Vmaj7). This only widens what borrowed covers; the
+  // precedence stays diatonic, secondary dominant, leading-tone chord, borrowed, chromatic.
+  function isBorrowed(offset, quality, mode) {
+    const parallel = PARALLEL[mode];
+    if (isDiatonic(offset, quality, parallel)) return true;
+    if (!(quality in TRIAD)) return false;
+    const fourth = (offset + QUALITIES[quality][3]) % 12;
+    return (
+      isDiatonic(offset, TRIAD[quality], parallel) &&
+      (SCALE[mode].has(fourth) || SCALE[parallel].has(fourth))
+    );
   }
 
   function resolves(following, root, tonic, mode) {
@@ -181,15 +202,19 @@ const Harmony = (() => {
       return { numeral: text, role: "diatonic", function: harmonicFunction, target: null };
     }
     let targetOffset = mod(offset - 7, 12);
+    // An augmented triad never counts: it is symmetric, so its root is the bass's or
+    // resolve_twins's spelling, not a fifth relation that identifies it. sus2 never counts either,
+    // as sus4 does not.
     const secondary = (quality === "maj" || quality === "7") && targetOffset in TARGETS[mode];
-    const borrowed = isDiatonic(offset, quality, PARALLEL[mode]);
+    const borrowed = isBorrowed(offset, quality, mode);
     if (secondary) {
       const target = TARGETS[mode][targetOffset];
       const resolution = ROOTS[(ROOTS.indexOf(tonic) + targetOffset) % 12];
-      // Only the major triads on the tonic and subdominant of a minor key are also borrowed, and
-      // for those the very next chord being diatonic on the target's root is the one thing that
-      // tells V/VII from a borrowed IV. Outside this overlap and the leading-tone chords below,
-      // `following` is ignored, so a label depends on the chord and key alone.
+      // Only the major triads and dominant sevenths on the tonic and subdominant of a minor key
+      // are also borrowed, and for those the very next chord being diatonic on the target's root
+      // is the one thing that tells V/VII from a borrowed IV. Outside this overlap and the
+      // leading-tone chords below, `following` is ignored, so a label depends on the chord and key
+      // alone.
       if (!borrowed || resolves(following, resolution, tonic, mode)) {
         return {
           numeral: (quality === "7" ? "V7" : "V") + "/" + target,
@@ -199,7 +224,7 @@ const Harmony = (() => {
         };
       }
     }
-    if (quality === "dim7" || quality === "hdim7") {
+    if (quality === "dim7" || quality === "hdim7" || quality === "dim") {
       // The fifth relation of a dominant identifies it on its own; a leading-tone chord only by
       // where it goes, so it takes the same resolution test as the overlap above, always.
       targetOffset = (offset + 1) % 12;

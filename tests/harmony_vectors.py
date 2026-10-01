@@ -42,12 +42,15 @@ KEY_TEMPLATES = {
 }
 # The chords of test_following_is_ignored_outside_the_overlap, each with a diatonic chord on the
 # root it would resolve to. C major has no diatonic chord on D#, so A#:maj keeps the test's D#:maj.
-# D:7 and B:hdim7 in A minor are left out: the overlap and leading-tone cases already hold them.
+# B:hdim7 and B:dim are left out: the leading-tone cases already hold them. The augmented triads
+# stand before the chord a fifth below, which they never resolve.
 CONTROLS = [
     ("D:maj", "C:maj", "G:maj"),
     ("A:maj", "C:maj", "D:min"),
     ("A#:maj", "C:maj", "D#:maj"),
     ("D:maj7", "A:min", "G:maj"),
+    ("G:aug", "C:maj", "C:maj"),
+    ("C:aug", "C:maj", "F:maj"),
 ]
 # The estimator's tie-breaks and edge cases: those tests/test_harmony.py pins, and a few more.
 TIES = [
@@ -102,7 +105,7 @@ def _progressions() -> list[dict]:
         cases.append(_progression_case(f"every chord in {key}", progression, key))
     # Every leading-tone chord before chords on every target root, so every target is tried.
     for key in ("C:maj", "A:min"):
-        for quality in ("dim7", "hdim7"):
+        for quality in ("dim7", "hdim7", "dim"):
             for root in ROOTS:
                 above = _up(root, 1)
                 followings = [f"{above}:{q}" for q in ("maj", "min", "7", "maj7")]
