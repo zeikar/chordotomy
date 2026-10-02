@@ -1,12 +1,17 @@
 import hashlib
 import http.client
+import math
 import os
+import sys
+import types
 import urllib.error
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from chordotomy import beats
+from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.model import EngineError
 
 PAYLOAD = b"not really weights" * 1000
@@ -155,3 +160,74 @@ def test_an_unwritable_cache_is_an_engine_error(cache, monkeypatch, tmp_path) ->
             beats.fetch()
     finally:
         locked.chmod(0o700)
+
+
+@pytest.mark.parametrize("n", [1, 512])
+def test_a_clip_too_short_for_the_spectrogram_has_no_beats(synth, monkeypatch, n) -> None:
+    class Fake(types.ModuleType):
+        def __getattr__(self, name):
+            raise AssertionError(f"{self.__name__}.{name} used before the length check")
+
+    for name in ("torch", "beat_this"):
+        monkeypatch.setitem(sys.modules, name, Fake(name))
+
+    with pytest.raises(NoBeatsError):
+        beats.activation(synth([("C:maj", 8)])[:n])
+
+
+@pytest.mark.parametrize(
+    ("values", "found"),
+    [
+        ([-3.0, -0.5, 0.2, -1.0], True),
+        ([-3.0, -0.5, -1.0], False),
+        ([0.0, 0.0], False),
+        ([], False),
+    ],
+    ids=["one-positive", "all-negative", "all-zero", "empty"],
+)
+def test_has_peaks_is_any_logit_above_zero(values, found) -> None:
+    assert beats.has_peaks(np.array(values, dtype=np.float32)) is found
+
+
+def test_resample_lands_on_the_hop_frames() -> None:
+    n_frames = 1 + 3 * SR // HOP
+    spike = np.zeros(3 * beats.FPS + 1)
+    spike[beats.FPS] = 1.0  # t = 1.0 s
+
+    assert len(beats.resample(spike, n_frames)) == n_frames
+    np.testing.assert_allclose(beats.resample(np.full(len(spike), 0.25), n_frames), 0.25)
+    assert beats.resample(spike, n_frames).argmax() == round(1.0 * SR / HOP)
+
+
+BORDER = beats.BORDER_FRAMES
+STEP = beats.CHUNK_FRAMES - 2 * BORDER
+
+
+@pytest.mark.parametrize("n", [1, STEP - 1, STEP, STEP + 1, 2 * beats.CHUNK_FRAMES + 1])
+def test_chunking_keeps_every_frame_once_from_the_first_chunk_holding_it(n) -> None:
+    # Each frame's index + 1 in its first bin, so a zero-padded row reads as -1.
+    spect = np.zeros((n, beats.N_MELS), dtype=np.float32)
+    spect[:, 0] = np.arange(n) + 1
+    lengths = []
+    spans = []  # the first and end frame of each chunk's kept output
+
+    def index(chunk: np.ndarray) -> np.ndarray:
+        lengths.append(len(chunk))
+        return chunk[:, 0] - 1
+
+    def owner(chunk: np.ndarray) -> np.ndarray:
+        kept = chunk[BORDER:-BORDER, 0] - 1
+        spans.append((kept[0], kept[-1] + 1))
+        return np.full(len(chunk), kept[0])
+
+    frames = beats._chunked(spect, index)
+    owners = beats._chunked(spect, owner)
+
+    np.testing.assert_array_equal(frames, np.arange(n))
+    assert len(lengths) == math.ceil(n / STEP)
+    # Padded by BORDER at both ends when the piece fits one chunk's kept span; else every chunk
+    # is full, the last one ending at the piece's end (split_piece's avoid_short_end).
+    assert lengths == ([n + 2 * BORDER] if n <= STEP else [beats.CHUNK_FRAMES] * len(lengths))
+    # Where kept spans overlap, the earlier chunk's stays (aggregate_prediction's keep_first).
+    first = [min(start for start, end in spans if start <= f < end) for f in range(n)]
+    np.testing.assert_array_equal(owners, first)
