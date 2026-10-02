@@ -4,7 +4,6 @@ import json
 import os
 import subprocess
 import sys
-import types
 
 import numpy as np
 import pytest
@@ -364,12 +363,21 @@ def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) 
 
 
 def test_the_dsp_engine_touches_no_torch(clip, tmp_path, monkeypatch) -> None:
-    class Fake(types.ModuleType):
-        def __getattr__(self, name):
-            raise AssertionError(f"{self.__name__}.{name} used by the DSP")
+    # Block the imports instead of faking the modules: libraries legitimately probe sys.modules
+    # (scipy.stats touches torch.Tensor if torch is there), so a stand-in fails for the wrong
+    # reason depending on what an earlier test already imported. Absent from sys.modules plus a
+    # finder that raises means any real import by the DSP path fails the test.
+    blocked = ("torch", "lv_chordia", "beat_this", "torchaudio")
 
-    for name in ("torch", "lv_chordia", "beat_this", "torchaudio"):
-        monkeypatch.setitem(sys.modules, name, Fake(name))
+    class Blocker:
+        def find_spec(self, name, path=None, target=None):
+            if name.split(".")[0] in blocked:
+                raise ImportError(f"{name} imported by the DSP engine")
+
+    for name in list(sys.modules):
+        if name.split(".")[0] in blocked:
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, "meta_path", [Blocker(), *sys.meta_path])
     out = tmp_path / "out.json"
 
     result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "dsp"])
