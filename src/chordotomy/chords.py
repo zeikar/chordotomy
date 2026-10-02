@@ -260,16 +260,15 @@ CANDIDATES = 3
 BASS_HOLD = 2
 
 
-def segment(states: np.ndarray, scores: np.ndarray, cqt: np.ndarray) -> list[dict]:
+def segment(states: np.ndarray, scores: np.ndarray, basses: list[str | None]) -> list[dict]:
     """Cut the beats into segments, each with ranked candidate labels and a bass.
 
     A segment ends where the smoothed state changes and, inside a chord run, where the per-beat
-    pick_bass value changes to one held for BASS_HOLD beats, so consecutive segments may share a
-    chord. cqt is the (84, n) beat-synchronous matrix from beat_features. A segment's bass is its
-    held value; with none, the most frequent per-beat value, silence included (ties to a note, then
-    the earliest). N has None.
+    per-beat bass changes to one held for BASS_HOLD beats, so consecutive segments may share a
+    chord. basses is one note name or None per beat, each engine's own per-beat bass. A segment's
+    bass is its held value; with none, the most frequent per-beat value, silence included (ties to
+    a tone of the chord, then a note, then the earliest). N has None.
     """
-    basses = [pick_bass(column) for column in cqt.T]
     runs = [0, *map(int, np.flatnonzero(np.diff(states)) + 1), len(states)]
     held = {}  # segment start -> the bass held inside that segment
     for run_start, run_end in pairwise(runs):
@@ -303,11 +302,22 @@ def segment(states: np.ndarray, scores: np.ndarray, cqt: np.ndarray) -> list[dic
         else:
             # A vote over the per-beat values the cut rule uses, not a pick on the mean profile,
             # so a loud one-beat note cannot outvote the beats around it. Silence votes too, so a
-            # lone note among rests does not label the span; a tie goes to a note, then earliest.
-            votes = Counter(basses[start:end])
-            bass = max(votes, key=lambda b: (votes[b], b is not None))
+            # lone note among rests does not label the span. A tie goes to a tone of the chord,
+            # then a note, then the earliest: a two-beat chord whose beats disagree took beat 1
+            # before, so [non-chord, chord tone] wrote the non-chord note.
             if LABELS[chosen] == "N":
                 bass = None
+            else:
+                tones = _pitch_classes(LABELS[chosen])
+                votes = Counter(basses[start:end])
+                bass = max(
+                    votes,
+                    key=lambda b: (
+                        votes[b],
+                        b is not None and ROOTS.index(b) in tones,
+                        b is not None,
+                    ),
+                )
         segments.append(
             {
                 "start_beat": int(start),

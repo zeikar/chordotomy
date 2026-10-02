@@ -168,6 +168,27 @@ def test_a_bass_held_two_beats_under_one_chord_cuts_and_is_reported(synth, tmp_p
     assert [s["numeral"] for s in segments] == ["I", "I"]
 
 
+def test_a_passing_bass_on_the_first_beat_of_a_two_beat_chord_is_not_a_slash(
+    synth, tmp_path
+) -> None:
+    progression = [("G:maj", 6, 43), ("C:maj", 1, 39), ("C:maj", 1, 36)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["G:maj", "C:maj"]
+    assert [s["bass"] for s in segments] == ["G", "C"]
+    assert segments[1]["inversion"] == "root"
+
+
+def test_a_held_non_chord_slash_survives(synth, tmp_path) -> None:
+    segments = analyze(_write(tmp_path, synth([("D:maj", 4, 38), ("D:maj", 4, 40)])))["segments"]
+
+    assert [(s["start_beat"], s["end_beat"]) for s in segments] == [(0, 4), (4, 8)]
+    assert [s["bass"] for s in segments] == ["D", "E"]
+    assert [s["inversion"] for s in segments] == ["root", "non_chord"]
+    assert [s["numeral"] for s in segments] == ["I", "I"]
+
+
 def test_a_shorter_bass_move_under_an_unchanged_chord_is_not_reported(synth, tmp_path) -> None:
     progression = [("C:maj", 3, 36), ("C:maj", 1, 40), ("C:maj", 4, 36)]
 

@@ -339,7 +339,7 @@ def _states(*labels: str) -> np.ndarray:
 def test_segment_merges_runs_and_tiles_beats() -> None:
     states = _states("C:maj", "C:maj", "C:min", "C:min", "C:min", "N")
 
-    segments = segment(states, _scores({}), np.zeros((84, 6)))
+    segments = segment(states, _scores({}), [None] * 6)
 
     assert [(s["start_beat"], s["end_beat"], s["chord"]) for s in segments] == [
         (0, 2, "C:maj"),
@@ -358,7 +358,7 @@ def test_segment_candidates_lead_with_chosen_label_then_best_means() -> None:
     scores[LABELS.index("F:maj")] = 0.5  # clear third place, below both C chords
     states = _states(*["C:maj"] * 6)
 
-    (only,) = segment(states, scores, np.zeros((84, 6)))
+    (only,) = segment(states, scores, [None] * 6)
 
     assert only["candidates"] == ["C:maj", "C:7", "F:maj"]
     assert set(only) == {"start_beat", "end_beat", "chord", "candidates", "bass"}
@@ -511,22 +511,24 @@ def test_resolve_twins_reorders_the_tie_in_the_candidates() -> None:
     assert resolve_twins([aug, tonic])[0]["candidates"] == ["G:aug", "D#:aug", "B:aug"]
 
 
-def _cqt(beats: list) -> np.ndarray:
-    """(84, n) matrix: per beat None (zero column), a bin, or a (bin, amplitude) pair."""
-    cqt = np.zeros((84, len(beats)))
-    for beat, entry in enumerate(beats):
-        if entry is not None:
-            bin_, amplitude = entry if isinstance(entry, tuple) else (entry, 1.0)
-            cqt[bin_, beat] = amplitude
-    return cqt
+def _basses(bins: list) -> list[str | None]:
+    """Per-beat bass names from bins (bin 0 = C1), None kept for a silent beat."""
+    return [None if b is None else ROOT_NAMES[b % 12] for b in bins]
 
 
 def test_segment_bass_is_none_for_no_chord() -> None:
     states = _states("C:maj", "C:maj", "C:maj", "N", "N", "N")
 
-    chord, no_chord = segment(states, _scores({}), _cqt([12] * 6))
+    chord, no_chord = segment(states, _scores({}), _basses([12] * 6))
 
     assert chord["bass"] == "C"
+    assert no_chord["bass"] is None
+
+    # The N check precedes the vote, so no chord-tone lookup runs on N.
+    chord, no_chord = segment(
+        _states("C:maj", "C:maj", "N", "N"), _scores({}, 4), _basses([12, 12, 2, 12])
+    )
+
     assert no_chord["bass"] is None
 
 
@@ -535,6 +537,12 @@ def test_segment_bass_is_none_for_no_chord() -> None:
     [
         ([12, 16, 12], "C"),
         ([16, 12], "E"),
+        # No value holds: a tone of the chord first, whichever beat it is on,
+        ([14, 12], "C"),
+        ([12, 14], "C"),
+        ([14, 16], "E"),
+        # and with neither a chord tone, the earliest.
+        ([14, 13], "D"),
         ([None, 12], "C"),
         ([None] * 3, None),
         # Silence votes too: a lone note among rests does not label the segment.
@@ -546,7 +554,7 @@ def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> 
     states = _states(*["C:maj"] * len(bins))
     scores = _scores({})[:, : len(bins)]
 
-    (only,) = segment(states, scores, _cqt(bins))
+    (only,) = segment(states, scores, _basses(bins))
 
     assert only["bass"] == expected
 
@@ -558,8 +566,6 @@ def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> 
         (["C:maj"] * 8, [12] * 4 + [16] * 4, [(0, 4, "C:maj", "C"), (4, 8, "C:maj", "E")]),
         # A one-beat move under an unchanged chord neither cuts nor is reported,
         (["C:maj"] * 8, [12] * 3 + [16] + [12] * 4, [(0, 8, "C:maj", "C")]),
-        # however loud it is,
-        (["C:maj"] * 4, [12] * 3 + [(16, 10.0)], [(0, 4, "C:maj", "C")]),
         # nor at the start of the run.
         (["C:maj"] * 8, [16] + [12] * 7, [(0, 8, "C:maj", "C")]),
         # The first held value cuts at its own start when two or more beats precede it,
@@ -597,7 +603,7 @@ def test_segment_bass_is_a_vote_over_beats(bins: list, expected: str | None) -> 
 def test_segment_cuts_where_a_held_bass_changes(
     labels: list[str], bins: list, expected: list[tuple]
 ) -> None:
-    segments = segment(_states(*labels), _scores({}, len(labels)), _cqt(bins))
+    segments = segment(_states(*labels), _scores({}, len(labels)), _basses(bins))
 
     assert [(s["start_beat"], s["end_beat"], s["chord"], s["bass"]) for s in segments] == expected
     json.dumps(segments)
@@ -610,7 +616,7 @@ def test_segment_cuts_where_a_held_bass_changes(
 def test_segments_cut_on_the_bass_rank_candidates_over_their_own_beats() -> None:
     scores = _scores({beat: {"E:min": 0.9} for beat in range(4, 8)}, 8)
 
-    first, second = segment(_states(*["C:maj"] * 8), scores, _cqt([12] * 4 + [16] * 4))
+    first, second = segment(_states(*["C:maj"] * 8), scores, _basses([12] * 4 + [16] * 4))
 
     assert first["candidates"] == ["C:maj", "C:7", "N"]
     assert second["candidates"] == ["C:maj", "E:min", "C:7"]

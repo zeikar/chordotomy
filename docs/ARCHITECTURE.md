@@ -559,6 +559,30 @@ The diagnostic point, `sus4(b7)` never called, is the committed one, and the flo
 
 The interval is empty. The cadence needs -0.23 and the floors -0.2375, 0.0075 apart; at -0.2375 the suite fails only the cadence and every floor holds, and at -0.23 the suite is green and Tiny AAM's root is 0.03 pp under (0.84132 against 0.84161), with GuitarSet's majmin and sevenths 0.66011 and 0.52852. Nor would -0.23 pass v5's margin rule: it lies 0.0025 above the cadence's failure, so a one-step neighbour fails the suite and the other the floors. The DSP therefore never calls `sus4(b7)`: its offset is -inf, as `sus2`'s is, and `test_the_dsp_never_calls_a_seventh_sus4` and `test_the_decoder_never_calls_a_seventh_sus4` hold it there. `sus4(b7)` stays in the vocabulary, the harmony and the viewer, and comes from the model engine or a manual edit. The plain Asus4 into A and the dominant seventh stay in the suite as synthesized cases.
 
+### Bass reliability
+
+`segment` takes one bass per beat, and when no value holds `BASS_HOLD` beats the vote ranks a tied bass by count, then by being a tone of the segment's chord, then by being a note, then by the earliest beat. A two-beat chord whose beats disagreed took beat 1 before, so a passing note on the first beat was written as a slash: `[D#, C]` under `C:maj` wrote `C/D#` and now writes `C`. `[E, C]` still writes `E` (both chord tones, earliest), and `[D, C#]` writes `D` (neither, earliest). A synthesized `G` for six beats and then `C` over D#2 and C2 is the red case, and a held `D/E` stays a slash. The grid and the chroma are untouched: only `bass`, `inversion` and what `resolve_twins` reads from the bass can move, and `root` does not move on either engine or dataset.
+
+The tie-break, at the commit that adds these rows. The first two rows are the DSP engine, the last two the model engine, whose bass is still the DSP's pick:
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period | bass_ref | inv_prec | inv_rec | nonchord |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.842 | 0.799 | 0.756 | 0.756 | 0.697 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 | 0.838 | 0.000 | nan | 0.034 |
+| GuitarSet (180 takes), `dsp` | 0.722 | 0.675 | 0.551 | 0.359 | 0.407 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.478 | 0.170 | 0.231 | 0.153 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.926 | 0.864 | 0.864 | 0.804 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 | 0.851 | 0.000 | nan | 0.041 |
+| GuitarSet (180 takes), `model` | 0.827 | 0.800 | 0.699 | 0.455 | 0.476 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.503 | 0.202 | 0.227 | 0.163 |
+
+Against the rows before it (the unrounded baselines, with the four bass columns scored on them), in percentage points. No floor is given back, and `root`, `N_est` and the beat columns do not move.
+
+| | majmin | sevenths | tetrads | majmin_inv | bass_ref | inv_prec | inv_rec | nonchord |
+|---|---|---|---|---|---|---|---|---|
+| Tiny AAM, `dsp` | +0.23 | +0.57 | +0.57 | +0.43 | +0.46 | 0.00 | nan | -1.24 |
+| GuitarSet, `dsp` | +1.41 | +2.14 | +1.40 | +1.26 | +1.34 | -0.00 | +1.65 | -4.25 |
+| Tiny AAM, `model` | +0.15 | +0.72 | +0.72 | +0.37 | +0.45 | 0.00 | nan | -0.89 |
+| GuitarSet, `model` | +1.27 | +2.26 | +1.45 | +1.04 | +1.02 | -0.18 | +1.10 | -3.00 |
+
+The scores gain because a non-chord bass is scored as a slash that adds a tone to the estimate's pitch set (see above), and the tie-break removes the passing notes that did that.
+
 ### Current rows
 
 Vocabulary v6's rows, scored by the CLI (`chordotomy evaluate`) on the final reference. "Vocabulary v5" has the rows before v6 and what moved in v5, and "Vocabulary v6" what moved in v6 and why.
