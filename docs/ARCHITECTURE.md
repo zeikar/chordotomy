@@ -691,12 +691,27 @@ The same audio and the same scoring, on the final reference, for five open-sourc
 | crema 0.2.0 | 0.898 | 0.893 | 0.794 | 0.794 | 0.816 | 0.873 | 0.785 | 0.516 |
 | chordotomy, `dsp` | 0.842 | 0.803 | 0.768 | 0.768 | 0.722 | 0.696 | 0.583 | 0.379 |
 
-- **lv-chordia 1.1.0** (Jiang, Chen, Li and Xia, ISMIR 2019; MIT): `chord_recognition(path, "submission")`, the whole track at once, with its own slash basses. chordotomy's model engine runs the same five nets and HMM, so the difference between the two rows is chordotomy's own: the labels snapped to the beat by majority, the 60 s windows, and its bass. The snap costs 1.2 to 1.3 points of Tiny AAM and 1.9 to 2.1 of GuitarSet, mostly where the beat grid is off (GuitarSet's `beat_F` is 0.517); it is what puts the chords on the beats where the harmonic analysis and the viewer work.
+- **lv-chordia 1.1.0** (Jiang, Chen, Li and Xia, ISMIR 2019; MIT): `chord_recognition(path, "submission")`, the whole track at once, with its own slash basses. chordotomy's model engine runs the same five nets and HMM, so the difference between the two rows is chordotomy's own: the labels snapped to the beat by majority, the 60 s windows, and its bass. The snap costs 1.2 to 1.3 points of Tiny AAM and 1.9 to 2.1 of GuitarSet, and all of it comes from the beat grid; it is what puts the chords on the beats where the harmonic analysis and the viewer work ("Where the beat snap costs", below).
 - **BTC** (Park et al., ISMIR 2019; MIT): `jayg996/BTC-ISMIR19` at `2682317`, the large-vocabulary checkpoint, inference as in its `test.py`.
 - **ChordMini** (Phan, Jin, Liu and Dong, 2026; MIT): `ptnghia-j/ChordMini` at `aa6e3a8`, its two included checkpoints, `btc_model_best.pth` (a BTC trained with pseudo-labels and knowledge distillation) and `2e1d_model_best.pth` (ChordNet 2E1D), with the README's recommended inference settings.
 - **crema 0.2.0** (McFee and Bello, ISMIR 2017; BSD-2-Clause): `crema.analyze`, on Python 3.11 with TensorFlow 2.15 in an environment of its own, since it does not install on the Python chordotomy uses.
 
 Training data, as each publishes it: lv-chordia and crema on Isophonics, Billboard, RWC-Pop and USPOP; BTC on Isophonics, the Robbie Williams set and USPOP2002. None includes Tiny AAM or GuitarSet, both published later. ChordMini's unlabeled audio is FMA, DALI and MAESTRO; its labeled set is not published, so an overlap with GuitarSet cannot be ruled out. BTC and ChordMini write no bass (a major chord as a bare root, which mir_eval reads as major), so `majmin_inv` is not compared.
+
+### Where the beat snap costs
+
+The same model frames, labels only (no bass), quantized onto different grids by the beat majority `beat_states` uses, majmin:
+
+| grid | Tiny AAM | GuitarSet |
+|---|---|---|
+| none, the frames' own runs | 0.947 | 0.893 |
+| chordotomy's beats (shipped) | 0.934 | 0.872 |
+| chordotomy's beats, halved | 0.939 | 0.884 |
+| the reference's annotated beats | 0.961 | 0.906 |
+| the annotated beats, halved | 0.955 | 0.899 |
+| the reference's own chord segments | 0.964 | 0.932 |
+
+Snapping to a right beat grid gains: on the annotated beats the majority clears the frames' boundary jitter and scores 1.3 to 1.4 points above them. So the snap's cost against lv-chordia's own output is the beat tracker's, 2.7 points of Tiny AAM's majmin and 3.4 of GuitarSet's against the annotated grid, and it sits in the tracks the tracker gets wrong (a GuitarSet jazz take at 0.779 on chordotomy's beats and 1.000 on the annotated ones). Halving chordotomy's beats recovers 0.5 and 1.2 points, by giving a misplaced change a finer place to land. The datasets cannot measure the other cost of a beat grid, a chord that changes between beats: every reference chord change in both lies within a quarter beat of an annotated beat (0 of 1,347 and 0 of 1,980 are further off), so a syncopated change, common in pop, is not scored here. The last row is the ceiling of label accuracy with no boundary error at all.
 
 ## Design decisions
 
