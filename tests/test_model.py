@@ -17,7 +17,7 @@ SUBMISSION_ON_EB = {
     "Eb:min/2": "D#:min",
     "Eb:maj/b7": "D#:maj",
     "Eb:maj/2": "D#:maj",
-    "Eb:sus4(b7)": "D#:sus4",
+    "Eb:sus4(b7)": "D#:sus4(b7)",
     "Eb:sus2": "D#:sus2",
     "Eb:sus4": "D#:sus4",
     "Eb:13": "D#:7",

@@ -524,6 +524,17 @@ So `aug` and `dim` are called, at a stated price: any floor may give at most 0.3
 
 The 0.3 pp is the same price v4 paid for `PARTIAL_DECAY`. `dim` was chosen between -0.10 and -0.15 by suite margin, v4's rule. Each variable was moved one step either way, down being more negative or a smaller constant, with the suite and the floors checked at each. At `dim` -0.10, three neighbours fail the suite: `sus4` at -0.30 (the suspension test, as in v4), and `dim` at -0.05 and `dim7` at -0.15, each failing the same three `dim7` tests, because a played diminished seventh stays a `dim7` only while `dim` is not above it. At `dim` -0.15 four neighbours fail: `sus4` at -0.30, `dim` at -0.20 and `PARTIAL_DECAY` 0.9 (the `vii°` case), and `7` at +0.05 (the `vii°` case), so -0.10 is the point. `aug` at -0.20 and -0.30 keep the suite green and score the same. Elsewhere the floors bind, as in v4: one step of `sus4` up (-0.20), `TEMPERATURE` down (0.025) or `BASS_TONE` up (0.8) takes Tiny AAM's root and majmin to 0.8356 and 0.7882, 0.8360 and 0.7880, and 0.8307 and 0.7861, and `7` at +0.05 takes its majmin and sevenths to 0.7886 and 0.7403. `BASS_WEIGHT` 0.25 leaves Tiny AAM's majmin at 0.79476 against 0.79478, at its bar. On GuitarSet, `BASS_WEIGHT` 0.35, `min6`/`hdim7` at -0.05 and `PARTIAL_DECAY` 0.7 take majmin to 0.6569, 0.6564 and 0.6582, and `7` at -0.05 takes sevenths to 0.5242.
 
+### Vocabulary v6
+
+Vocabulary v6 adds `sus4(b7)`, the 7sus4. Model engine, at the commit that adds these rows: lv-chordia's `sus4(b7)` maps to its own label instead of `sus4`, and `11` stays `7` because Harte's 11 includes the third.
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+
+Every track's beat grid is unchanged on all 200 tracks, compared directly: the caches rebuilt at the 157-label set hold the same `times` as v5's, so the octave check doubled nothing new (the highest share among tracks with at least 24 decoded changes is 0.60 on Tiny AAM and 0.68 on GuitarSet, against 0.80). The chord columns equal v5's to every digit on every track, because the model emitted no `sus4(b7)` on either dataset. The exact mapping is checked by the unit tests and by a recording analyzed locally, where 17 beats of `A:sus4` became `A:sus4(b7)` (`V7sus4`, diatonic, dominant in D major) with the grid, the key and every other beat unchanged.
+
 ### Current rows
 
 Vocabulary v5's rows, scored by the CLI (`chordotomy evaluate`) on the final reference. "Stage II" has the rows before v5, and "Vocabulary v5" what moved and why.

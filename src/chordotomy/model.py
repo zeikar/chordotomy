@@ -1,7 +1,7 @@
 """The lv-chordia engine: the chords from a pretrained recognizer instead of the DSP's templates.
 
 lv-chordia is the ensemble of Jiang, Chen, Li & Xia (ISMIR 2019): five nets and an HMM decoder
-over a chord dictionary. Its per-frame labels and scores are mapped to the v5 vocabulary and
+over a chord dictionary. Its per-frame labels and scores are mapped to the v6 vocabulary and
 snapped to the DSP's beat grid; the beats, the bass, the twin resolution and the harmony stay
 the DSP's.
 
@@ -45,8 +45,9 @@ _REINSTALL = (
     "reinstall lv-chordia with `uv sync --extra model --reinstall-package lv-chordia`, "
     "or pass --engine dsp"
 )
-# The dictionary's qualities, the slash dropped, to v5's; nothing maps to min6. Every triad, sus
-# and seventh maps exactly; only the extended chords lose tones.
+# The dictionary's qualities, the slash dropped, to v6's; nothing maps to min6. Every triad, sus,
+# seventh and the 7sus4 map exactly; only 9, 11, 13, maj9 and min9 lose tones. 11 stays 7 because
+# Harte's 11 includes the third.
 QUALITY = {
     "maj": "maj",
     "min": "min",
@@ -64,7 +65,7 @@ QUALITY = {
     "13": "7",  # loses the ninth, eleventh and thirteenth
     "maj9": "maj7",  # loses the ninth
     "min9": "min7",  # loses the ninth
-    "sus4(b7)": "sus4",  # loses the seventh
+    "sus4(b7)": "sus4(b7)",
 }
 
 
@@ -86,7 +87,7 @@ def version() -> str:
 
 
 def to_label(name: str) -> str:
-    """The v5 label of a dictionary name, such as Eb:maj/3 -> D#:maj.
+    """The v6 label of a dictionary name, such as Eb:maj/3 -> D#:maj.
 
     The slash is dropped: the bass comes from pick_bass, as on the DSP path.
     """
