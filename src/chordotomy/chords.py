@@ -428,12 +428,8 @@ BASS_SALIENCE = 0.5
 INVERSIONS = ("root", "first", "second", "third")
 
 
-def pick_bass(profile: np.ndarray) -> str | None:
-    """Name the lowest salient note in a beat's CQT profile, or None if the register is silent.
-
-    The profile has one bin per semitone with bin 0 = C1, as beat_features returns it. Only the
-    first BASS_BINS bins are candidates; the bins above are context for the local-maximum test.
-    """
+def _bass_peak(profile: np.ndarray) -> tuple[int, float] | None:
+    """The bin pick_bass picks and its height over the register's strongest, or None if silent."""
     reference = profile[:BASS_BINS].max()
     if reference == 0:
         return None
@@ -441,8 +437,52 @@ def pick_bass(profile: np.ndarray) -> str | None:
     is_peak = (profile >= padded[:-2]) & (profile >= padded[2:])
     for b in range(BASS_BINS):
         if is_peak[b] and profile[b] >= BASS_SALIENCE * reference:
-            return ROOTS[b % 12]
+            return b, float(profile[b] / reference)
     return None
+
+
+def pick_bass(profile: np.ndarray) -> str | None:
+    """Name the lowest salient note in a beat's CQT profile, or None if the register is silent.
+
+    The profile has one bin per semitone with bin 0 = C1, as beat_features returns it. Only the
+    first BASS_BINS bins are candidates; the bins above are context for the local-maximum test.
+    """
+    peak = _bass_peak(profile)
+    return None if peak is None else ROOTS[peak[0] % 12]
+
+
+# A pick outside the beat's chord must be this fraction of the register's strongest, else the beat
+# reads the chord's root; a chord tone is never tested. 1.0 asks a non-chord pick to be the
+# loudest note of the register, which a bass line is and a leak under the root is not. Each step
+# up from 0.5 frees more of the chart's passing and leaked picks (heights 0.53 to 0.74: the bridge's
+# one-beat Bm7/G, F#7/C and Bm7/D#) and keeps the held D/E and Bm/A at 1.0; GuitarSet's majmin_inv
+# rises from 0.407 at 0.5 to 0.446 at 1.0 and Tiny AAM's from 0.697 to 0.713, with every floor met
+# at every point and GuitarSet's inv_rec 0.226 against 0.215 at the baseline. 1.0 is the top: above
+# it the loudest pick fails too, a held non-chord slash is no longer written, and
+# test_a_held_non_chord_slash_survives and test_bass_and_inversion_follow_the_bass_line fail.
+NONCHORD_SALIENCE = 1.0
+
+
+def beat_basses(states: np.ndarray, cqt: np.ndarray) -> list[str | None]:
+    """One bass per beat: pick_bass, except that a pick outside the beat's chord must be salient.
+
+    A chord tone is written as heard. A note outside the chord needs a height of at least
+    NONCHORD_SALIENCE over the register's strongest, else the beat reads the chord's root. An N
+    beat and a silent register give the plain pick.
+    """
+    basses = []
+    for state, column in zip(states, cqt.T, strict=True):
+        peak = _bass_peak(column)
+        if peak is None:
+            basses.append(None)
+            continue
+        name = ROOTS[peak[0] % 12]
+        label = LABELS[state]
+        weak = peak[1] < NONCHORD_SALIENCE
+        if label != "N" and weak and peak[0] % 12 not in _pitch_classes(label):
+            name = label.split(":")[0]
+        basses.append(name)
+    return basses
 
 
 def inversion(label: str, bass: str | None) -> str | None:

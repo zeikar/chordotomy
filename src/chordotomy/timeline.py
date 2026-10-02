@@ -9,7 +9,16 @@ from typing import Literal
 import numpy as np
 
 from . import __version__, harmony, model
-from .chords import inversion, match, no_chord, pick_bass, resolve_twins, segment, smooth
+from .chords import (
+    beat_basses,
+    inversion,
+    match,
+    no_chord,
+    pick_bass,
+    resolve_twins,
+    segment,
+    smooth,
+)
 from .features import SR, beat_features, load_audio
 
 SCHEMA_VERSION = 8
@@ -54,7 +63,7 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
         forced = no_chord(f.level, f.onset, f.flatness, f.harmonic)
         states = smooth(scores, forced, np.diff(f.times))
         recognizer = {"name": "dsp", "version": __version__}
-    basses = [pick_bass(column) for column in f.cqt.T]
+    basses = beat_basses(states, f.cqt) if engine == "dsp" else [pick_bass(c) for c in f.cqt.T]
     segments = resolve_twins(segment(states, scores, basses))
 
     runs = chord_runs(segments)

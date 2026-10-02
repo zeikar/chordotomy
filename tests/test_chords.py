@@ -11,6 +11,7 @@ from chordotomy.chords import (
     N_SCORE,
     QUALITY_OFFSET,
     TEMPERATURE,
+    beat_basses,
     inversion,
     match,
     no_chord,
@@ -685,3 +686,36 @@ def test_pick_bass(profile: np.ndarray, expected: str | None) -> None:
     result = pick_bass(profile)
     assert result == expected
     assert result is None or isinstance(result, str)
+
+
+@pytest.mark.parametrize(
+    ("label", "profile", "expected"),
+    [
+        # A weak non-chord pick is the root, not the louder tone above it.
+        ("C:maj", _profile(b14=0.6, b16=1.0), "C"),
+        ("C:maj", _profile(b14=1.0), "D"),
+        # A chord tone is never tested.
+        ("C:maj", _profile(b16=0.6, b19=1.0), "E"),
+        ("N", _profile(b14=0.6, b16=1.0), "D"),
+        ("C:maj", _profile(), None),
+    ],
+)
+def test_beat_basses_keeps_chord_tones_and_reliable_non_chord_picks(
+    monkeypatch: pytest.MonkeyPatch, label: str, profile: np.ndarray, expected: str | None
+) -> None:
+    monkeypatch.setattr("chordotomy.chords.NONCHORD_SALIENCE", 0.8)
+
+    assert beat_basses(_states(label), profile[:, None]) == [expected]
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        # The shipped value asks a non-chord pick to be the loudest, however close it comes.
+        (_profile(b14=0.74, b16=1.0), "C"),
+        (_profile(b14=0.99, b16=1.0), "C"),
+        (_profile(b14=1.0, b16=0.9), "D"),
+    ],
+)
+def test_beat_basses_at_the_shipped_salience(profile: np.ndarray, expected: str) -> None:
+    assert beat_basses(_states("C:maj"), profile[:, None]) == [expected]

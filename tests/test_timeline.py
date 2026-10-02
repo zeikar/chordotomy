@@ -189,6 +189,16 @@ def test_a_held_non_chord_slash_survives(synth, tmp_path) -> None:
     assert [s["numeral"] for s in segments] == ["I", "I"]
 
 
+def test_a_weak_non_chord_bass_reads_root_position(synth, tmp_path) -> None:
+    # A D1 struck as loud as the C2 above it is the lowest salient note but not the loudest
+    # (0.85 of the register's strongest): a leak below the root, not a bass line.
+    (only,) = analyze(_write(tmp_path, synth([("C:maj", 8, 36, 26)])))["segments"]
+
+    assert only["chord"] == "C:maj"
+    assert only["bass"] == "C"
+    assert only["inversion"] == "root"
+
+
 def test_a_shorter_bass_move_under_an_unchanged_chord_is_not_reported(synth, tmp_path) -> None:
     progression = [("C:maj", 3, 36), ("C:maj", 1, 40), ("C:maj", 4, 36)]
 

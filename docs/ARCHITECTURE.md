@@ -583,16 +583,50 @@ Against the rows before it (the unrounded baselines, with the four bass columns 
 
 The scores gain because a non-chord bass is scored as a slash that adds a tone to the estimate's pitch set (see above), and the tie-break removes the passing notes that did that.
 
+#### The DSP's salience test
+
+`beat_basses(states, cqt)` gives `segment` the DSP's per-beat basses. It is `pick_bass` per column, except that a pick outside the beat's chord must be at least `NONCHORD_SALIENCE` of the register's strongest note (`_bass_peak` returns the bin `pick_bass` picks and that height), else the beat reads the chord's root. A chord tone is written as heard whatever its height; an `N` beat and a silent register give the plain pick. At 0.5 (`BASS_SALIENCE`) every pick passes and the rule is the tie-break's. The root is a fallback, not a measured note: a segment whose weak non-chord bass fell back reads root position, and `resolve_twins` reads it like any root bass. `features` still zeroes the bass chroma with the plain `pick_bass`, so the grid, the chroma and `root` are the same as before the rule.
+
+Branch R, shipped: `NONCHORD_SALIENCE = 1.0`, a non-chord pick must be the loudest note of the register. The sweep scores the cached v6 DSP features per point (the suite is `test_timeline.py`, `test_chords.py` and `test_features.py`; the bridge column counts how many of the recording's five bridge spots, 201.4, 204.2, 207.1, 208.5 and 215.5 s, read without a non-chord slash on its DSP timeline, and the two `D/E` and the `A` at 209.2 s kept their bass at every point). Tiny AAM and GuitarSet cells are majmin / sevenths / majmin_inv:
+
+| `NONCHORD_SALIENCE` | suite | bridge spots | Tiny AAM | GuitarSet | GuitarSet inv_rec | nonchord, Tiny AAM / GuitarSet |
+|---|---|---|---|---|---|---|
+| 0.50 (tie-break only) | green | 2 | 0.7987 / 0.7559 / 0.6973 | 0.6750 / 0.5508 / 0.4071 | 0.2310 | 0.0339 / 0.1532 |
+| 0.55 | green | 3 | 0.7995 / 0.7574 / 0.6987 | 0.6791 / 0.5556 / 0.4158 | 0.2303 | 0.0321 / 0.1423 |
+| 0.60 | green | 4 | 0.8000 / 0.7611 / 0.7027 | 0.6821 / 0.5614 / 0.4213 | 0.2277 | 0.0280 / 0.1323 |
+| 0.65 | green | 4 | 0.8002 / 0.7616 / 0.7036 | 0.6829 / 0.5621 / 0.4229 | 0.2267 | 0.0272 / 0.1261 |
+| 0.70 | green | 4 | 0.8002 / 0.7627 / 0.7049 | 0.6853 / 0.5670 / 0.4291 | 0.2270 | 0.0248 / 0.1182 |
+| 0.75 | green | 5 | 0.8002 / 0.7627 / 0.7057 | 0.6863 / 0.5688 / 0.4311 | 0.2267 | 0.0247 / 0.1136 |
+| 0.80 | green | 5 | 0.8004 / 0.7636 / 0.7069 | 0.6878 / 0.5720 / 0.4349 | 0.2273 | 0.0238 / 0.1069 |
+| 0.85 | green | 5 | 0.8023 / 0.7661 / 0.7097 | 0.6906 / 0.5745 / 0.4384 | 0.2273 | 0.0211 / 0.1013 |
+| 0.90 | green | 5 | 0.8027 / 0.7673 / 0.7113 | 0.6921 / 0.5784 / 0.4416 | 0.2248 | 0.0198 / 0.0957 |
+| 0.95 | green | 5 | 0.8027 / 0.7673 / 0.7118 | 0.6932 / 0.5801 / 0.4436 | 0.2258 | 0.0198 / 0.0924 |
+| **1.00** | green | 5 | 0.8027 / 0.7675 / 0.7126 | 0.6958 / 0.5825 / 0.4460 | 0.2258 | 0.0197 / 0.0871 |
+| 1.01 | red | 5 | 0.8054 / 0.7745 / 0.7237 | 0.7226 / 0.6197 / 0.4755 | 0.2007 | 0.0000 / 0.0000 |
+
+Every point meets the floors and `N_est` is unchanged. GuitarSet's `inv_rec` stays above 0.9 of the baseline's 0.2145 (0.1931) at every point, and `root` does not move at the shipped value (at 0.60 one `resolve_twins` respelling moves GuitarSet's below the fifth digit). The objective, in order, is the bridge spots freed, then GuitarSet majmin_inv, then the lower `nonchord`: five spots from 0.75 up, then 1.00 on the second and third. Nothing is a tie, since each step up adds 0.2 to 0.4 pp of GuitarSet majmin_inv. Above 1.0 even the loudest pick fails the test, so no non-chord slash is ever written, and `test_a_held_non_chord_slash_survives` and `test_bass_and_inversion_follow_the_bass_line` fail: 1.01 is red, and its higher scores are the price of writing none. 1.0 is therefore the top of the range the rule means, not a plateau with a neighbour above it; its neighbour below, 0.95, meets every constraint. The chart's rejected picks have heights 0.53 to 0.74 (the one-beat `Bm7/G`, `F#7/C` and `Bm7/D#`) and the kept `D/E` and `Bm/A` beats sit at 1.0.
+
+`test_a_weak_non_chord_bass_reads_root_position` is a synthesized case: a D1 struck with a C2 under `C:maj` is the lowest salient note but 0.85 of the register's strongest, and reads `C` in root position (it reads `C/D` at 0.5).
+
+The rule at the commit that adds these rows, scored by the CLI, against the tie-break's rows above (percentage points; the model engine is unchanged):
+
+| | majmin | sevenths | tetrads | majmin_inv | bass_ref | inv_prec | inv_rec | nonchord |
+|---|---|---|---|---|---|---|---|---|
+| Tiny AAM, `dsp` | +0.41 | +1.16 | +1.16 | +1.53 | +1.30 | 0.00 | nan | -1.42 |
+| GuitarSet, `dsp` | +2.08 | +3.17 | +2.04 | +3.89 | +2.84 | +0.37 | -0.52 | -6.62 |
+
+On the recording's DSP timeline the chords do not change and 18 beats change their bass, which takes the seconds written as `non_chord` from 23.3 to 10.6. The bridge: `Edim/A` at 201.4 s reads `Edim/G` (the tie-break already, a chord tone), `F#/C` at 207.1 s reads `F#`, `Bm/G` at 208.5 s reads `Bm` and `Bm/D#` at 215.5 s reads `Bm`; 204.2 s was `F#m` already. The weak picks elsewhere go the same way: `A7/A#` at 108.9 s and `A7/D#` at 177.4 s read `A7`, and `Em/A` at 154.8 s keeps its `A` for one beat group and then reads `Em`. Kept: the `D/E` reads at 64.5 s and 160.5 s (the DSP spells them `E7/E` and `Esus4/E`, their bass `E`), `D/A` at 209.2 s, and the unverified `D/D#` at 115.3 s, `G/F#` at 146.4 s and `D/B` at 285.8 s, whose picks are the register's loudest.
+
 ### Current rows
 
 Vocabulary v6's rows, scored by the CLI (`chordotomy evaluate`) on the final reference. "Vocabulary v5" has the rows before v6 and what moved in v5, and "Vocabulary v6" what moved in v6 and why.
 
-| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Tiny AAM (20 tracks), `dsp` | 0.842 | 0.796 | 0.750 | 0.750 | 0.693 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 |
-| GuitarSet (180 takes), `dsp` | 0.722 | 0.661 | 0.529 | 0.345 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
-| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 |
-| GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period | bass_ref | inv_prec | inv_rec | nonchord |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.842 | 0.803 | 0.768 | 0.768 | 0.713 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 | 0.851 | 0.000 | nan | 0.020 |
+| GuitarSet (180 takes), `dsp` | 0.722 | 0.696 | 0.583 | 0.379 | 0.446 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.507 | 0.174 | 0.226 | 0.087 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 | 0.846 | 0.000 | nan | 0.050 |
+| GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.493 | 0.204 | 0.216 | 0.193 |
 
 ## Design decisions
 
