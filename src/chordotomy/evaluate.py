@@ -218,8 +218,87 @@ def score(
     return track
 
 
+def _reference_chord(label: str) -> tuple[int, int, set[int]]:
+    """Root, bass degree and chord-tone degrees of a reference label; root -1 for N or X.
+
+    The tones are encode's bitmap before it adds the bass, so a slash off the chord (C:maj/2)
+    leaves its bass outside them.
+    """
+    import mir_eval
+
+    root, quality, extensions, bass = mir_eval.chord.split(label)
+    if root in (mir_eval.chord.NO_CHORD, mir_eval.chord.X_CHORD):
+        return -1, 0, set()
+    tones = mir_eval.chord.quality_to_bitmap(quality)
+    tones[0] = 1
+    for degree in extensions:
+        tones = tones + mir_eval.chord.scale_degree_to_bitmap(degree, False)
+    return (
+        mir_eval.chord.pitch_class_to_semitone(root),
+        mir_eval.chord.scale_degree_to_semitone(bass) % 12,
+        {int(i) for i in np.flatnonzero(tones > 0)},
+    )
+
+
+def bass_metrics(result: dict, reference: Reference) -> dict:
+    """One track's bass columns: (hit, denominator) durations for bass_ref, inv_prec, inv_rec.
+
+    Scored per beat, each lasting until the next beat (the last until the source's end), against
+    the reference interval holding its midpoint; no interval, an N or an X, is a reference N. A
+    reference annotation without a bass (Tiny AAM) reads as root position.
+
+    bass_ref counts the beats where the estimate is a chord and the reference is too, a hit when
+    the written bass is the reference's. An inversion is a bass off the root and on a chord tone.
+    inv_prec counts the estimate's inversion beats and inv_rec the reference's, an estimate N or
+    bass-less beat among them a miss; a hit is both inverted over the same bass. nonchord is the
+    share of the duration in segments whose bass is outside their chord.
+    """
+    beats = result["beats"]
+    duration = result["source"]["duration"]
+    segments = result["segments"]
+    bounds = [*beats[1:], duration]
+    mids = (np.array(beats) + np.array(bounds)) / 2
+    spans = reference.intervals
+    found = np.searchsorted(spans[:, 0], mids, side="right") - 1
+
+    sums = {key: [0.0, 0.0] for key in ("bass_ref", "inv_prec", "inv_rec")}
+    segment = iter(segments)
+    current = next(segment)
+    for i, (start, end) in enumerate(zip(beats, bounds, strict=True)):
+        while current["end_beat"] <= i:
+            current = next(segment)
+        length = end - start
+
+        chord, bass = current["chord"], current["bass"]
+        est_inverted = current["inversion"] in ("first", "second", "third")
+
+        ref_root, ref_degree, ref_tones = -1, 0, set()
+        if found[i] >= 0 and mids[i] < spans[found[i], 1]:
+            ref_root, ref_degree, ref_tones = _reference_chord(reference.labels[found[i]])
+        ref_bass = ROOTS[(ref_root + ref_degree) % 12] if ref_root >= 0 else None
+        ref_inverted = ref_degree != 0 and ref_degree in ref_tones
+        same = est_inverted and ref_inverted and bass == ref_bass
+
+        if chord != "N" and ref_root >= 0:
+            sums["bass_ref"][1] += length
+            sums["bass_ref"][0] += length * (bass == ref_bass)
+        if est_inverted:
+            sums["inv_prec"][1] += length
+            sums["inv_prec"][0] += length * same
+        if ref_inverted:
+            sums["inv_rec"][1] += length
+            sums["inv_rec"][0] += length * same
+    off_chord = sum(
+        s["end_time"] - s["start_time"] for s in segments if s["inversion"] == "non_chord"
+    )
+    return {**{key: tuple(pair) for key, pair in sums.items()}, "nonchord": off_chord / duration}
+
+
 def summarise(tracks: dict[str, dict]) -> dict[str, dict]:
-    """Accuracy, N and beat rates per track, plus an `overall` row weighted by duration.
+    """Accuracy, N, beat and bass rates per track, plus an `overall` row weighted by duration.
+
+    The bass ratios (bass_ref, inv_prec, inv_rec) are the exception: their overall is the summed
+    hits over the summed denominators, so a track weighs by what it adds to that metric.
 
     N precision is the share of estimated N that is reference N, and N recall the share of
     reference N estimated as N (nan when there is none). The period ratio's overall is the
@@ -244,8 +323,13 @@ def summarise(tracks: dict[str, dict]) -> dict[str, dict]:
             )
             for metric in METRICS
         }
-        for key in ("n_est", "n_ref", "beat_f", "cmlt", "amlt"):
+        for key in ("n_est", "n_ref", "beat_f", "cmlt", "amlt", "nonchord"):
             out[key] = weighted(key)
+        # A ratio of sums, so a track weighs by what it adds to that metric, not by its length.
+        for key in ("bass_ref", "inv_prec", "inv_rec"):
+            hit = sum(t[key][0] for t in items)
+            seen = sum(t[key][1] for t in items)
+            out[key] = hit / seen if seen else float("nan")
         hit = weighted("n_hit")
         out["n_precision"] = hit / out["n_est"] if out["n_est"] else float("nan")
         out["n_recall"] = hit / out["n_ref"] if out["n_ref"] else float("nan")
@@ -354,12 +438,15 @@ def run(dataset: str, limit: int | None, engine: Literal["dsp", "model"]) -> dic
             ),
             # The grid analyze writes, extended to the edges: the one every consumer snaps to.
             **beat_metrics(reference.beats, np.array(result["beats"], dtype=float)),
+            **bass_metrics(result, reference),
         }
     rows = summarise(scored)
 
     columns = (*METRICS, "n_est", "n_ref", "n_precision", "n_recall")
     columns += ("beat_f", "cmlt", "amlt", "period_ratio")
+    columns += ("bass_ref", "inv_prec", "inv_rec", "nonchord")
     header = (*METRICS, "N_est", "N_ref", "N_prec", "N_rec", "beat_F", "CMLt", "AMLt", "period")
+    header += ("bass_ref", "inv_prec", "inv_rec", "nonchord")
     # Width 8, widened for a heading that would otherwise run into its neighbour.
     widths = [max(8, len(h) + 1) for h in header]
     print(f"{'track':<28}" + "".join(f"{h:>{w}}" for h, w in zip(header, widths, strict=True)))

@@ -32,6 +32,10 @@ COLUMNS = (
     "cmlt",
     "amlt",
     "period_ratio",
+    "bass_ref",
+    "inv_prec",
+    "inv_rec",
+    "nonchord",
 )
 
 
