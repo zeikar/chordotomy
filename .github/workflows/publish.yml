@@ -1,0 +1,45 @@
+# Publishes chordotomy to PyPI when a GitHub release is published. It uses PyPI's trusted
+# publishing, so no token is stored: the project's PyPI publisher settings name this repository,
+# this workflow file (publish.yml) and the `pypi` environment.
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --extra dev --python ${{ matrix.python }}
+      - run: uv run pytest
+      - run: uv run ruff check . && uv run ruff format --check .
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/chordotomy/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      # The release tag is the version with a v in front; publishing anything else is a mistake.
+      - run: |
+          version=$(uv version --short)
+          test "${GITHUB_REF_NAME}" = "v${version}" || {
+            echo "Release tag ${GITHUB_REF_NAME} does not match the package version ${version}"
+            exit 1
+          }
+      - run: uv build
+      - run: uv publish --trusted-publishing always

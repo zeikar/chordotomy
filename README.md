@@ -1,6 +1,6 @@
 # chordotomy
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/zeikar/chordotomy/blob/main/LICENSE)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 [![Viewer](https://img.shields.io/badge/viewer-zeikar.dev%2Fchordotomy-5b4bb7.svg)](https://zeikar.dev/chordotomy/)
 
@@ -12,7 +12,7 @@ Yes, chordotomy is also a spinal surgery. This one cuts chords.
 
 Everything runs locally. Your audio never leaves your machine.
 
-![The chordotomy viewer: a borrowed Fm (iv) in C major, with its role, bass and alternatives, the key, the editor, and a chord strip colored by role](docs/images/viewer.png)
+![The chordotomy viewer: a borrowed Fm (iv) in C major, with its role, bass and alternatives, the key, the editor, and a chord strip colored by role](https://raw.githubusercontent.com/zeikar/chordotomy/main/docs/images/viewer.png)
 
 *The viewer on a synthesized progression in C major, analyzed with `--engine dsp`. The current chord is a borrowed Fm (`iv`); earlier, E7/G♯ is the secondary dominant of Am (`V⁶₅/vi`).*
 
@@ -27,23 +27,20 @@ Everything runs locally. Your audio never leaves your machine.
 
 ## Quick start
 
-Requires [uv](https://docs.astral.sh/uv/).
-
 ```sh
-git clone https://github.com/zeikar/chordotomy && cd chordotomy
-uv sync --extra model                  # adds lv-chordia and torch, about 630 MB
-uv run chordotomy analyze song.mp3     # writes song.chords.json
+uv tool install "chordotomy[model]"   # with the lv-chordia model (recommended), about 630 MB
+chordotomy analyze song.mp3           # writes song.chords.json
 ```
 
-Plain `uv sync` installs the DSP engine only. [The model engine](#the-model-engine-optional) has its size, speed and training data. Then open the [viewer](https://zeikar.dev/chordotomy/) and drop `song.mp3` and `song.chords.json` on the page.
+`uv tool install chordotomy`, `pipx install chordotomy` or `pip install chordotomy` without `[model]` installs the DSP engine only. [The model engine](#the-model-engine-optional) has its size, speed and training data. Then open the [viewer](https://zeikar.dev/chordotomy/) and drop `song.mp3` and `song.chords.json` on the page.
 
 ## Usage
 
 ```sh
-uv run chordotomy analyze song.mp3                 # writes song.chords.json
-uv run chordotomy analyze song.mp3 -o out.json
-uv run chordotomy analyze song.mp3 --key A:min     # analyze in A minor instead of the estimated key
-uv run chordotomy analyze song.mp3 --engine dsp    # the DSP front end, even with the model installed
+chordotomy analyze song.mp3                 # writes song.chords.json
+chordotomy analyze song.mp3 -o out.json
+chordotomy analyze song.mp3 --key A:min     # analyze in A minor instead of the estimated key
+chordotomy analyze song.mp3 --engine dsp    # the DSP front end, even with the model installed
 ```
 
 `--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates.
@@ -74,17 +71,17 @@ uv run chordotomy analyze song.mp3 --engine dsp    # the DSP front end, even wit
 }
 ```
 
-Chords are Harte labels. `candidates` is the recognizer's own ranking, never a percentage. `numeral` is always root position; the viewer combines it with `inversion`, so this segment shows as V⁶₅/vi. The full format is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-chord-timeline-json).
+Chords are Harte labels. `candidates` is the recognizer's own ranking, never a percentage. `numeral` is always root position; the viewer combines it with `inversion`, so this segment shows as V⁶₅/vi. The full format is in [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#the-chord-timeline-json).
 
 ### The model engine (optional)
 
 ```sh
-uv sync --extra model
+uv tool install "chordotomy[model]"     # or pip install "chordotomy[model]"; in a checkout, uv sync --extra model
 ```
 
 This adds lv-chordia and torch. On macOS the environment grows by about 630 MB, 542 MB of it torch. On an Apple M4 the model engine takes 6.3 to 6.8 s per minute of audio and peaks at 2.36 GB of RAM on a 3-minute song and 3.17 GB on a 6-minute one, against the DSP's 3.1 to 3.3 s per minute and 1.00 and 1.77 GB. The weights, five files of about 5.7 MB each, come inside the lv-chordia wheel, so nothing is downloaded at run time. The model runs on the CPU even when torch sees a GPU, and it reads the audio chordotomy has already decoded, so your audio stays on your machine.
 
-On Linux, uv takes torch from the PyTorch CPU index, as `pyproject.toml` sets it up, rather than PyPI's build with CUDA. With pip, add `--extra-index-url https://download.pytorch.org/whl/cpu` to the install command. Python 3.13 dropped the `audioop` module that pydub, one of lv-chordia's dependencies, needs; the extra includes `audioop-lts` in its place.
+On Linux, PyPI's torch is the build with CUDA. For the CPU build, add `--index https://download.pytorch.org/whl/cpu` to `uv tool install`, or `--extra-index-url https://download.pytorch.org/whl/cpu` to `pip install`; in a checkout, `uv sync` already takes it from there, as `pyproject.toml` sets it up. Python 3.13 dropped the `audioop` module that pydub, one of lv-chordia's dependencies, needs; the extra includes `audioop-lts` in its place.
 
 The weights are MIT, like lv-chordia's code. lv-chordia's authors trained them on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. If you would rather not use a model trained that way, leave the extra out, and the DSP front end recognizes the chords.
 
@@ -99,7 +96,7 @@ The weights are MIT, like lv-chordia's code. lv-chordia's authors trained them o
 | GuitarSet, lv-chordia model | 0.827 | 0.872 | 0.819 |
 | GuitarSet, DSP front end | 0.722 | 0.696 | 0.583 |
 
-Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) has every column, the caveats, and how each stage moved them.
+Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#evaluation) has every column, the caveats, and how each stage moved them.
 
 ## Viewer
 
@@ -140,7 +137,7 @@ Working in this repo, `.claude/settings.json` registers the checkout itself as a
 - **Melody transcription.** It doesn't produce melody → MIDI.
 - **Song sections.** It doesn't label intro, verse, or chorus.
 
-It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#design-decisions) explains why.
+It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#design-decisions) explains why.
 
 ## Roadmap
 
@@ -152,7 +149,10 @@ Everything on the original roadmap works: chords on the beat, the optional model
 
 ## Development
 
+Requires [uv](https://docs.astral.sh/uv/).
+
 ```sh
+git clone https://github.com/zeikar/chordotomy && cd chordotomy
 uv sync --extra dev
 uv run chordotomy --version
 uv run pytest
@@ -170,7 +170,7 @@ The viewer re-analyzes edited chords with a JavaScript port of the Python harmon
 uv run python tests/harmony_vectors.py
 ```
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the pipeline, the JSON format, and the design decisions with their reasons.
+[docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md) has the pipeline, the JSON format, and the design decisions with their reasons.
 
 ### Real-audio evaluation (opt-in)
 
@@ -181,7 +181,7 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
 
 ## Acknowledgements
 
@@ -192,4 +192,4 @@ Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB 
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/zeikar/chordotomy/blob/main/LICENSE)
