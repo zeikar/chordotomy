@@ -11,6 +11,7 @@ import pytest
 import soundfile
 from typer.testing import CliRunner
 
+import chordotomy.beats
 import chordotomy.model
 import chordotomy.timeline
 from chordotomy import __version__
@@ -396,4 +397,39 @@ def test_a_missing_package_version_is_an_error_not_a_traceback(
     assert result.exit_code == 1
     assert "error:" in result.stderr
     assert "uv sync --extra model" in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_fetch_weights_without_the_extra_is_a_usage_error() -> None:
+    result = CliRunner().invoke(app, ["fetch-weights"])
+
+    assert result.exit_code == 2
+    # Rich wraps the message inside a bordered error box.
+    assert "uv sync --extra model" in " ".join(result.output.replace("│", " ").split())
+
+
+def test_fetch_weights_prints_the_path(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "beat_this-final0.ckpt"
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.beats, "verified", lambda: False)
+    monkeypatch.setattr(chordotomy.beats, "fetch", lambda: path)
+
+    result = CliRunner().invoke(app, ["fetch-weights"])
+
+    assert result.exit_code == 0
+    assert str(path) in result.stdout
+
+
+def test_fetch_weights_failure_is_an_error_not_a_traceback(monkeypatch) -> None:
+    def offline():
+        raise chordotomy.model.EngineError("cannot fetch the weights; pass --engine dsp")
+
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.beats, "verified", lambda: False)
+    monkeypatch.setattr(chordotomy.beats, "fetch", offline)
+
+    result = CliRunner().invoke(app, ["fetch-weights"])
+
+    assert result.exit_code == 1
+    assert result.stderr.count("error:") == 1
     assert "Traceback" not in result.output

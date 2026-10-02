@@ -14,7 +14,7 @@ from typing import Annotated
 import soundfile
 import typer
 
-from . import __version__, harmony, model, timeline
+from . import __version__, beats, harmony, model, timeline
 from . import evaluate as evaluation
 from .features import NoBeatsError
 
@@ -58,14 +58,19 @@ def _parse_key(value: str | None) -> str | None:
         raise typer.BadParameter(str(exc)) from exc
 
 
+def _require_model() -> None:
+    if not model.available():
+        raise typer.BadParameter(
+            "lv-chordia is not installed; install the model extra with `uv sync --extra model`"
+        )
+
+
 def _resolve_engine(value: Engine) -> Engine:
     # available() only looks for lv_chordia, so deciding never imports torch.
     if value is Engine.AUTO:
         return Engine.MODEL if model.available() else Engine.DSP
-    if value is Engine.MODEL and not model.available():
-        raise typer.BadParameter(
-            "lv-chordia is not installed; install the model extra with `uv sync --extra model`"
-        )
+    if value is Engine.MODEL:
+        _require_model()
     return value
 
 
@@ -207,3 +212,20 @@ def evaluate(
         raise _fail(f"{dataset.value}: {exc}") from exc
     except model.EngineError as exc:
         raise _fail(str(exc)) from exc
+
+
+@app.command(
+    "fetch-weights",
+    help=(
+        "Download and verify the model engine's Beat This! weights (81 MB) "
+        "ahead of the first analysis."
+    ),
+)
+def fetch_weights() -> None:
+    _require_model()
+    cached = beats.verified()
+    try:
+        path = beats.fetch()
+    except model.EngineError as exc:
+        raise _fail(str(exc)) from exc
+    typer.echo(f"{'Already there and verified' if cached else 'Downloaded (81 MB)'}: {path}")
