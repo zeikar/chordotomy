@@ -9,10 +9,12 @@ import importlib.util
 
 import numpy as np
 import pytest
+import soundfile
 
 from chordotomy import beats, model
 from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.model import EngineError
+from chordotomy.timeline import analyze
 
 # find_spec rather than importorskip: collecting the file then imports neither beat_this nor torch.
 if importlib.util.find_spec("beat_this") is None or not beats.verified():
@@ -84,6 +86,21 @@ def test_the_shortest_clip_the_spectrogram_takes_runs(synth) -> None:
 
     with contextlib.suppress(NoBeatsError):
         assert beats.activation(y).shape == (1 + len(y) // HOP,)
+
+
+@pytest.mark.parametrize("length", [beats.N_FFT // 2 + 1, 1024])
+# The DSP's onset strength warns that its window is longer than the clip, which is the point here.
+@pytest.mark.filterwarnings("ignore:n_fft=2048 is too large:UserWarning")
+def test_a_clip_too_short_for_a_beat_has_none_on_either_engine(synth, tmp_path, length) -> None:
+    # The shortest clip the spectrogram takes and the longest the DSP finds no beat in: both
+    # engines say "no beats" and nothing else. Measured: on the model engine it is Beat This!'s
+    # gate, every logit below 0.
+    path = tmp_path / "clip.wav"
+    soundfile.write(path, synth([("C:maj", 8)])[:length], SR)
+
+    for engine in ("dsp", "model"):
+        with pytest.raises(NoBeatsError):
+            analyze(path, engine=engine)
 
 
 def test_digital_silence_has_no_beats() -> None:

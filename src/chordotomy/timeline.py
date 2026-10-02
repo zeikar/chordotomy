@@ -8,7 +8,7 @@ from typing import Literal
 
 import numpy as np
 
-from . import __version__, harmony, model
+from . import __version__, beats, harmony, model
 from .chords import (
     beat_basses,
     inversion,
@@ -41,17 +41,23 @@ def progression(runs: list[list[dict]]) -> list[tuple[str, int]]:
 def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] = "dsp") -> dict:
     """Analyze an audio file into a chord-timeline dict of plain, JSON-serialisable types.
 
-    engine picks the chord recognizer: the DSP's templates or the lv-chordia model.
+    engine picks the chord recognizer and the envelope the beats are tracked on: the DSP's
+    templates on librosa's onset strength, or the lv-chordia model on Beat This!'s activation,
+    whose weights are downloaded on first use. Raises NoBeatsError on audio without beats, and
+    EngineError when the model engine cannot run.
     """
     if engine not in ("dsp", "model"):
         raise ValueError(f"unknown engine {engine!r}; expected 'dsp' or 'model'")
     y = load_audio(path)
-    # Before the model: audio without beats fails here, without loading the nets.
-    f = beat_features(y)
+    # Before lv-chordia: audio without beats fails here, at Beat This!'s gate or in the tracker,
+    # without loading its nets.
+    envelope = beats.activation(y) if engine == "model" else None
+    f = beat_features(y, onset_envelope=envelope)
     if engine == "model":
-        # The model replaces the per-beat chord states and scores and judges the bass. The beats,
-        # the cut rule, the twin resolution and the harmony are the same rules as the DSP's.
-        # The DSP's N gate is not applied: the model labels N itself.
+        # The model replaces the per-beat chord states and scores and judges the bass. Its beats
+        # come from Beat This!'s activation through the DSP's tracker and octave check; the cut
+        # rule, the twin resolution and the harmony are the same rules as the DSP's. The DSP's N
+        # gate is not applied: the model labels N itself.
         frame_states, frame_scores, frame_bass = model.recognize(y)
         boundaries = [*f.frames, len(frame_states)]
         states = model.beat_states(frame_states, boundaries)
@@ -73,19 +79,21 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
 
     duration = round(len(y) / SR, 3)
     # Rounded once, so segment times equal list entries exactly.
-    beats = [round(float(t), 3) for t in f.times]
+    beat_times = [round(float(t), 3) for t in f.times]
     return {
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "chordotomy", "version": __version__, "engine": recognizer},
         "source": {"path": str(path), "duration": duration},
         "key": key_info,
-        "beats": beats,
+        "beats": beat_times,
         "segments": [
             {
                 "start_beat": s["start_beat"],
                 "end_beat": s["end_beat"],
-                "start_time": beats[s["start_beat"]],
-                "end_time": duration if s["end_beat"] == len(beats) else beats[s["end_beat"]],
+                "start_time": beat_times[s["start_beat"]],
+                "end_time": (
+                    duration if s["end_beat"] == len(beat_times) else beat_times[s["end_beat"]]
+                ),
                 "chord": s["chord"],
                 "candidates": s["candidates"],
                 "bass": s["bass"],

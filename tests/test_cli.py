@@ -9,6 +9,7 @@ import types
 import numpy as np
 import pytest
 import soundfile
+from conftest import librosa_activation
 from typer.testing import CliRunner
 
 import chordotomy.beats
@@ -326,6 +327,23 @@ def test_the_default_is_the_model_when_it_is_installed(clip, tmp_path, monkeypat
     assert "engine: lv-chordia 9.9.9" in result.stderr
 
 
+@pytest.mark.parametrize("cached", [False, True])
+def test_the_model_engine_says_when_it_downloads_the_beat_weights(
+    clip, tmp_path, monkeypatch, cached
+) -> None:
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
+    monkeypatch.setattr(chordotomy.beats, "verified", lambda: cached)
+    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: {})
+    args = ["analyze", str(clip), "-o", str(tmp_path / "out.json"), "--engine", "model"]
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0
+    assert ("fetch-weights" in result.stderr) is not cached
+    assert (str(chordotomy.beats.checkpoint_path()) in result.stderr) is not cached
+
+
 def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) -> None:
     out = tmp_path / "out.json"
 
@@ -335,6 +353,7 @@ def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) 
     monkeypatch.setattr(chordotomy.model, "available", lambda: True)
     monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
     monkeypatch.setattr(chordotomy.model, "recognize", broken)
+    monkeypatch.setattr(chordotomy.beats, "activation", librosa_activation)
 
     result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "model"])
 

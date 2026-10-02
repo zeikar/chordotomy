@@ -88,6 +88,13 @@ def _announce(engine: Engine) -> None:
     # The model takes seconds to minutes, most of it before any output.
     if engine is Engine.MODEL:
         typer.echo(f"engine: {model.NAME} {model.version()}", err=True)
+        # The first run also waits on a download, which would otherwise pass for a hang.
+        if not beats.verified():
+            typer.echo(
+                f"The Beat This! weights (81 MB) are downloaded once, to "
+                f"{beats.checkpoint_path()}; `chordotomy fetch-weights` does it ahead of time.",
+                err=True,
+            )
 
 
 def _fail(message: str) -> typer.Exit:

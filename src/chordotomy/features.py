@@ -224,12 +224,29 @@ def _too_slow(treble: np.ndarray, bass: np.ndarray, durations: np.ndarray, parit
     return _changes_between(states, parity)
 
 
-def beat_features(y: np.ndarray) -> Features:
-    """Beat-synchronous chord, bass and level features of a mono signal at SR."""
-    # One tempo per file: a local tempo curve took syncopation over an unchanged pulse for a tempo
-    # change (docs/ARCHITECTURE.md, "Tempo changes are not followed"). The default trim dropped the
-    # last two real beats of a synthesized clip.
-    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=SR, hop_length=HOP, trim=False)
+def beat_features(y: np.ndarray, onset_envelope: np.ndarray | None = None) -> Features:
+    """Beat-synchronous chord, bass and level features of a mono signal at SR.
+
+    onset_envelope is what the beat tracker follows, one value per HOP frame of y: the model
+    engine passes Beat This!'s activation, and the DSP passes nothing and keeps librosa's onset
+    strength. Everything after the tracker (the octave check, the edge extension and the features)
+    is the same for both.
+    """
+    # One tempo per file, whichever envelope: a local tempo curve took syncopation over an unchanged
+    # pulse for a tempo change (docs/ARCHITECTURE.md, "Tempo changes are not followed"). The
+    # default trim dropped the last two real beats of a synthesized clip.
+    if onset_envelope is None:
+        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=SR, hop_length=HOP, trim=False)
+    else:
+        # An envelope on other frames would misplace every beat without a word.
+        if len(onset_envelope) != 1 + len(y) // HOP:
+            raise ValueError(
+                f"the onset envelope has {len(onset_envelope)} frames, not the "
+                f"{1 + len(y) // HOP} of {len(y)} samples at a hop of {HOP}"
+            )
+        tempo, beat_frames = librosa.beat.beat_track(
+            onset_envelope=onset_envelope, sr=SR, hop_length=HOP, trim=False
+        )
     # A 1-element array, positive whenever a beat was found: a single beat extends at its period.
     tempo = float(np.ravel(tempo)[0])
     # Checked before the features: otherwise sync returns empty matrices and the floor's max()

@@ -10,7 +10,7 @@ import pytest
 import soundfile
 from typer.testing import CliRunner
 
-from chordotomy import evaluate, model
+from chordotomy import beats, evaluate, model
 from chordotomy.chords import LABELS, ROOTS
 from chordotomy.cli import app
 from chordotomy.features import HOP, SR
@@ -20,14 +20,26 @@ from chordotomy.timeline import analyze
 if importlib.util.find_spec("lv_chordia") is None:
     pytest.skip("the model extra is not installed", allow_module_level=True)
 
-# Bound at import, before conftest's dsp_engine replaces model.available in each test.
+# Bound at import, before conftest's dsp_engine replaces them in each test.
 REAL_AVAILABLE = model.available
+REAL_ACTIVATION = beats.activation
 
 
 @pytest.fixture(autouse=True)
 def model_engine(monkeypatch):
     """Undo conftest's dsp_engine: here the CLI sees the installed model."""
     monkeypatch.setattr(model, "available", REAL_AVAILABLE)
+
+
+@pytest.fixture
+def beat_this_weights(monkeypatch):
+    """Undo conftest's stub of Beat This!'s activation, for a test that runs the whole engine.
+
+    Skipped unless the weights are already in the cache: the suite never downloads them.
+    """
+    if not beats.verified():
+        pytest.skip("the Beat This! weights are not in the cache; see `chordotomy fetch-weights`")
+    monkeypatch.setattr(beats, "activation", REAL_ACTIVATION)
 
 
 def _write(tmp_path, y):
@@ -48,7 +60,9 @@ def fresh_networks():
     model._networks.cache_clear()
 
 
-def test_the_model_engine_writes_its_chords_and_version(mix, chord_at, tmp_path) -> None:
+def test_the_model_engine_writes_its_chords_and_version(
+    mix, chord_at, tmp_path, beat_this_weights
+) -> None:
     progression = [("C:maj", 4), ("A:min", 4), ("F:maj", 4), ("G:7", 4)]
 
     result = analyze(_write(tmp_path, mix(progression)), engine="model")
@@ -112,7 +126,9 @@ def test_recognize_returns_the_bass_head(synth) -> None:
     assert np.allclose(bass.sum(axis=1), 1, atol=1e-4)
 
 
-def test_chunked_inference_stitches_into_the_same_chords(synth, tmp_path, monkeypatch) -> None:
+def test_chunked_inference_stitches_into_the_same_chords(
+    synth, tmp_path, monkeypatch, beat_this_weights
+) -> None:
     progression = [("C:maj", 4, 36), ("A:min", 4, 45), ("F:maj", 4, 41), ("G:7", 4, 43)] * 2
     y = synth([*progression, ("C:maj", 4, 36), ("D:min7", 4, 38)])
     path = _write(tmp_path, y)
@@ -135,7 +151,7 @@ def test_chunked_inference_stitches_into_the_same_chords(synth, tmp_path, monkey
 
     assert len(windows) > len(model._networks())
     assert max(windows) * HOP < len(y)
-    # Measured: all 40 beats.
+    # Measured: all 41 beats.
     assert sum(a == b for a, b in zip(plain, chunked, strict=True)) >= len(plain) - 2
 
 
@@ -152,7 +168,9 @@ def test_the_nets_run_on_the_cpu_even_when_cuda_is_reported(
         assert {p.device.type for p in interface.net.parameters()} == {"cpu"}
 
 
-def test_analyze_with_the_model_engine_says_which_engine_runs(synth, tmp_path) -> None:
+def test_analyze_with_the_model_engine_says_which_engine_runs(
+    synth, tmp_path, beat_this_weights
+) -> None:
     clip = _write(tmp_path, synth([("C:maj", 8)]))
     out = tmp_path / "out.json"
     installed = importlib.metadata.version("lv-chordia")
@@ -167,7 +185,9 @@ def test_analyze_with_the_model_engine_says_which_engine_runs(synth, tmp_path) -
     }
 
 
-def test_evaluate_with_the_model_engine_prints_a_row(synth, tmp_path, monkeypatch) -> None:
+def test_evaluate_with_the_model_engine_prints_a_row(
+    synth, tmp_path, monkeypatch, beat_this_weights
+) -> None:
     pytest.importorskip("mir_eval")
     pytest.importorskip("pooch")
     clip = _write(tmp_path, synth([("C:maj", 8)]))

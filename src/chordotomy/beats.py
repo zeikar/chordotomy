@@ -79,10 +79,11 @@ def checkpoint_path(name: str = CHECKPOINT) -> Path:
 
 
 def verified(name: str = CHECKPOINT) -> bool:
-    """Whether the cached checkpoint exists and matches the pinned size and SHA-256.
+    """Whether the cached checkpoint exists, can be read, and matches the pinned size and SHA-256.
 
     Checked on every load, about 0.03 s here for 81 MB, rather than recorded once, so a copied or
-    damaged file never runs.
+    damaged file never runs. A file that cannot be read, as a root-owned one left by a sudo
+    fetch-weights, is not verified either, so fetch replaces it instead of the CLI raising.
     """
     digest, size = CHECKPOINTS[name]
     path = checkpoint_path(name)
@@ -93,7 +94,7 @@ def verified(name: str = CHECKPOINT) -> bool:
         with path.open("rb") as f:
             while chunk := f.read(_CHUNK):
                 sha.update(chunk)
-    except FileNotFoundError:
+    except OSError:
         return False
     return sha.hexdigest() == digest
 
@@ -112,7 +113,8 @@ def fetch(name: str = CHECKPOINT) -> Path:
     url = f"{CHECKPOINT_URL}/{name}.ckpt"
     tmp = None
     try:
-        # Present but failing the pin: damaged or a different file, so it goes like a bad download.
+        # Present but unreadable or failing the pin (damaged, a different file, or another
+        # user's): it goes like a bad download.
         path.unlink(missing_ok=True)
         path.parent.mkdir(parents=True, exist_ok=True)
         sha = hashlib.sha256()

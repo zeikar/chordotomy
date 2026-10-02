@@ -15,6 +15,8 @@ from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.model import EngineError
 
 PAYLOAD = b"not really weights" * 1000
+# Bound at import, before conftest's dsp_engine replaces it in each test.
+REAL_ACTIVATION = beats.activation
 
 
 class FakeResponse:
@@ -101,6 +103,23 @@ def test_a_damaged_file_is_replaced(cache, monkeypatch) -> None:
     assert path.read_bytes() == PAYLOAD
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read anything")
+def test_an_unreadable_file_is_replaced(cache, monkeypatch) -> None:
+    # As a root-owned file left by a sudo fetch-weights: the right bytes, not the user's to read.
+    cache.mkdir()
+    unreadable = cache / "beat_this-final0.ckpt"
+    unreadable.write_bytes(PAYLOAD)
+    unreadable.chmod(0)
+    calls = serve(monkeypatch)
+    assert not beats.verified()
+
+    path = beats.fetch()
+
+    assert len(calls) == 1
+    assert path.read_bytes() == PAYLOAD
+    assert beats.verified()
+
+
 @pytest.mark.parametrize(
     ("data", "wrong"),
     [(b"x" * len(PAYLOAD), "SHA-256"), (PAYLOAD[:-1], "not the pinned")],
@@ -172,7 +191,7 @@ def test_a_clip_too_short_for_the_spectrogram_has_no_beats(synth, monkeypatch, n
         monkeypatch.setitem(sys.modules, name, Fake(name))
 
     with pytest.raises(NoBeatsError):
-        beats.activation(synth([("C:maj", 8)])[:n])
+        REAL_ACTIVATION(synth([("C:maj", 8)])[:n])
 
 
 @pytest.mark.parametrize(
