@@ -5,12 +5,13 @@ import importlib.util
 import json
 import re
 
+import numpy as np
 import pytest
 import soundfile
 from typer.testing import CliRunner
 
 from chordotomy import evaluate, model
-from chordotomy.chords import LABELS
+from chordotomy.chords import LABELS, ROOTS
 from chordotomy.cli import app
 from chordotomy.features import HOP, SR
 from chordotomy.timeline import analyze
@@ -53,6 +54,7 @@ def test_the_model_engine_writes_its_chords_and_version(mix, chord_at, tmp_path)
     result = analyze(_write(tmp_path, mix(progression)), engine="model")
 
     assert result["schema_version"] == 8
+    assert {s["bass"] for s in result["segments"]} <= {None, *ROOTS}
     assert result["generator"]["engine"] == {
         "name": "lv-chordia",
         "version": importlib.metadata.version("lv-chordia"),
@@ -99,6 +101,15 @@ def test_a_missing_checkpoint_is_an_engine_error(synth, monkeypatch, fresh_netwo
         model.EngineError, match=rf"\.sdict is missing from {re.escape(str(tmp_path))}"
     ):
         model.recognize(synth([("C:maj", 8)]))
+
+
+def test_recognize_returns_the_bass_head(synth) -> None:
+    y = synth([("C:maj", 8)])
+
+    _, _, bass = model.recognize(y)
+
+    assert bass.shape == (1 + len(y) // HOP, 13)
+    assert np.allclose(bass.sum(axis=1), 1, atol=1e-4)
 
 
 def test_chunked_inference_stitches_into_the_same_chords(synth, tmp_path, monkeypatch) -> None:

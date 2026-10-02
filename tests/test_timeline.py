@@ -624,9 +624,40 @@ def test_an_unknown_engine_is_rejected_before_the_audio_is_read(tmp_path) -> Non
         analyze(tmp_path / "missing.wav", engine="cnn")
 
 
+NOTES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+def _head(heard: list[tuple[str | None, int]], n_frames: int, weight: float = 0.97) -> np.ndarray:
+    """A fake bass head, (n_frames, 13): per frame the bass heard at that time (a note or None for
+    "no bass") at weight, the rest spread evenly. heard is (note, beats) at the default 120 BPM."""
+    head = np.full((n_frames, 13), (1 - weight) / 12)
+    end, k = 0.0, 0
+    for note, n_beats in heard:
+        end += n_beats * 0.5
+        index = 0 if note is None else 1 + NOTES.index(note)
+        while k < n_frames and k * HOP / SR < end:
+            head[k, index] = weight
+            k += 1
+    return head
+
+
+def _stub_model(monkeypatch, chord: str, heard: list[tuple[str | None, int]], weight: float):
+    """The fake model hears one chord throughout and the bass head `heard`."""
+
+    def recognize(y):
+        n = 1 + len(y) // HOP
+        scores = np.full((len(LABELS), n), -5.0)
+        scores[LABELS.index(chord)] = 0.0
+        return np.full(n, LABELS.index(chord)), scores, _head(heard, n, weight)
+
+    monkeypatch.setattr(model, "recognize", recognize)
+    monkeypatch.setattr(model, "version", lambda: "9.9")
+    monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
+
+
 def test_the_model_engine_runs_on_the_dsp_grid(synth, chord_at, tmp_path, monkeypatch) -> None:
-    # The fake model hears other chords than the audio holds, so the chords can only come from it
-    # and the bass only from the DSP.
+    # The fake model hears other chords than the audio holds, so the chords come from it, the
+    # grid from the DSP and the bass from the head (which says what the register holds).
     heard = [("A:min", 4), ("D:min", 4), ("G:7", 4), ("C:maj", 4)]
     runner_up = LABELS.index("E:min")
 
@@ -636,7 +667,7 @@ def test_the_model_engine_runs_on_the_dsp_grid(synth, chord_at, tmp_path, monkey
         scores = np.full((len(LABELS), len(times)), -5.0)
         scores[runner_up] = -1.0
         scores[states, np.arange(len(times))] = 0.0
-        return states, scores
+        return states, scores, _head([("E", 4), ("F", 4), ("G", 4), ("C", 4)], len(times))
 
     monkeypatch.setattr(model, "recognize", recognize)
     monkeypatch.setattr(model, "version", lambda: "9.9")
@@ -665,7 +696,7 @@ def test_a_heard_7sus4_gets_its_numeral_and_inversion(
         states = np.array([LABELS.index(chord_at(heard, t)) for t in times])
         scores = np.full((len(LABELS), len(times)), -5.0)
         scores[states, np.arange(len(times))] = 0.0
-        return states, scores
+        return states, scores, _head([("D", 4), ("G", 4), ("A", 4), ("D", 4)], len(times))
 
     monkeypatch.setattr(model, "recognize", recognize)
     monkeypatch.setattr(model, "version", lambda: "9.9")
@@ -680,6 +711,60 @@ def test_a_heard_7sus4_gets_its_numeral_and_inversion(
     assert [s["inversion"] for s in segments] == ["root", "third", "root", "root"]
     assert [s["numeral"] for s in segments] == ["I", "V7sus4", "V7", "I"]
     assert (segments[1]["role"], segments[1]["function"]) == ("diatonic", "dominant")
+
+
+def test_the_model_engine_keeps_a_held_slash_the_head_hears(synth, tmp_path, monkeypatch) -> None:
+    _stub_model(monkeypatch, "D:maj", [("D", 4), ("E", 4)], 0.97)
+
+    segments = analyze(
+        _write(tmp_path, synth([("D:maj", 4, 38), ("D:maj", 4, 40)])), engine="model"
+    )["segments"]
+
+    assert [s["bass"] for s in segments] == ["D", "E"]
+    assert [s["inversion"] for s in segments] == ["root", "non_chord"]
+
+
+def test_the_model_engine_writes_the_root_over_a_non_chord_pick_the_head_rejects(
+    synth, tmp_path, monkeypatch
+) -> None:
+    # The DSP picks D#2 under Bm7 (the recording's Bm7/D#); the head hears B.
+    _stub_model(monkeypatch, "B:min7", [("B", 8)], 0.97)
+
+    (only,) = analyze(_write(tmp_path, synth([("B:min7", 8, 39)])), engine="model")["segments"]
+
+    assert only["bass"] == "B"
+    assert only["inversion"] == "root"
+
+
+def test_an_unreliable_non_chord_head_note_reads_root_position(
+    synth, tmp_path, monkeypatch
+) -> None:
+    # Chord voiced above the register: no pick, so the head is the only candidate.
+    clip = _write(tmp_path, synth([("B:min7", 8)], chord_midi=60))
+    _stub_model(monkeypatch, "B:min7", [("D#", 8)], 0.4)
+
+    (weak,) = analyze(clip, engine="model")["segments"]
+
+    assert (weak["bass"], weak["inversion"]) == ("B", "root")
+
+    _stub_model(monkeypatch, "B:min7", [("D#", 8)], 0.6)
+
+    (strong,) = analyze(clip, engine="model")["segments"]
+
+    assert (strong["bass"], strong["inversion"]) == ("D#", "non_chord")
+
+
+def test_the_model_engine_writes_no_bass_when_the_head_hears_none(
+    synth, tmp_path, monkeypatch
+) -> None:
+    _stub_model(monkeypatch, "B:min7", [(None, 8)], 0.97)
+
+    clip = _write(tmp_path, synth([("B:min7", 8)], chord_midi=60))
+
+    (only,) = analyze(clip, engine="model")["segments"]
+
+    assert only["bass"] is None
+    assert only["inversion"] is None
 
 
 def test_no_beats_fails_before_the_model_loads(tmp_path, monkeypatch) -> None:

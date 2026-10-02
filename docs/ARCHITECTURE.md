@@ -617,16 +617,58 @@ The rule at the commit that adds these rows, scored by the CLI, against the tie-
 
 On the recording's DSP timeline the chords do not change and 18 beats change their bass, which takes the seconds written as `non_chord` from 23.3 to 10.6. The bridge: `Edim/A` at 201.4 s reads `Edim/G` (the tie-break already, a chord tone), `F#/C` at 207.1 s reads `F#`, `Bm/G` at 208.5 s reads `Bm` and `Bm/D#` at 215.5 s reads `Bm`; 204.2 s was `F#m` already. The weak picks elsewhere go the same way: `A7/A#` at 108.9 s and `A7/D#` at 177.4 s read `A7`, and `Em/A` at 154.8 s keeps its `A` for one beat group and then reads `Em`. Kept: the `D/E` reads at 64.5 s and 160.5 s (the DSP spells them `E7/E` and `Esus4/E`, their bass `E`), `D/A` at 209.2 s, and the unverified `D/D#` at 115.3 s, `G/F#` at 146.4 s and `D/B` at 285.8 s, whose picks are the register's loudest.
 
+#### The model's bass head
+
+The model engine's bass comes from lv-chordia's bass head, which the engine computed and threw away before: `recognize` returns it as a third array, `(n_frames, 13)` with index 0 "no bass" and `1 + pitch class` otherwise, and `timeline` averages it over each beat's frames as it does the scores, giving `(13, n_beats)`. `beat_bass(head, states, picks)` then gives `segment` one bass per beat. Per chord beat the candidates are the DSP's plain `pick_bass` (absent when the register is silent) and then the head's note (the argmax of the twelve notes, absent when "no bass" is the largest of the thirteen). The first candidate that is a tone of the chord is the bass, never gated; otherwise the first non-chord candidate whose posterior in the head is at least `BASS_SUPPORT`; otherwise the chord's root, which is a fallback and not a measured note; and `null` only when there was no candidate, the head hearing no bass and the register silent. An `N` beat has `null`. So "no bass" is consulted only after a DSP pick has failed its test or was absent.
+
+Branch H, shipped: variant A (the DSP's pick first) with `BASS_SUPPORT = 0.7`. Variant B considers the head's note alone, and was swept beside A at the same eight values. The ship rule's constraints are the floors (the unrounded rows before the bass work: neither majmin, sevenths nor majmin_inv on either dataset falls below them, and `N_est` does not move), GuitarSet `inv_rec` at or above 0.9 of the tie-break's 0.2273 (0.2046), and on the recording's model timeline the two `D/E` keeping `E`, the `Bm/A` keeping `A`, the five bridge spots at the root and the `C#7` at the root. The objective is GuitarSet majmin_inv, then `bass_ref`, then Tiny AAM majmin_inv. Cells are majmin / sevenths / majmin_inv; the last two columns are the share of GuitarSet's chord beats whose bass fell back to the root and the share that wrote `null`. "Chart" says whether the recording's constraints held:
+
+| | tau | floors | GuitarSet inv_rec | chart | Tiny AAM | GuitarSet | bass_ref, Tiny AAM / GuitarSet | nonchord, Tiny AAM / GuitarSet | fallback / null, GuitarSet |
+|---|---|---|---|---|---|---|---|---|---|
+| A | 0.10 | met | 0.2106 | kept | 0.9340 / 0.8974 / 0.8668 | 0.8713 / 0.8171 / 0.5901 | 0.9149 / 0.6056 | 0.0021 / 0.0061 | 0.0003 / 0.0006 |
+| A | 0.20 | met | 0.2097 | kept | 0.9340 / 0.8974 / 0.8668 | 0.8710 / 0.8167 / 0.5898 | 0.9149 / 0.6057 | 0.0021 / 0.0063 | 0.0004 / 0.0006 |
+| A | 0.30 | met | 0.2097 | kept | 0.9340 / 0.8977 / 0.8671 | 0.8715 / 0.8176 / 0.5898 | 0.9153 / 0.6059 | 0.0018 / 0.0055 | 0.0022 / 0.0006 |
+| A | 0.40 | met | 0.2084 | kept | 0.9340 / 0.8977 / 0.8671 | 0.8715 / 0.8181 / 0.5898 | 0.9153 / 0.6053 | 0.0018 / 0.0031 | 0.0085 / 0.0006 |
+| A | 0.50 | met | 0.2084 | kept | 0.9340 / 0.8982 / 0.8676 | 0.8716 / 0.8189 / 0.5909 | 0.9155 / 0.6055 | 0.0010 / 0.0010 | 0.0131 / 0.0006 |
+| A | 0.60 | met | 0.2079 | kept | 0.9340 / 0.8982 / 0.8676 | 0.8717 / 0.8190 / 0.5921 | 0.9155 / 0.6066 | 0.0010 / 0.0010 | 0.0158 / 0.0006 |
+| A | 0.70 | met | 0.2079 | kept | 0.9340 / 0.8984 / 0.8678 | 0.8719 / 0.8193 / 0.5923 | 0.9157 / 0.6070 | 0.0005 / 0.0004 | 0.0166 / 0.0006 |
+| A | 0.80 | met | 0.2079 | kept | 0.9340 / 0.8986 / 0.8680 | 0.8721 / 0.8195 / 0.5925 | 0.9155 / 0.6072 | 0.0000 / 0.0000 | 0.0171 / 0.0006 |
+| B | 0.10 | met | 0.0312 | kept | 0.9340 / 0.8973 / 0.9140 | 0.8708 / 0.8166 / 0.6977 | 0.9643 / 0.6977 | 0.0026 / 0.0090 | 0.0000 / 0.0010 |
+| B | 0.20 | met | 0.0312 | kept | 0.9340 / 0.8973 / 0.9140 | 0.8708 / 0.8166 / 0.6977 | 0.9643 / 0.6977 | 0.0026 / 0.0090 | 0.0003 / 0.0010 |
+| B | 0.30 | met | 0.0312 | kept | 0.9340 / 0.8976 / 0.9143 | 0.8708 / 0.8169 / 0.6977 | 0.9646 / 0.6970 | 0.0023 / 0.0078 | 0.0027 / 0.0010 |
+| B | 0.40 | met | 0.0312 | kept | 0.9340 / 0.8978 / 0.9145 | 0.8711 / 0.8176 / 0.6980 | 0.9650 / 0.6963 | 0.0019 / 0.0040 | 0.0112 / 0.0010 |
+| B | 0.50 | met | 0.0312 | kept | 0.9340 / 0.8983 / 0.9150 | 0.8716 / 0.8189 / 0.6993 | 0.9650 / 0.6965 | 0.0009 / 0.0010 | 0.0180 / 0.0010 |
+| B | 0.60 | met | 0.0312 | kept | 0.9340 / 0.8984 / 0.9152 | 0.8717 / 0.8190 / 0.6993 | 0.9652 / 0.6965 | 0.0006 / 0.0010 | 0.0220 / 0.0010 |
+| B | 0.70 | met | 0.0312 | kept | 0.9340 / 0.8984 / 0.9152 | 0.8719 / 0.8193 / 0.6995 | 0.9651 / 0.6969 | 0.0005 / 0.0004 | 0.0232 / 0.0010 |
+| B | 0.80 | met | 0.0312 | kept | 0.9340 / 0.8986 / 0.9154 | 0.8721 / 0.8195 / 0.6997 | 0.9649 / 0.6971 | 0.0000 / 0.0000 | 0.0237 / 0.0010 |
+
+At the tie-break the rows were Tiny AAM 0.9258 / 0.8644 / 0.8042 and GuitarSet 0.7997 / 0.6990 / 0.4761, `inv_rec` 0.2273.
+
+B ends on the inversion floor at every `tau`: its `inv_rec` is 0.031 against 0.205, because the head leans root: where the DSP hears a chord-tone inversion the head does not, B writes what the head says. Its majmin_inv is higher (0.915 on Tiny AAM and 0.70 on GuitarSet, where the references are mostly in root position), which is what the floor is there to refuse. A never gates a chord-tone pick, so it keeps the DSP's inversions: its `inv_rec` is 0.208 to 0.211. A meets every constraint from 0.1 to 0.8. At 0.85 the `Bm/A` loses its `A` (and so does 0.9), which bounds `tau` from above; the diagnosed wrong picks sit at posteriors of 0.00 to 0.02, so no point in the sweep keeps them. GuitarSet's majmin_inv rises from 0.5901 at 0.1 to 0.5925 at 0.8, and 0.6, 0.7 and 0.8 are within 0.05 pp of each other on majmin_inv, `bass_ref` and Tiny AAM's majmin_inv, so they tie and the middle, 0.7, is chosen: 0.6 and 0.8 pass on both sides. Its margins are 0.3 pp of `inv_rec` over its floor and a step of 0.15 to the point where the `Bm/A` is lost.
+
+`nonchord` falls to 0.0005 and 0.0004, the share of duration written as a non-chord bass. The datasets hold almost none to find (Tiny AAM's true non-chord bass is under 0.4 % and GuitarSet's 4.4 % is mostly its lowest string), and the held non-chord slash is guarded by the synthesized test and the chart instead: GuitarSet's per-beat recall of a non-chord reference bass is 0.021 at the tie-break and 0.028 at the shipped point (470 beats).
+
+The shipped rows, scored by the CLI, against the tie-break's (percentage points; `root`, `N_est` and the beat columns do not move):
+
+| | majmin | sevenths | tetrads | majmin_inv | bass_ref | inv_prec | inv_rec | nonchord |
+|---|---|---|---|---|---|---|---|---|
+| Tiny AAM, `model` | +0.82 | +3.41 | +3.41 | +6.36 | +6.51 | 0.00 | nan | -4.03 |
+| GuitarSet, `model` | +7.22 | +12.03 | +7.77 | +11.62 | +10.35 | +0.28 | -1.94 | -16.30 |
+
+The scores gain for the reason the tie-break's did: a non-chord bass is scored as a slash that adds a tone to the estimate's pitch set, and the head's bass is a chord tone far more often than the DSP's pick.
+
+On the recording's model timeline the chords do not change, the beats are equal and the key stays `D:maj`; 33 beats change their bass, which takes the seconds written as `non_chord` from 26.9 to 12.0. The chart's wrong readings go to the root: `Gm/A` at 201.4 s reads `Gm`, `Bm7/G` at 204.2 s and 208.5 s read `Bm7`, `F#7/C` at 207.1 s reads `F#7` and `Bm7/D#` at 215.5 s reads `Bm7`. Kept: the `D/E` at 64.5 s and 160.5 s (their bass `E`, `non_chord`), `Bm/A` at 209.2 s and `C#7` at 212.7 s at the root. The head also takes the unverified `D/D#` at 115.3 s, `G/F#` at 146.4 s, `A/D#` at 178.8 s and `D/A#` at 285.8 s to the root, and writes `Bm/A` for the second half of two `Bm` chords (94.1 s and 260.7 s) that read `Bm/B` before.
+
 ### Current rows
 
-Vocabulary v6's rows, scored by the CLI (`chordotomy evaluate`) on the final reference. "Vocabulary v5" has the rows before v6 and what moved in v5, and "Vocabulary v6" what moved in v6 and why.
+The rows of the shipped bass rules (the DSP's salience test and the model's bass head, "Bass reliability" above), scored by the CLI (`chordotomy evaluate`) on the final reference. "Vocabulary v5" has the rows before v6 and what moved in v5, and "Vocabulary v6" what moved in v6 and why.
 
 | | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period | bass_ref | inv_prec | inv_rec | nonchord |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Tiny AAM (20 tracks), `dsp` | 0.842 | 0.803 | 0.768 | 0.768 | 0.713 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 | 0.851 | 0.000 | nan | 0.020 |
 | GuitarSet (180 takes), `dsp` | 0.722 | 0.696 | 0.583 | 0.379 | 0.446 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.507 | 0.174 | 0.226 | 0.087 |
-| Tiny AAM (20 tracks), `model` | 0.939 | 0.924 | 0.857 | 0.857 | 0.800 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 | 0.846 | 0.000 | nan | 0.050 |
-| GuitarSet (180 takes), `model` | 0.827 | 0.787 | 0.676 | 0.441 | 0.466 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.493 | 0.204 | 0.216 | 0.193 |
+| Tiny AAM (20 tracks), `model` | 0.939 | 0.934 | 0.898 | 0.898 | 0.868 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 | 0.916 | 0.000 | nan | 0.000 |
+| GuitarSet (180 takes), `model` | 0.827 | 0.872 | 0.819 | 0.533 | 0.592 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.607 | 0.205 | 0.208 | 0.000 |
 
 ## Design decisions
 

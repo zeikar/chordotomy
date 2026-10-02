@@ -2,8 +2,9 @@
 
 lv-chordia is the ensemble of Jiang, Chen, Li & Xia (ISMIR 2019): five nets and an HMM decoder
 over a chord dictionary. Its per-frame labels and scores are mapped to the v6 vocabulary and
-snapped to the DSP's beat grid; the beats, the bass, the twin resolution and the harmony stay
-the DSP's.
+snapped to the DSP's beat grid; the beats, the twin resolution and the harmony stay the DSP's.
+The bass is judged by the nets' bass head, which keeps the DSP's pick when it is a tone of the
+chord.
 
 lv_chordia and torch are imported only inside the functions that run the nets, so importing this
 module loads neither and the DSP path never pays for them.
@@ -25,7 +26,7 @@ import librosa
 import numpy as np
 from scipy.special import logsumexp
 
-from .chords import LABELS
+from .chords import LABELS, ROOTS, _pitch_classes
 from .features import HOP, SR
 from .harmony import FLATS
 
@@ -69,6 +70,15 @@ QUALITY = {
 }
 
 
+# A bass outside the beat's chord needs this posterior from the bass head, else the beat reads the
+# chord's root. Swept on Tiny AAM and GuitarSet against the chart: every point from 0.1 to 0.8
+# meets the floors and the chart's constraints, 0.85 loses the Bm/A's A, and the wrong picks sit at
+# 0.00 to 0.02. GuitarSet's majmin_inv rises from 0.590 at 0.1 to 0.593 at 0.8, and 0.6 to 0.8 are
+# within 0.05 pp of each other on every objective, so 0.7 is the middle of that plateau with 0.6
+# and 0.8 passing on both sides.
+BASS_SUPPORT = 0.7
+
+
 class EngineError(Exception):
     """The model engine is installed but cannot run, as with a missing or damaged checkpoint."""
 
@@ -89,7 +99,7 @@ def version() -> str:
 def to_label(name: str) -> str:
     """The v6 label of a dictionary name, such as Eb:maj/3 -> D#:maj.
 
-    The slash is dropped: the bass comes from pick_bass, as on the DSP path.
+    The slash is dropped: the bass comes from the bass head (beat_bass).
     """
     if name == "N":
         return name
@@ -133,6 +143,36 @@ def beat_scores(frame_scores: np.ndarray, boundaries: list[int]) -> np.ndarray:
     return np.stack(
         [frame_scores[:, start:end].mean(axis=1) for start, end in pairwise(boundaries)], axis=1
     )
+
+
+def beat_bass(head: np.ndarray, states: np.ndarray, picks: list[str | None]) -> list[str | None]:
+    """One bass per beat from the (13, n_beats) bass head and the DSP's per-beat picks.
+
+    The head's index 0 is "no bass" and 1 + pitch class the notes. Per chord beat the candidates
+    are the DSP's pick (absent when the register is silent) and the head's note (absent when "no
+    bass" is its largest class). The first candidate that is a tone of the chord is the bass; else
+    the first whose posterior is at least BASS_SUPPORT; else the chord's root, which is not a
+    measured note, and None only when there was no candidate. An N beat has None.
+    """
+    basses = []
+    for i, (state, pick) in enumerate(zip(states, picks, strict=True)):
+        label = LABELS[state]
+        if label == "N":
+            basses.append(None)
+            continue
+        column = head[:, i]
+        note = None if column.argmax() == 0 else ROOTS[int(column[1:].argmax())]
+        candidates = [name for name in (pick, note) if name is not None]
+        tones = _pitch_classes(label)
+        chosen = next((c for c in candidates if ROOTS.index(c) in tones), None)
+        if chosen is None:
+            chosen = next(
+                (c for c in candidates if column[1 + ROOTS.index(c)] >= BASS_SUPPORT), None
+            )
+        if chosen is None and candidates:
+            chosen = label.split(":")[0]
+        basses.append(chosen)
+    return basses
 
 
 def _cqt(y: np.ndarray) -> np.ndarray:
@@ -251,8 +291,12 @@ def _decoder():
         raise EngineError(f"{template} cannot be read ({exc!r}); {_REINSTALL}") from exc
 
 
-def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Per-frame LABELS indices and (157, n_frames) label scores of a mono signal at SR.
+def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-frame LABELS indices, (157, n_frames) label scores and bass head of a mono signal at SR.
+
+    The bass head is the nets' second head as _probabilities gives it, (n_frames, 13): index 0 is
+    "no bass" and 1 + pitch class a note (lv_chordia's complex_chord.Chord.bass and the + 1 in
+    get_chord_tag_obs are the source).
 
     The states are the decoder's smoothed labels, decoded without beats as chord_recognition
     does, so a chord can change on any frame; the scores are fold()'s, from the same
@@ -263,4 +307,4 @@ def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     names, logprob = decoder.get_chord_tag_obs(probs)
     decoded = decoder.decode(probs, np.ones(logprob.shape[0], dtype=np.int8))
     index = {name: LABELS.index(to_label(name)) for name in names}
-    return np.array([index[name] for name in decoded]), fold(names, logprob)
+    return np.array([index[name] for name in decoded]), fold(names, logprob), probs[1]

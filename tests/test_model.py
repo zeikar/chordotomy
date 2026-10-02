@@ -8,7 +8,15 @@ import pytest
 from chordotomy import model
 from chordotomy.chords import LABELS
 from chordotomy.features import HOP, SR
-from chordotomy.model import QUALITY, available, beat_scores, beat_states, fold, to_label
+from chordotomy.model import (
+    QUALITY,
+    available,
+    beat_bass,
+    beat_scores,
+    beat_states,
+    fold,
+    to_label,
+)
 
 # The submission dictionary's 26 entries on Eb, as the decoder spells them, and the v5 label each
 # maps to. Literal, deliberately not built from the module's table.
@@ -149,3 +157,42 @@ def test_chunked_inference_keeps_every_frame_once_with_its_context(monkeypatch, 
         first, end = windows[head[:, 1].astype(int)].T
         assert np.all(first <= np.maximum(frames - OVERLAP, 0))
         assert np.all(end >= np.minimum(frames + OVERLAP + 1, n))
+
+
+NOTES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+def _head(weights: dict[str | None, float]) -> np.ndarray:
+    """A one-beat (13, 1) bass head: the given weight per note (None is "no bass"), the rest of
+    the mass spread evenly over the other classes."""
+    head = np.zeros((13, 1))
+    for note, weight in weights.items():
+        head[0 if note is None else 1 + NOTES.index(note), 0] = weight
+    others = head[:, 0] == 0
+    head[others, 0] = (1 - head.sum()) / others.sum()
+    return head
+
+
+@pytest.mark.parametrize(
+    ("weights", "pick", "bass"),
+    [
+        ({"E": 0.97}, None, "E"),  # a chord tone
+        ({"D": 0.97}, None, "D"),  # a non-chord note the head is sure of
+        ({"D": 0.4}, None, "C"),  # an unreliable one reads the root
+        ({None: 0.97}, None, None),  # nothing heard and nothing picked
+        ({"D": 0.97}, "E", "E"),  # a chord-tone pick is never gated
+        ({"D": 0.6}, "D", "D"),  # a non-chord pick the head supports
+        ({"C": 0.9, "D": 0.1}, "D", "C"),  # a pick it does not support gives way to the root
+        ({None: 0.8, "D": 0.1}, "D", "C"),  # a candidate was considered: the root, not None
+    ],
+)
+def test_beat_bass_under_c_major(monkeypatch, weights, pick, bass) -> None:
+    monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
+
+    assert beat_bass(_head(weights), np.array([LABELS.index("C:maj")]), [pick]) == [bass]
+
+
+def test_beat_bass_is_none_under_n(monkeypatch) -> None:
+    monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
+
+    assert beat_bass(_head({"E": 0.97}), np.array([LABELS.index("N")]), ["E"]) == [None]

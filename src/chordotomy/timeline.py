@@ -49,21 +49,22 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
     # Before the model: audio without beats fails here, without loading the nets.
     f = beat_features(y)
     if engine == "model":
-        # The model replaces only the per-beat chord states and scores. The beat grid, the bass
-        # (still the DSP's pick_bass) and inversions, the segmentation, the twin resolution and
-        # the harmony stay the DSP's.
+        # The model replaces the per-beat chord states and scores and judges the bass. The beats,
+        # the cut rule, the twin resolution and the harmony are the same rules as the DSP's.
         # The DSP's N gate is not applied: the model labels N itself.
-        frame_states, frame_scores = model.recognize(y)
+        frame_states, frame_scores, frame_bass = model.recognize(y)
         boundaries = [*f.frames, len(frame_states)]
         states = model.beat_states(frame_states, boundaries)
         scores = model.beat_scores(frame_scores, boundaries)
+        head = model.beat_scores(frame_bass.T, boundaries)
+        basses = model.beat_bass(head, states, [pick_bass(c) for c in f.cqt.T])
         recognizer = {"name": model.NAME, "version": model.version()}
     else:
         scores = match(f.treble, f.bass)
         forced = no_chord(f.level, f.onset, f.flatness, f.harmonic)
         states = smooth(scores, forced, np.diff(f.times))
+        basses = beat_basses(states, f.cqt)
         recognizer = {"name": "dsp", "version": __version__}
-    basses = beat_basses(states, f.cqt) if engine == "dsp" else [pick_bass(c) for c in f.cqt.T]
     segments = resolve_twins(segment(states, scores, basses))
 
     runs = chord_runs(segments)
