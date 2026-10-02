@@ -135,6 +135,8 @@ kbd {
   display: flex;
   align-items: center;
   gap: 8px 32px;
+  /* As tall with Open files hidden (the empty state) as with it. */
+  min-height: 36px;
   padding: 14px 32px;
   border-bottom: 1px solid var(--rule);
 }
@@ -196,6 +198,18 @@ kbd {
   flex: none;
 }
 
+.repo {
+  flex: none;
+  font-size: 13px;
+  color: var(--pencil);
+  text-underline-offset: 2px;
+}
+
+.empty a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+
 .status {
   display: flex;
   align-items: flex-start;
@@ -232,7 +246,7 @@ kbd {
 
 /* The empty state has its own Open files button; one is enough. */
 body:has(#empty:not([hidden])) .bar .open-files {
-  visibility: hidden;
+  display: none;
 }
 
 body:has(#empty:not([hidden])) .status {
@@ -242,26 +256,85 @@ body:has(#empty:not([hidden])) .status {
   margin-inline: auto;
 }
 
-/* Before anything is open. The dashed edge is the cut line the whole page drops onto. */
+/* Before anything is open: what the page does, a sample of its strip, and how to get a timeline.
+   Only the action carries the dashed edge, the cut line the whole page drops onto. */
 
 .empty {
   box-sizing: border-box;
-  max-width: 36rem;
-  margin: auto;
-  padding: 40px 44px;
-  border: 1.5px dashed var(--pencil);
-  border-radius: 6px;
+  width: 100%;
+  max-width: 40rem;
+  margin: clamp(48px, 12vh, 120px) auto auto;
+  padding: 0 32px 48px;
 }
 
 .empty h1 {
-  margin: 0 0 16px;
-  font: 400 35.5px/1.15 var(--serif);
+  margin: 0 0 20px;
+  font: 400 47.4px/1.1 var(--serif);
   letter-spacing: -0.01em;
   text-wrap: balance;
 }
 
-.empty p {
-  margin: 0 0 24px;
+.lede {
+  margin: 0 0 28px;
+  font-size: 20px;
+  line-height: 1.45;
+}
+
+/* The strip's own cells, laid out in a row instead of on the beat grid. */
+.sample {
+  display: flex;
+  height: 90px;
+  margin: 0 0 28px;
+  overflow: hidden;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.sample .segment {
+  position: static;
+  flex: 1;
+  cursor: default;
+}
+
+.sample sup {
+  font-size: 0.62em;
+}
+
+.steps {
+  margin: 0 0 28px;
+  padding-left: 1.4em;
+  font-size: 16px;
+}
+
+.steps li + li {
+  margin-top: 8px;
+}
+
+.steps li::marker {
+  font-family: var(--serif);
+  color: var(--pencil);
+}
+
+.empty code {
+  padding: 0 0.3em;
+  background: var(--cell);
+  border-radius: 3px;
+}
+
+.drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 20px 24px;
+  color: var(--pencil);
+  border: 1.5px dashed var(--pencil);
+  border-radius: 6px;
+}
+
+.drop .button {
+  padding: 9px 20px;
   font-size: 16px;
 }
 
@@ -919,6 +992,20 @@ body:has(#empty:not([hidden])) .status {
     text-align: left;
   }
 
+  .bar {
+    gap: 8px 16px;
+  }
+
+  /* GitHub and Open files share the wordmark's row, opposite it. */
+  .repo {
+    margin-left: auto;
+  }
+
+  .files {
+    order: 2;
+    flex-basis: 100%;
+  }
+
   /* The chord group wraps under Mute here, so a divider would hang in mid-air. */
   .listen-chords {
     padding-left: 0;
@@ -941,7 +1028,11 @@ body:has(#empty:not([hidden])) .status {
   }
 
   .empty {
-    margin: 32px 16px auto;
-    padding: 28px 24px;
+    margin: 32px auto auto;
+    padding: 0 16px 32px;
+  }
+
+  .empty h1 {
+    font-size: 35.5px;
   }
 }

@@ -9,7 +9,28 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; media-src blob:; base-uri 'none'; form-action 'none'"
     />
-    <title>chordotomy viewer</title>
+    <title>chordotomy viewer: a song's chords, key and Roman numerals</title>
+    <meta
+      name="description"
+      content="Play a recording with its chords on the beat, their Roman numerals and bass notes, and the secondary dominants and borrowed chords highlighted. Correct chords and save. Files stay in your browser."
+    />
+    <link rel="canonical" href="https://zeikar.dev/chordotomy/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="chordotomy" />
+    <meta property="og:title" content="chordotomy viewer: a song's chords, key and Roman numerals" />
+    <meta
+      property="og:description"
+      content="Play a recording with its chords, Roman numerals and bass notes. Secondary dominants and borrowed chords stand out. Files stay in your browser."
+    />
+    <meta property="og:url" content="https://zeikar.dev/chordotomy/" />
+    <meta property="og:image" content="https://zeikar.dev/chordotomy/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The chordotomy viewer: a borrowed Fm, its Roman numeral iv in C major, and a chord strip coloured by role"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 15 12 1' stroke='%23888' stroke-width='2.5'/%3E%3C/svg%3E"
@@ -34,6 +55,7 @@
         </div>
       </dl>
       <p class="privacy">Files stay in this browser. Nothing is uploaded.</p>
+      <a class="repo" href="https://github.com/zeikar/chordotomy">GitHub</a>
       <button type="button" class="button open-files">Open files</button>
       <input id="picker" type="file" multiple accept="audio/*,.json,application/json" hidden />
     </header>
@@ -44,13 +66,46 @@
     </div>
 
     <main id="empty" class="empty">
-      <h1>Open a recording and its chord timeline</h1>
-      <p>
-        Drop both files anywhere on this page, or open them. The timeline is the
-        <code>.chords.json</code> that <code>chordotomy analyze song.mp3</code> writes next to the
-        recording.
+      <h1>See a song's chords, key and Roman numerals</h1>
+      <p class="lede">
+        Play a recording with the chord timeline chordotomy wrote for it: a chord on every beat,
+        its numeral and bass, and the secondary dominants and borrowed chords in colour.
       </p>
-      <button type="button" class="button open-files">Open files</button>
+      <div class="sample" aria-hidden="true">
+        <span class="segment" data-role="diatonic"
+          ><span class="segment-chord">C</span><span class="segment-numeral">I</span></span
+        >
+        <span class="segment" data-role="secondary_dominant"
+          ><span class="segment-chord">A7</span
+          ><span class="segment-numeral">V<sup>7</sup>/ii</span></span
+        >
+        <span class="segment" data-role="diatonic"
+          ><span class="segment-chord">Dm7</span
+          ><span class="segment-numeral">ii<sup>7</sup></span></span
+        >
+        <span class="segment" data-role="borrowed"
+          ><span class="segment-chord">Fm</span><span class="segment-numeral">iv</span></span
+        >
+        <span class="segment" data-role="diatonic"
+          ><span class="segment-chord">C</span><span class="segment-numeral">I</span></span
+        >
+      </div>
+      <ol class="steps">
+        <li>
+          Analyze the recording on your computer with
+          <a href="https://github.com/zeikar/chordotomy#quick-start">chordotomy</a>:
+          <code>chordotomy analyze song.mp3</code> writes <code>song.chords.json</code> next to it.
+        </li>
+        <li>Open the recording and its <code>.chords.json</code> here.</li>
+        <li>
+          Play. Turn on <b>Play chords</b> to check them by ear, correct a chord in the editor, and
+          save the edited timeline.
+        </li>
+      </ol>
+      <div class="drop">
+        <button type="button" class="button open-files">Open files</button>
+        <span>or drop both files anywhere on this page</span>
+      </div>
     </main>
 
     <main id="viewer" class="viewer" hidden>
