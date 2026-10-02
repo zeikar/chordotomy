@@ -23,7 +23,7 @@ It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](docs/ARCHI
 - [x] Chords on the beat from chroma + beat tracking (major / minor / dominant 7th / major 7th / minor 7th / minor 6th / half-diminished 7th / diminished 7th / sus4 / augmented / diminished triad / sus2 / 7sus4; the DSP does not call sus2 or 7sus4, which come from the model or a manual edit)
 - [x] A pretrained model as the recognizer when installed (`uv sync --extra model`)
 - [x] Roman-numeral analysis, with highlights for secondary dominants and borrowed chords
-- [x] Slash chords and inversions from the bass note (low-register DSP, no Demucs)
+- [x] Slash chords and inversions from the bass note (low-register DSP, or lv-chordia's bass head with the model; no Demucs)
 - [x] Short explanations of the highlighted moves (a Claude Code skill)
 - [x] Viewer: playback that highlights the current chord
 - [x] Chord editing and manual entry in the viewer
@@ -39,7 +39,7 @@ uv run chordotomy analyze song.mp3 --engine dsp  # the DSP front end, even with 
 
 `--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates.
 
-`--engine` picks the chord recognizer. `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` takes the model, and `dsp` the DSP. `--engine model` without the model installed is an error that names the install command. A broken model install is an error too, naming the reinstall and `--engine dsp`; it never quietly falls back to the DSP. The beats, the bass note and the harmonic analysis are chordotomy's own with either engine, and the JSON records which engine heard the chords.
+`--engine` picks the chord recognizer. `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` takes the model, and `dsp` the DSP. `--engine model` without the model installed is an error that names the install command. A broken model install is an error too, naming the reinstall and `--engine dsp`; it never quietly falls back to the DSP. The beats and the harmonic analysis are chordotomy's own with either engine; the bass note comes from the low-register CQT with the DSP and from lv-chordia's bass head with the model, and a weak bass outside the chord is shown at root position, not as a measured note. The JSON records which engine heard the chords.
 
 `analyze` refuses to overwrite an existing output unless you pass `--force`. An input with no detectable beats is reported as an error, not written as an empty timeline. The JSON format is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-chord-timeline-json).
 
@@ -119,7 +119,7 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
 
 ## License
 
