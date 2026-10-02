@@ -10,8 +10,9 @@ import importlib.util
 import numpy as np
 import pytest
 import soundfile
+from test_timeline import CYCLE, _matched, _two_beat_chords, _write
 
-from chordotomy import beats, model
+from chordotomy import beats, features, model
 from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.model import EngineError
 from chordotomy.timeline import analyze
@@ -25,8 +26,6 @@ if importlib.util.find_spec("beat_this") is None or not beats.verified():
 # Bound at import, before conftest's stubs replace them in each test.
 REAL_AVAILABLE = model.available
 REAL_ACTIVATION = beats.activation
-
-CYCLE = ("C:maj", "F:maj", "G:maj", "A:min", "D:min", "E:min")
 
 
 @pytest.fixture(autouse=True)
@@ -103,9 +102,13 @@ def test_a_clip_too_short_for_a_beat_has_none_on_either_engine(synth, tmp_path, 
             analyze(path, engine=engine)
 
 
-def test_digital_silence_has_no_beats() -> None:
+def test_digital_silence_has_no_beats(tmp_path) -> None:
+    silence = np.zeros(4 * SR, dtype=np.float32)
+
     with pytest.raises(NoBeatsError):
-        beats.activation(np.zeros(4 * SR, dtype=np.float32))
+        beats.activation(silence)
+    with pytest.raises(NoBeatsError):
+        analyze(_write(tmp_path, silence), engine="model")
 
 
 def test_the_gate_agrees_at_its_edge(synth) -> None:
@@ -183,3 +186,64 @@ def test_a_checkpoint_that_cannot_be_loaded_is_an_engine_error(
     for part in (str(beats.checkpoint_path()), "--reinstall-package beat-this", "--engine dsp"):
         assert part in message
     assert "\n" not in message
+
+
+def test_a_constant_tempo_keeps_the_global_grid(synth, tmp_path) -> None:
+    y, strikes, struck = _two_beat_chords(synth, 120, 48)
+
+    result = analyze(_write(tmp_path, y), engine="model")
+
+    hit, _ = _matched(result, strikes, struck)
+    # Measured: all 96 strikes hit, on 97 beats.
+    assert hit >= 0.95, hit
+    # The octave check's negative case on this engine too.
+    assert abs(len(result["beats"]) - len(strikes)) <= 2, (len(result["beats"]), len(strikes))
+
+
+def test_a_syncopated_constant_tempo_keeps_the_global_grid(synth, syncopated, tmp_path) -> None:
+    # 86 BPM throughout: 8 bars of hats on the eighths, then 8 of syncopated hats.
+    chords, strikes, struck = _two_beat_chords(synth, 86, 32)
+    y = chords + syncopated(8, 8, 86)
+    y = y / np.abs(y).max() * 0.5
+
+    result = analyze(_write(tmp_path, y), engine="model")
+
+    hit, _ = _matched(result, strikes, struck)
+    gaps = np.diff(result["beats"])
+    # Measured: all 64 strikes hit; 65 beats of 0.674 to 0.720 s, a ratio of 1.07.
+    # Beat This!'s own peaks give 2.04, which is why the DP is kept.
+    assert hit >= 0.95, hit
+    assert gaps.max() < 1.2 * gaps.min(), (gaps.min(), gaps.max())
+
+
+def test_a_half_tempo_lock_is_doubled(half_locked, tmp_path, monkeypatch) -> None:
+    y, strikes, struck = _two_beat_chords(half_locked, 180, 36)
+    path = _write(tmp_path, y)
+
+    hit, correct = _matched(analyze(path, engine="model"), strikes, struck)
+
+    # Measured: 71 of 72 strikes hit, on a median beat of 0.325 s, and every matched beat carries
+    # the chord struck on it.
+    assert hit >= 0.9, hit
+    assert correct >= 0.9, correct
+
+    monkeypatch.setattr(features, "OCTAVE_MIN_CHANGES", 10_000)
+    hit, _ = _matched(analyze(path, engine="model"), strikes, struck)
+
+    # Measured with the check off: 36 beats, 50 % of the strikes hit and 83 % of the matched beats
+    # carry their chord. Beat This! half-locks this fixture too, so the octave
+    # check is still what doubles it.
+    assert hit <= 0.6, hit
+
+
+def test_held_chords_keep_a_steady_grid(synth, tmp_path) -> None:
+    # One strike per bar of 4 beats at 90 BPM, held: 48 beats.
+    y = synth([(CYCLE[i % len(CYCLE)], 1) for i in range(12)], bpm=90 / 4, decay=2.0)
+
+    result = analyze(_write(tmp_path, y), engine="model")
+
+    gaps = np.diff(result["beats"])
+    # Measured: 49 beats of 0.604 to 0.697 s, a ratio of 1.15. Beat This!'s own peaks leave gaps up
+    # to 1.84 s here; the DP must not.
+    assert abs(len(result["beats"]) - 48) <= 4, len(result["beats"])
+    assert gaps.max() < 1.2 * gaps.min(), (gaps.min(), gaps.max())
