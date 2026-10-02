@@ -260,7 +260,12 @@ CANDIDATES = 3
 BASS_HOLD = 2
 
 
-def segment(states: np.ndarray, scores: np.ndarray, basses: list[str | None]) -> list[dict]:
+def segment(
+    states: np.ndarray,
+    scores: np.ndarray,
+    basses: list[str | None],
+    inferred: list[bool] | None = None,
+) -> list[dict]:
     """Cut the beats into segments, each with ranked candidate labels and a bass.
 
     A segment ends where the smoothed state changes and, inside a chord run, where the per-beat
@@ -268,7 +273,13 @@ def segment(states: np.ndarray, scores: np.ndarray, basses: list[str | None]) ->
     chord. basses is one note name or None per beat, each engine's own per-beat bass. A segment's
     bass is its held value; with none, the most frequent per-beat value, silence included (ties to
     a tone of the chord, then a note, then the earliest). N has None.
+
+    inferred marks the beats whose value is the chord's root written for want of a heard note
+    (beat_basses); none by default. A segment's bass_heard is whether its bass was heard on any of
+    its beats, which is what resolve_twins counts as evidence.
     """
+    if inferred is None:
+        inferred = [False] * len(basses)
     runs = [0, *map(int, np.flatnonzero(np.diff(states)) + 1), len(states)]
     held = {}  # segment start -> the bass held inside that segment
     for run_start, run_end in pairwise(runs):
@@ -325,6 +336,8 @@ def segment(states: np.ndarray, scores: np.ndarray, basses: list[str | None]) ->
                 "chord": LABELS[chosen],
                 "candidates": candidates,
                 "bass": bass,
+                "bass_heard": bass is not None
+                and any(basses[b] == bass and not inferred[b] for b in range(start, end)),
             }
         )
     return segments
@@ -366,13 +379,14 @@ def resolve_twins(segments: list[dict]) -> list[dict]:
     its root (C#°7 over E decodes as E:dim7 and becomes C#:dim7 in first inversion before D:min).
     For the same reason a dim7 run followed by a dim7 on its set is that chord over a moved bass,
     and takes the following run's label. A min6 and its hdim7 are different chords on one set,
-    and a bass on the min6's root is the evidence for the m6 reading, so that run is left.
+    and a heard bass on the min6's root is the evidence for the m6 reading, so that run is left.
 
     An aug is spelled by the dominant resolution, the one strong convention for an augmented
     triad (V+ to I): a run becomes the aug a fifth above the next chord's root, when its pitch
     set has one. A bass-less D#:aug before C:maj is G:aug, and a C:aug before A:min is E:aug. Like
-    a min6, an aug is left when a bass sits on its decoded root (C:aug over C before A:min stays):
-    that is the evidence for the reading, and label order says nothing. A sus2, a sus4 and a
+    a min6, an aug is left when a heard bass sits on its decoded root (C:aug over C before A:min
+    stays): that is the evidence for the reading, and label order says nothing. A bass the root
+    fallback wrote (beat_basses) was not heard and is none. A sus2, a sus4 and a
     sus4(b7) are never respelled: a suspension resolves on its own root, so the next chord's root
     is no evidence, and the bass, which decodes them, is.
 
@@ -389,8 +403,9 @@ def resolve_twins(segments: list[dict]) -> list[dict]:
     for run in reversed(runs):
         label = run[0]["chord"]
         root, _, quality = label.partition(":")
-        # A dim7's bass is its inversion; a min6's and an aug's is its root.
-        bass_decided = quality != "dim7" and any(s["bass"] == root for s in run)
+        # A dim7's bass is its inversion; a min6's and an aug's is its root. A root the fallback
+        # wrote was not heard and decides nothing.
+        bass_decided = quality != "dim7" and any(s["bass"] == root and s["bass_heard"] for s in run)
         if label != "N" and following not in (None, "N") and not bass_decided:
             if quality == "dim7" and _pitch_classes(following) == _pitch_classes(label):
                 twin = following
@@ -403,6 +418,10 @@ def resolve_twins(segments: list[dict]) -> list[dict]:
                     {
                         **s,
                         "chord": twin,
+                        # An inferred bass is the old root, which the new label does not share.
+                        "bass": s["bass"]
+                        if s["bass_heard"] or s["bass"] is None
+                        else twin.split(":")[0],
                         "candidates": [
                             twin,
                             label,
@@ -453,36 +472,37 @@ def pick_bass(profile: np.ndarray) -> str | None:
 
 # A pick outside the beat's chord must be this fraction of the register's strongest, else the beat
 # reads the chord's root; a chord tone is never tested. 1.0 asks a non-chord pick to be the
-# loudest note of the register, which a bass line is and a leak under the root is not. Each step
-# up from 0.5 frees more of the chart's passing and leaked picks (heights 0.53 to 0.74: the bridge's
-# one-beat Bm7/G, F#7/C and Bm7/D#) and keeps the held D/E and Bm/A at 1.0; GuitarSet's majmin_inv
-# rises from 0.407 at 0.5 to 0.446 at 1.0 and Tiny AAM's from 0.697 to 0.713, with every floor met
-# at every point and GuitarSet's inv_rec 0.226 against 0.215 at the baseline. 1.0 is the top: above
-# it the loudest pick fails too, a held non-chord slash is no longer written, and
-# test_a_held_non_chord_slash_survives and test_bass_and_inversion_follow_the_bass_line fail.
+# loudest note of the register, which a bass line is and a leak under the root is not, and is the
+# top: above it a held non-chord slash is no longer written. "Bass reliability" in
+# docs/ARCHITECTURE.md has the sweep.
 NONCHORD_SALIENCE = 1.0
 
 
-def beat_basses(states: np.ndarray, cqt: np.ndarray) -> list[str | None]:
-    """One bass per beat: pick_bass, except that a pick outside the beat's chord must be salient.
+def beat_basses(states: np.ndarray, cqt: np.ndarray) -> tuple[list[str | None], list[bool]]:
+    """One bass per beat, and per beat whether it is an inferred root: pick_bass, except that a
+    pick outside the beat's chord must be salient.
 
     A chord tone is written as heard. A note outside the chord needs a height of at least
-    NONCHORD_SALIENCE over the register's strongest, else the beat reads the chord's root. An N
-    beat and a silent register give the plain pick.
+    NONCHORD_SALIENCE over the register's strongest, else the beat reads the chord's root, which
+    is marked inferred: it was not heard. An N beat and a silent register give the plain pick.
     """
     basses = []
+    inferred = []
     for state, column in zip(states, cqt.T, strict=True):
         peak = _bass_peak(column)
         if peak is None:
             basses.append(None)
+            inferred.append(False)
             continue
         name = ROOTS[peak[0] % 12]
         label = LABELS[state]
         weak = peak[1] < NONCHORD_SALIENCE
-        if label != "N" and weak and peak[0] % 12 not in _pitch_classes(label):
+        fallback = label != "N" and weak and peak[0] % 12 not in _pitch_classes(label)
+        if fallback:
             name = label.split(":")[0]
         basses.append(name)
-    return basses
+        inferred.append(fallback)
+    return basses, inferred
 
 
 def inversion(label: str, bass: str | None) -> str | None:

@@ -71,11 +71,8 @@ QUALITY = {
 
 
 # A bass outside the beat's chord needs this posterior from the bass head, else the beat reads the
-# chord's root. Swept on Tiny AAM and GuitarSet against the chart: every point from 0.1 to 0.8
-# meets the floors and the chart's constraints, 0.85 loses the Bm/A's A, and the wrong picks sit at
-# 0.00 to 0.02. GuitarSet's majmin_inv rises from 0.590 at 0.1 to 0.593 at 0.8, and 0.6 to 0.8 are
-# within 0.05 pp of each other on every objective, so 0.7 is the middle of that plateau with 0.6
-# and 0.8 passing on both sides.
+# chord's root. 0.7 is the middle of the plateau where the objectives stop moving and the floors
+# hold. "Bass reliability" in docs/ARCHITECTURE.md has the sweep.
 BASS_SUPPORT = 0.7
 
 
@@ -145,20 +142,26 @@ def beat_scores(frame_scores: np.ndarray, boundaries: list[int]) -> np.ndarray:
     )
 
 
-def beat_bass(head: np.ndarray, states: np.ndarray, picks: list[str | None]) -> list[str | None]:
-    """One bass per beat from the (13, n_beats) bass head and the DSP's per-beat picks.
+def beat_bass(
+    head: np.ndarray, states: np.ndarray, picks: list[str | None]
+) -> tuple[list[str | None], list[bool]]:
+    """One bass per beat, and per beat whether it is an inferred root, from the (13, n_beats) bass
+    head and the DSP's per-beat picks.
 
     The head's index 0 is "no bass" and 1 + pitch class the notes. Per chord beat the candidates
     are the DSP's pick (absent when the register is silent) and the head's note (absent when "no
     bass" is its largest class). The first candidate that is a tone of the chord is the bass; else
     the first whose posterior is at least BASS_SUPPORT; else the chord's root, which is not a
-    measured note, and None only when there was no candidate. An N beat has None.
+    measured note and is marked inferred, and None only when there was no candidate. An N beat has
+    None.
     """
     basses = []
+    inferred = []
     for i, (state, pick) in enumerate(zip(states, picks, strict=True)):
         label = LABELS[state]
         if label == "N":
             basses.append(None)
+            inferred.append(False)
             continue
         column = head[:, i]
         note = None if column.argmax() == 0 else ROOTS[int(column[1:].argmax())]
@@ -169,10 +172,12 @@ def beat_bass(head: np.ndarray, states: np.ndarray, picks: list[str | None]) -> 
             chosen = next(
                 (c for c in candidates if column[1 + ROOTS.index(c)] >= BASS_SUPPORT), None
             )
-        if chosen is None and candidates:
+        fallback = chosen is None and bool(candidates)
+        if fallback:
             chosen = label.split(":")[0]
         basses.append(chosen)
-    return basses
+        inferred.append(fallback)
+    return basses, inferred
 
 
 def _cqt(y: np.ndarray) -> np.ndarray:

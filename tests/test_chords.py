@@ -362,7 +362,14 @@ def test_segment_candidates_lead_with_chosen_label_then_best_means() -> None:
     (only,) = segment(states, scores, [None] * 6)
 
     assert only["candidates"] == ["C:maj", "C:7", "F:maj"]
-    assert set(only) == {"start_beat", "end_beat", "chord", "candidates", "bass"}
+    assert set(only) == {
+        "start_beat",
+        "end_beat",
+        "chord",
+        "candidates",
+        "bass",
+        "bass_heard",
+    }
     json.dumps(only)
     assert type(only["start_beat"]) is int
     assert type(only["end_beat"]) is int
@@ -379,6 +386,7 @@ def _runs(*entries: tuple[str, str | None]) -> list[dict]:
             "chord": chord,
             "candidates": [chord, "C:maj", "A:min"],
             "bass": bass,
+            "bass_heard": bass is not None,
         }
         for i, (chord, bass) in enumerate(entries)
     ]
@@ -705,7 +713,7 @@ def test_beat_basses_keeps_chord_tones_and_reliable_non_chord_picks(
 ) -> None:
     monkeypatch.setattr("chordotomy.chords.NONCHORD_SALIENCE", 0.8)
 
-    assert beat_basses(_states(label), profile[:, None]) == [expected]
+    assert beat_basses(_states(label), profile[:, None])[0] == [expected]
 
 
 @pytest.mark.parametrize(
@@ -718,4 +726,32 @@ def test_beat_basses_keeps_chord_tones_and_reliable_non_chord_picks(
     ],
 )
 def test_beat_basses_at_the_shipped_salience(profile: np.ndarray, expected: str) -> None:
-    assert beat_basses(_states("C:maj"), profile[:, None]) == [expected]
+    assert beat_basses(_states("C:maj"), profile[:, None])[0] == [expected]
+
+
+def test_beat_basses_marks_only_the_root_fallback_as_inferred() -> None:
+    profiles = [_profile(b14=0.74, b16=1.0), _profile(b14=1.0), _profile(b16=0.6, b19=1.0)]
+    states = _states("C:maj", "C:maj", "C:maj")
+
+    basses, inferred = beat_basses(states, np.stack(profiles, axis=1))
+
+    assert basses == ["C", "D", "E"]
+    assert inferred == [True, False, False]
+
+
+def test_an_inferred_root_is_no_evidence_for_a_min6_or_an_aug_spelling() -> None:
+    states = _states("A:min6", "A:min6", "G:maj", "G:maj", "C:aug", "C:aug", "A:min", "A:min")
+    basses = ["A", "A", "G", "G", "C", "C", "A", "A"]
+
+    inferred = segment(
+        states, _scores({}, 8), basses, [True, True, False, False, True, True] + [False] * 2
+    )
+    heard = segment(states, _scores({}, 8), basses)
+
+    assert [s["bass_heard"] for s in inferred] == [False, True, False, True]
+    assert [s["chord"] for s in resolve_twins(inferred)] == ["F#:hdim7", "G:maj", "E:aug", "A:min"]
+    # The respelled segments read their new root, not the old one as a slash chord.
+    respelled = resolve_twins(inferred)
+    assert [s["bass"] for s in respelled] == ["F#", "G", "E", "A"]
+    assert [inversion(s["chord"], s["bass"]) for s in respelled] == ["root"] * 4
+    assert [s["chord"] for s in resolve_twins(heard)] == ["A:min6", "G:maj", "C:aug", "A:min"]

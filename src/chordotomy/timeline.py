@@ -57,15 +57,15 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
         states = model.beat_states(frame_states, boundaries)
         scores = model.beat_scores(frame_scores, boundaries)
         head = model.beat_scores(frame_bass.T, boundaries)
-        basses = model.beat_bass(head, states, [pick_bass(c) for c in f.cqt.T])
+        basses, inferred = model.beat_bass(head, states, [pick_bass(c) for c in f.cqt.T])
         recognizer = {"name": model.NAME, "version": model.version()}
     else:
         scores = match(f.treble, f.bass)
         forced = no_chord(f.level, f.onset, f.flatness, f.harmonic)
         states = smooth(scores, forced, np.diff(f.times))
-        basses = beat_basses(states, f.cqt)
+        basses, inferred = beat_basses(states, f.cqt)
         recognizer = {"name": "dsp", "version": __version__}
-    segments = resolve_twins(segment(states, scores, basses))
+    segments = resolve_twins(segment(states, scores, basses, inferred))
 
     runs = chord_runs(segments)
     key_info, run_analyses = harmony.analyze(progression(runs), key)

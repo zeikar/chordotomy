@@ -189,10 +189,19 @@ def _head(weights: dict[str | None, float]) -> np.ndarray:
 def test_beat_bass_under_c_major(monkeypatch, weights, pick, bass) -> None:
     monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
 
-    assert beat_bass(_head(weights), np.array([LABELS.index("C:maj")]), [pick]) == [bass]
+    assert beat_bass(_head(weights), np.array([LABELS.index("C:maj")]), [pick])[0] == [bass]
 
 
 def test_beat_bass_is_none_under_n(monkeypatch) -> None:
     monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
 
-    assert beat_bass(_head({"E": 0.97}), np.array([LABELS.index("N")]), ["E"]) == [None]
+    assert beat_bass(_head({"E": 0.97}), np.array([LABELS.index("N")]), ["E"])[0] == [None]
+
+
+def test_beat_bass_marks_only_the_root_fallback_as_inferred(monkeypatch) -> None:
+    monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
+    states = np.array([LABELS.index("C:maj")])
+
+    assert beat_bass(_head({"D": 0.4}), states, [None]) == (["C"], [True])
+    assert beat_bass(_head({"D": 0.97}), states, [None]) == (["D"], [False])
+    assert beat_bass(_head({None: 0.97}), states, [None]) == ([None], [False])
