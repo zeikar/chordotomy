@@ -1,16 +1,44 @@
 [project]
 name = "chordotomy"
-version = "0.0.0"
+version = "0.1.0"
 description = "Dissect a song's harmony: beat-aligned chords, Roman numerals, and the moves worth noticing."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "zeikar" }]
+keywords = [
+  "chord-recognition",
+  "harmony",
+  "roman-numeral-analysis",
+  "music-analysis",
+  "music-information-retrieval",
+  "music-theory",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
 dependencies = [
   "librosa>=1.0",
   "soundfile>=0.12",
   "typer>=0.12",
 ]
+
+[project.urls]
+Homepage = "https://github.com/zeikar/chordotomy"
+Viewer = "https://zeikar.dev/chordotomy/"
+Repository = "https://github.com/zeikar/chordotomy"
+Issues = "https://github.com/zeikar/chordotomy/issues"
+Documentation = "https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md"
 
 [project.scripts]
 chordotomy = "chordotomy.cli:app"
