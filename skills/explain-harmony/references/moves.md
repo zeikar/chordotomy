@@ -37,6 +37,7 @@ Keep the rest as written: F♯ major, C♯ minor, G♯ minor, F♯ minor.
 | `C:aug` | Caug |
 | `C:dim` | Cdim |
 | `C:sus2` | Csus2 |
+| `C:sus4(b7)` | C7sus4 |
 
 The numerals keep `+`, `ø7`, `°7` and `°`; the chord symbols use aug, m7♭5, dim7 and dim.
 
@@ -49,7 +50,7 @@ The numerals keep `+`, `ø7`, `°7` and `°`; the chord symbols use aug, m7♭5,
 - A diminished chord's root is spelled raised, as its numeral is: `#i°7` in C is C♯dim7, `#i°` is C♯dim, and `#v°7` is G♯dim7. Where that would take a double sharp, use the plain letter (`#i°7` in F♯ is Gdim7, `#i°` is Gdim). Every other chromatic root keeps the key's degree spelling: `bII` in C is D♭.
 - A plain numeral takes the key's own spelling: `IV` in F is B♭.
 
-**The bass.** Spell it as the chord member that `inversion` names. The first-inversion bass of B♭ is D. A diminished fifth stays a fifth: the second-inversion bass of F♯m7♭5 is C, not B♯. For `min6`, `third` is the added sixth (E under Gm6); for `sus4`, `first` is the fourth (C under Gsus4); for `sus2`, `first` is the second (D under Csus2).
+**The bass.** Spell it as the chord member that `inversion` names. The first-inversion bass of B♭ is D. A diminished fifth stays a fifth: the second-inversion bass of F♯m7♭5 is C, not B♯. For `min6`, `third` is the added sixth (E under Gm6); for `sus4`, `first` is the fourth (C under Gsus4); for `sus2`, `first` is the second (D under Csus2); for `sus4(b7)`, `first` is the fourth and `third` the seventh (D and G under A7sus4).
 
 ## Figured-bass numerals
 
@@ -66,7 +67,7 @@ Build the progression line from `numeral` and `inversion`:
 | diminished triad (`vii°`, `ii°`, `#i°`, …) | vii° | vii°6 | vii°64 | none |
 | augmented triad (`III+`, `V+`, …) | III+ | III+6 | III+64 | none |
 
-- **`add6`, `sus4` and `sus2`** take no figure in any inversion: their inversions are not stacks of thirds. Write the numeral and name the bass, e.g. "ivadd6 (bass A♭)".
+- **`add6`, `sus4`, `sus2` and `7sus4`** take no figure in any inversion: their inversions are not stacks of thirds. Write the numeral and name the bass, e.g. "ivadd6 (bass A♭)".
 - **Secondary dominant or leading-tone chord:** put the figure before the slash. `V7/V` in first inversion is V65/V, `V/vi` in first inversion is V6/vi, `vii°7/ii` in first inversion is vii°65/ii, and `vii°/ii` is vii°6/ii.
 - **`non_chord`:** keep the numeral and name the bass, e.g. "I (bass D)".
 - **`null`:** use the numeral alone.
@@ -186,7 +187,8 @@ A bass that is not a chord tone usually means a chord outside the vocabulary (ad
 
 | label + bass | likely chord |
 | --- | --- |
-| F over G, when G is the key's dominant | G9sus4 / G11, a sus dominant acting as V |
+| F over G, when G is the key's dominant | G9sus4 / G11, a sus dominant acting as V; the vocabulary reduces that chord to `G:sus4(b7)` (G7sus4), which the model engine writes directly and the DSP does not |
+| Dm7 over G, when G is the key's dominant | G9sus4, the sus dominant written as IIm7/V on charts; the vocabulary reduces it to `G:sus4(b7)` (G7sus4), which the model engine writes directly and the DSP does not |
 
 Offer that reading.
 
@@ -197,6 +199,8 @@ A pedal point is different: the same `bass` held across segments whose `chord` c
 `Imaj7`, `IVmaj7`, `ii7`, `iii7` and `vi7` are diatonic chords with their seventh added. The seventh is colour, not a new function: `IVmaj7` is still a predominant. Mention the sevenths once for the song, not chord by chord.
 
 `Vsus4` → `V` is a suspension: the fourth (C over G in C) resolves down to the third (B). It decorates V; it is not a substitute dominant.
+
+`V7sus4` is the suspended dominant: the dominant seventh with the fourth in place of the third. Charts often write it as IIm7 over V (Em7/A in D), a voicing with a ninth on top (A–E–G–B–D is A9sus4) that the vocabulary reduces to `A:sus4(b7)`, A7sus4. It resolves to `V7` (the fourth stepping down to the third) and then `I`, or straight to `I`, the sus dominant of J-pop and gospel, where the fourth never resolves. It is diatonic with function `dominant`, so it sits in the progression line; worth a word when it goes straight to `I`. A `7sus4` is never labelled a secondary dominant: it has no third, so no leading tone. The DSP engine never writes it; a `sus4(b7)` comes from the model or a manual edit.
 
 `Isus2` and `Vsus2`: Csus2 → C, the second (D) stepping up to the third or ringing as colour. `Vsus2` is not a substitute dominant. Csus2 and Gsus4 share notes. The DSP engine (`generator.engine.name` `dsp`) never writes `sus2`: a played Csus2 reads as Gsus4 over C or as the triad. The model maps its own `sus2` label directly, so a `sus2` comes from the model or a manual edit, and a candidate on the same notes (Gsus4 beside Csus2) is a spelling, not an alternative.
 

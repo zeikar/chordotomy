@@ -40,17 +40,18 @@ The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 7:
+Check `schema_version`. This skill is written for version 8:
 
+- **Below 8:** there is no `sus4(b7)` and no `7sus4` numeral; an lv-chordia timeline below 8 wrote a 7sus4 as `sus4`.
 - **Below 7:** there is no `aug`, `dim` (the triad) or `sus2`, and no `+`, bare `°` or `sus2` numerals; an lv-chordia timeline below 7 wrote a diminished triad as `dim7`, an augmented chord as `maj` and a sus2 as the sus4 a fifth up.
 - **Below 6:** there is no `generator.engine`; the chords are the DSP recognizer's.
 - **Below 5:** there is no `edited`; every chord is the analyzer's.
 - **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
 - **Below 3:** there is no `bass` and no `inversion`.
 - **Below 2:** there is no key and there are no numerals either.
-- **Above 7:** this skill may be out of date. Explain only the fields listed here.
+- **Above 8:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 7, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+In every case other than 8, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
 
 The fields:
 
@@ -58,7 +59,7 @@ The fields:
 - **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
 - **Per segment:**
   - `start_time`, `end_time`
-  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on twelve qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7`, `sus4`, `aug`, `dim` and `sus2`.
+  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on thirteen qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7`, `sus4`, `aug`, `dim`, `sus2` and `sus4(b7)`.
   - `bass`, `inversion`
   - `edited` (`true` when the user corrected `chord` and `bass` in the viewer; `candidates` is then only what the analyzer heard, so `candidates[0]` may differ from `chord`)
   - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`. `secondary_dominant` also covers secondary leading-tone chords: numeral `vii°/x`, `vii°7/x` or `viiø7/x`, with `target` set.
@@ -88,7 +89,7 @@ Rules:
 - **Ground every claim in the JSON:** the numeral, role, target, next chord and bass. Music theory explains why those facts work. It never adds facts the JSON does not contain. The analyzer knows nothing about melody, lyrics, instrumentation or phrase boundaries, so claim none of them.
 - **Be brief:** one to three sentences per move.
 - **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, and its segment is not `edited`, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. A candidate on the same notes as `chord` (`A:min6` beside `F#:hdim7`) is a spelling, not an alternative; see `references/moves.md`. Never state percentages or confidence numbers. The candidates are the recognizer's own ranking (the DSP's template scores or the model's), never probabilities.
-- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, `F:maj7` → Fmaj7, `D:min7` → Dm7, `G:min6` → Gm6, `F#:hdim7` → F♯m7♭5, `C#:dim7` → C♯dim7, `G:sus4` → Gsus4, `C:aug` → Caug, `B:dim` → Bdim, `C:sus2` → Csus2, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
+- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, `F:maj7` → Fmaj7, `D:min7` → Dm7, `G:min6` → Gm6, `F#:hdim7` → F♯m7♭5, `C#:dim7` → C♯dim7, `G:sus4` → Gsus4, `C:aug` → Caug, `B:dim` → Bdim, `C:sus2` → Csus2, `A:sus4(b7)` → A7sus4, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
 - **Write times as m:ss** from `start_time`.
 - **Answer in the user's language.**
 
