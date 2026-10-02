@@ -348,7 +348,7 @@ def test_the_dsp_engine_touches_no_torch(clip, tmp_path, monkeypatch) -> None:
         def __getattr__(self, name):
             raise AssertionError(f"{self.__name__}.{name} used by the DSP")
 
-    for name in ("torch", "lv_chordia"):
+    for name in ("torch", "lv_chordia", "beat_this", "torchaudio"):
         monkeypatch.setitem(sys.modules, name, Fake(name))
     out = tmp_path / "out.json"
 
@@ -359,15 +359,15 @@ def test_the_dsp_engine_touches_no_torch(clip, tmp_path, monkeypatch) -> None:
 
 
 def test_importing_the_cli_touches_no_librosa() -> None:
-    # A fresh interpreter with stand-ins for librosa, torch and lv_chordia whose every attribute
-    # raises, so none of them (nor numba) is really loaded, and an eager note_to_midi or
-    # cq_to_chroma, or any torch use, at import would fail.
+    # A fresh interpreter with stand-ins for librosa, torch, lv_chordia, beat_this and torchaudio
+    # whose every attribute raises, so none of them (nor numba) is really loaded, and an eager
+    # note_to_midi or cq_to_chroma, or any torch use, at import would fail.
     code = (
         "import sys, types\n"
         "class Fake(types.ModuleType):\n"
         "    def __getattr__(self, name):\n"
         "        raise AssertionError(f'{self.__name__}.{name} used at import')\n"
-        "for name in ('librosa', 'torch', 'lv_chordia'):\n"
+        "for name in ('librosa', 'torch', 'lv_chordia', 'beat_this', 'torchaudio'):\n"
         "    sys.modules[name] = Fake(name)\n"
         "import chordotomy.cli\n"
     )
