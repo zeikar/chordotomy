@@ -86,20 +86,23 @@ This adds lv-chordia and torch. On macOS the environment grows by about 630 MB, 
 
 On Linux, uv takes torch from the PyTorch CPU index, as `pyproject.toml` sets it up, rather than PyPI's build with CUDA. With pip, add `--extra-index-url https://download.pytorch.org/whl/cpu` to the install command. Python 3.13 dropped the `audioop` module that pydub, one of lv-chordia's dependencies, needs; the extra includes `audioop-lts` in its place.
 
-The weights are MIT, like lv-chordia's code. lv-chordia's authors trained them on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. If you would rather not use a model trained that way, leave the extra out, and the DSP front end recognizes the chords.
+lv-chordia on PyPI is Open MIR Lab's packaging of the authors' original code and weights, which it ships unchanged. The weights are MIT, like the code. lv-chordia's authors trained them on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. If you would rather not use a model trained that way, leave the extra out, and the DSP front end recognizes the chords.
 
 ## Accuracy
 
-`chordotomy evaluate` scores both engines on two public datasets with mir_eval, weighted by duration. `root` asks for the right root, `majmin` for the right major or minor triad, and `sevenths` for the right seventh chord too:
+`chordotomy evaluate` scores both engines on two public datasets with mir_eval, weighted by duration. `root` asks for the right root, `majmin` for the right major or minor triad, and `sevenths` for the right seventh chord too. For comparison, other open-source chord recognizers on the same audio and the same scoring, each run with its own inference code:
 
-| | root | majmin | sevenths |
-|---|---|---|---|
-| Tiny AAM, lv-chordia model | 0.939 | 0.934 | 0.898 |
-| Tiny AAM, DSP front end | 0.842 | 0.803 | 0.768 |
-| GuitarSet, lv-chordia model | 0.827 | 0.872 | 0.819 |
-| GuitarSet, DSP front end | 0.722 | 0.696 | 0.583 |
+| | Tiny AAM root | majmin | sevenths | GuitarSet root | majmin | sevenths |
+|---|---|---|---|---|---|---|
+| **chordotomy, model engine** | 0.939 | 0.934 | 0.898 | 0.827 | 0.872 | 0.819 |
+| lv-chordia, its own output | 0.951 | 0.947 | 0.911 | 0.846 | 0.893 | 0.839 |
+| BTC (Park et al., 2019) | 0.931 | 0.920 | 0.880 | 0.809 | 0.864 | 0.775 |
+| ChordMini BTC (Phan et al., 2026) | 0.921 | 0.908 | 0.844 | 0.818 | 0.869 | 0.798 |
+| ChordMini 2E1D (Phan et al., 2026) | 0.924 | 0.913 | 0.836 | 0.742 | 0.801 | 0.746 |
+| crema (McFee and Bello, 2017) | 0.898 | 0.893 | 0.794 | 0.816 | 0.873 | 0.785 |
+| **chordotomy, DSP front end** | 0.842 | 0.803 | 0.768 | 0.722 | 0.696 | 0.583 |
 
-Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) has every column, the caveats, and how each stage moved them.
+Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Neither is in the published training data of lv-chordia, BTC or crema; ChordMini's labeled training data is not published. chordotomy's model engine is lv-chordia's chords snapped to the beat, where its harmony and its viewer work, and the snap costs 1 to 2 points against lv-chordia's frame-level output. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#other-chord-recognizers) has the versions and settings, and [its Evaluation section](docs/ARCHITECTURE.md#evaluation) every column.
 
 ## Viewer
 
@@ -185,7 +188,7 @@ Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB 
 
 ## Acknowledgements
 
-- [lv-chordia](https://github.com/music-x-lab/ISMIR2019-Large-Vocabulary-Chord-Recognition), the model engine: Junyan Jiang, Ke Chen, Wei Li and Gus Xia, ["Large-Vocabulary Chord Transcription via Chord Structure Decomposition"](https://archives.ismir.net/ismir2019/paper/000078.pdf), ISMIR 2019 (MIT).
+- The model engine is the work of Junyan Jiang, Ke Chen, Wei Li and Gus Xia, ["Large-Vocabulary Chord Transcription via Chord Structure Decomposition"](https://archives.ismir.net/ismir2019/paper/000078.pdf), ISMIR 2019, with its [original code and weights](https://github.com/music-x-lab/ISMIR2019-Large-Vocabulary-Chord-Recognition) (MIT), as packaged for PyPI by [Open MIR Lab](https://github.com/openmirlab/lv-chordia) (`lv-chordia`, MIT).
 - [librosa](https://librosa.org/) for the audio front end and beat tracking, and [mir_eval](https://github.com/mir-evaluation/mir_eval) for scoring.
 - The DSP front end's chroma whitening follows Matthias Mauch and Simon Dixon's 2010 chord recognition paper, implemented from the paper.
 - Evaluation data: [Tiny AAM](https://zenodo.org/records/6771120) and [GuitarSet](https://zenodo.org/records/3371780), both CC BY 4.0.
