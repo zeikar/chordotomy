@@ -19,7 +19,7 @@ Everything runs locally. Your audio never leaves your machine.
 ## What it does
 
 - **Chords on the beat.** Major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th, sus4, 7sus4, augmented, diminished triad, sus2 and minor 6th, with `N` for no chord. The model calls all of them but minor 6th; the DSP all but sus2 and 7sus4.
-- **Two engines.** The lv-chordia model (Jiang, Chen, Li and Xia, ISMIR 2019) when its optional extra is installed, chordotomy's DSP front end otherwise. Both run on the same beat grid and the same harmonic analysis.
+- **Two engines.** The lv-chordia model (Jiang, Chen, Li and Xia, ISMIR 2019) when its optional extra is installed, chordotomy's DSP front end otherwise. The model engine's beats come from Beat This!, the DSP's from librosa, and both share the same harmonic analysis.
 - **Key and Roman numerals.** Secondary dominants, secondary leading-tone chords and borrowed chords are labeled and highlighted; the viewer adds figured bass for inversions.
 - **The bass note and inversion** of every chord, so slash chords (C/E, D/F♯) come out as such. A weak bass outside the chord is shown at root position instead of as a doubtful slash chord.
 - **A viewer** that plays the recording with its chords, plays the chords themselves to check them by ear, and lets you correct and enter chords.
@@ -31,11 +31,11 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
 git clone https://github.com/zeikar/chordotomy && cd chordotomy
-uv sync --extra model                  # adds lv-chordia and torch, about 630 MB
+uv sync --extra model                  # adds lv-chordia, Beat This! and torch, about 600 MB
 uv run chordotomy analyze song.mp3     # writes song.chords.json
 ```
 
-Plain `uv sync` installs the DSP engine only. [The model engine](#the-model-engine-optional) has its size, speed and training data. Then open the [viewer](https://zeikar.dev/chordotomy/) and drop `song.mp3` and `song.chords.json` on the page.
+Plain `uv sync` installs the DSP engine only. With the model engine, the first `analyze` downloads Beat This!'s weights, 81 MB, once; `uv run chordotomy fetch-weights` does it ahead of time. [The model engine](#the-model-engine-optional) has its size, speed and training data. Then open the [viewer](https://zeikar.dev/chordotomy/) and drop `song.mp3` and `song.chords.json` on the page.
 
 ## Usage
 
@@ -44,11 +44,12 @@ uv run chordotomy analyze song.mp3                 # writes song.chords.json
 uv run chordotomy analyze song.mp3 -o out.json
 uv run chordotomy analyze song.mp3 --key A:min     # analyze in A minor instead of the estimated key
 uv run chordotomy analyze song.mp3 --engine dsp    # the DSP front end, even with the model installed
+uv run chordotomy fetch-weights                    # model extra: download and verify Beat This!'s weights once
 ```
 
 `--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates.
 
-`--engine` picks the chord recognizer: `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` and `dsp` force one. A missing or broken model install is an error that names the fix; it never falls back to the DSP silently. The JSON records which engine heard the chords.
+`--engine` picks the chord recognizer: `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` and `dsp` force one. The model engine's beats come from Beat This! and the DSP's from librosa, so the two engines' beats can differ for the same file. A missing or broken model install is an error that names the fix; it never falls back to the DSP silently. The JSON records which engine heard the chords.
 
 `analyze` refuses to overwrite an existing output unless you pass `--force`. An input with no detectable beats is reported as an error, not written as an empty timeline.
 
@@ -82,11 +83,13 @@ Chords are Harte labels. `candidates` is the recognizer's own ranking, never a p
 uv sync --extra model
 ```
 
-This adds lv-chordia and torch. On macOS the environment grows by about 630 MB, 542 MB of it torch. On an Apple M4 the model engine takes 6.3 to 6.8 s per minute of audio and peaks at 2.36 GB of RAM on a 3-minute song and 3.17 GB on a 6-minute one, against the DSP's 3.1 to 3.3 s per minute and 1.00 and 1.77 GB. The weights, five files of about 5.7 MB each, come inside the lv-chordia wheel, so nothing is downloaded at run time. The model runs on the CPU even when torch sees a GPU, and it reads the audio chordotomy has already decoded, so your audio stays on your machine.
+This adds lv-chordia, Beat This! and torch. On macOS the environment grows by about 600 MB, 526 MB of it torch; beat-this and the packages it brings add a few MB. On an Apple M4 the model engine takes 4.4 to 4.6 s per minute of audio and peaks at 2.59 GB of RAM on a 3-minute song and 3.37 GB on a 6-minute one, against the DSP's 2.2 to 2.3 s per minute and 1.02 and 1.77 GB, measured in one session. Both models run on the CPU even when torch sees a GPU, and both read the audio chordotomy has already decoded.
+
+lv-chordia's weights, five files of about 5.7 MB each, come inside its wheel. Beat This! (Foscarin, Schlüter and Widmer, ISMIR 2024) tracks the model engine's beats. Its `final0` weights, 81 MB and MIT, are downloaded on the first run from the authors' server to `~/.cache/chordotomy` (`$XDG_CACHE_HOME/chordotomy` when set) and kept there. They are checked against a pinned SHA-256 on every load, and a file that fails the check is replaced. `chordotomy fetch-weights` downloads them ahead of time. Without network and without the file, `analyze` stops with an error that names the URL, the cache path, `chordotomy fetch-weights` and `--engine dsp`; it never falls back to librosa's beats. The download is a plain request for a fixed URL and carries nothing about your audio, which stays on your machine.
 
 On Linux, uv takes torch from the PyTorch CPU index, as `pyproject.toml` sets it up, rather than PyPI's build with CUDA. With pip, add `--extra-index-url https://download.pytorch.org/whl/cpu` to the install command. Python 3.13 dropped the `audioop` module that pydub, one of lv-chordia's dependencies, needs; the extra includes `audioop-lts` in its place.
 
-lv-chordia on PyPI is Open MIR Lab's packaging of the authors' original code and weights, which it ships unchanged. The weights are MIT, like the code. lv-chordia's authors trained them on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. If you would rather not use a model trained that way, leave the extra out, and the DSP front end recognizes the chords.
+lv-chordia on PyPI is Open MIR Lab's packaging of the authors' original code and weights, which it ships unchanged. The weights are MIT, like the code. lv-chordia's authors trained them on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. Beat This!'s authors trained `final0` on 15 beat-annotated datasets, all of theirs but GTZAN, which they kept for testing: ASAP, Ballroom, Beatles, Candombe, Filosax, Groove MIDI, GuitarSet, Hainsworth, Harmonix, HJDB, JAAH, RWC, SIMAC, SMC and TapCorrect. GuitarSet's accompaniment takes, which chordotomy is scored on, are among them; [Accuracy](#accuracy) accounts for that. Their README notes that some of the training files are fully copyrighted or under limited Creative Commons licenses, and leaves it to the user to judge whether that matters for their use. If you would rather not use models trained that way, leave the extra out: the DSP front end recognizes the chords, and librosa tracks the beats.
 
 ## Accuracy
 
@@ -94,7 +97,7 @@ lv-chordia on PyPI is Open MIR Lab's packaging of the authors' original code and
 
 | | Tiny AAM root | majmin | sevenths | GuitarSet root | majmin | sevenths |
 |---|---|---|---|---|---|---|
-| **chordotomy, model engine** | 0.939 | 0.934 | 0.898 | 0.827 | 0.872 | 0.819 |
+| **chordotomy, model engine** | 0.955 | 0.950 | 0.914 | 0.854 | 0.900 | 0.847 |
 | lv-chordia, its own output | 0.951 | 0.947 | 0.911 | 0.846 | 0.893 | 0.839 |
 | BTC (Park et al., 2019) | 0.931 | 0.920 | 0.880 | 0.809 | 0.864 | 0.775 |
 | ChordMini BTC (Phan et al., 2026) | 0.921 | 0.908 | 0.844 | 0.818 | 0.869 | 0.798 |
@@ -102,7 +105,9 @@ lv-chordia on PyPI is Open MIR Lab's packaging of the authors' original code and
 | crema (McFee and Bello, 2017) | 0.898 | 0.893 | 0.794 | 0.816 | 0.873 | 0.785 |
 | **chordotomy, DSP front end** | 0.842 | 0.803 | 0.768 | 0.722 | 0.696 | 0.583 |
 
-Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Neither is in the published training data of lv-chordia, BTC or crema; ChordMini's labeled training data is not published. chordotomy's model engine is lv-chordia's chords snapped to the beat, where its harmony and its viewer work. That costs 1 to 2 points against lv-chordia's frame-level output, all of it from beat-tracking errors: on the datasets' annotated beats the same snap scores above the frame-level output. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#other-chord-recognizers) has the versions and settings, and [its Evaluation section](docs/ARCHITECTURE.md#evaluation) every column.
+Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Neither is in the published training data of lv-chordia, BTC or crema; ChordMini's labeled training data is not published. GuitarSet is in Beat This!'s: its authors trained on these takes. So chordotomy's GuitarSet row comes from Beat This!'s fold checkpoints, each take scored by the checkpoint that did not train on it; that checkpoint has still heard other takes of the same tune. `chordotomy evaluate` runs the shipped `final0`, which scores 0.1 to 0.2 points higher there; its row is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#current-rows). Beat This! never trained on Tiny AAM.
+
+chordotomy's model engine is lv-chordia's chords snapped to Beat This!'s beats, where its harmony and its viewer work. On those beats it scores above lv-chordia's own output on both datasets. The beat tracker still costs a little: scored without the bass, the same snap onto the datasets' annotated beats gains another 1.1 points of `majmin` on Tiny AAM and 0.6 on GuitarSet. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#other-chord-recognizers) has the versions and settings, and [its Evaluation section](docs/ARCHITECTURE.md#evaluation) every column.
 
 ## Viewer
 
@@ -163,7 +168,7 @@ uv run ruff check . && uv run ruff format --check .
 node --test viewer/tests/
 ```
 
-The model tests need the extra and skip without it; the rest of the suite runs the DSP either way. `uv sync` installs exactly the extras it is given, so name every one you want, as in `uv sync --extra dev --extra model`.
+The model tests need the extra and skip without it; those that run Beat This! also need its weights, verified in the cache (`uv run chordotomy fetch-weights`), and skip without them. The suite never downloads, and the rest of it runs the DSP either way. `uv sync` installs exactly the extras it is given, so name every one you want, as in `uv sync --extra dev --extra model`.
 
 The viewer is plain HTML, CSS, and JavaScript with no build step. Its tests need Node and no packages.
 
@@ -184,12 +189,13 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. The model engine's GuitarSet beats then come from `final0`, which Beat This! trained on these takes; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#beat-tracking) has the held-out recipe behind the Accuracy row. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
 
 ## Acknowledgements
 
 - The model engine is the work of Junyan Jiang, Ke Chen, Wei Li and Gus Xia, ["Large-Vocabulary Chord Transcription via Chord Structure Decomposition"](https://archives.ismir.net/ismir2019/paper/000078.pdf), ISMIR 2019, with its [original code and weights](https://github.com/music-x-lab/ISMIR2019-Large-Vocabulary-Chord-Recognition) (MIT), as packaged for PyPI by [Open MIR Lab](https://github.com/openmirlab/lv-chordia) (`lv-chordia`, MIT).
-- [librosa](https://librosa.org/) for the audio front end and beat tracking, and [mir_eval](https://github.com/mir-evaluation/mir_eval) for scoring.
+- The model engine's beats come from Beat This!, the work of Francesco Foscarin, Jan Schlüter and Gerhard Widmer, ["Beat this! Accurate beat tracking without DBN postprocessing"](https://arxiv.org/abs/2407.21658), ISMIR 2024, with its [code and weights](https://github.com/CPJKU/beat_this) (MIT).
+- [librosa](https://librosa.org/) for the audio front end and beat tracking (the DSP engine's beats, and the one-tempo dynamic programming that places the model engine's on Beat This!'s activation), and [mir_eval](https://github.com/mir-evaluation/mir_eval) for scoring.
 - The DSP front end's chroma whitening follows Matthias Mauch and Simon Dixon's 2010 chord recognition paper, implemented from the paper.
 - Evaluation data: [Tiny AAM](https://zenodo.org/records/6771120) and [GuitarSet](https://zenodo.org/records/3371780), both CC BY 4.0.
 
