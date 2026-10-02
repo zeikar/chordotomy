@@ -299,6 +299,37 @@ def test_a_suspension_resolves_to_its_triad(synth, tmp_path) -> None:
     assert [(s["bass"], s["inversion"]) for s in segments[1:3]] == [("G", "root"), ("G", "root")]
 
 
+def test_the_dsp_never_calls_a_seventh_sus4(synth, tmp_path) -> None:
+    # A played V7sus4 needs sus4(b7) at -0.23 or higher; Tiny AAM's floors need -0.2375 or lower
+    # (see QUALITY_OFFSET), so the decoder leaves it to the model engine and the editor.
+    progression = [("D:maj", 4, 38), ("A:sus4(b7)", 4, 45), ("A:7", 4, 45), ("D:maj", 4, 38)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert not any(
+        label.endswith(":sus4(b7)") for s in segments for label in [s["chord"], *s["candidates"]]
+    )
+    assert [s["numeral"] for s in segments if s["chord"] == "D:maj"] == ["I", "I"]
+
+
+def test_a_plain_suspension_is_not_a_seventh_suspension(synth, tmp_path) -> None:
+    progression = [("D:maj", 4, 38), ("A:sus4", 4, 45), ("A:maj", 4, 45), ("D:maj", 4, 38)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["D:maj", "A:sus4", "A:maj", "D:maj"]
+    assert [s["numeral"] for s in segments] == ["I", "Vsus4", "V", "I"]
+
+
+def test_a_dominant_seventh_is_not_a_seventh_suspension(synth, tmp_path) -> None:
+    progression = [("D:maj", 4, 38), ("A:7", 4, 45), ("D:maj", 4, 38)]
+
+    segments = analyze(_write(tmp_path, synth(progression)))["segments"]
+
+    assert [s["chord"] for s in segments] == ["D:maj", "A:7", "D:maj"]
+    assert [s["numeral"] for s in segments] == ["I", "V7", "I"]
+
+
 def test_a_diminished_triad_on_the_leading_tone_is_diatonic(synth, tmp_path) -> None:
     progression = [("C:maj", 4, 36), ("B:dim", 2, 38), ("C:maj", 4, 40)]
 

@@ -196,6 +196,16 @@ def test_the_decoder_never_calls_sus2() -> None:
     assert not any(label.endswith(":sus2") for label in _labels(np.repeat(scores, 4, axis=1)))
 
 
+def test_the_decoder_never_calls_a_seventh_sus4() -> None:
+    # The cadence's V7sus4 and Tiny AAM's floors want offsets 0.0075 apart (see QUALITY_OFFSET);
+    # the model engine and the editor produce sus4(b7), the decoder does not.
+    scores = match(_chroma("A", "D", "E", "G"), _chroma("A"))
+    seventh_sus4 = [i for i, label in enumerate(LABELS) if label.endswith(":sus4(b7)")]
+
+    assert np.all(np.isneginf(scores[seventh_sus4]))
+    assert not any(label.endswith(":sus4(b7)") for label in _labels(np.repeat(scores, 4, axis=1)))
+
+
 def _scores(overrides: dict[int, dict[str, float]], n: int = 6) -> np.ndarray:
     """(157, n) scores: 0.0 everywhere, C:maj 0.8 / C:7 0.6 unless overridden, N N_SCORE."""
     scores = np.zeros((len(LABELS), n))

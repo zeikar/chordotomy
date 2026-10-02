@@ -535,9 +535,32 @@ Vocabulary v6 adds `sus4(b7)`, the 7sus4. Model engine, at the commit that adds 
 
 Every track's beat grid is unchanged on all 200 tracks, compared directly: the caches rebuilt at the 157-label set hold the same `times` as v5's, so the octave check doubled nothing new (the highest share among tracks with at least 24 decoded changes is 0.60 on Tiny AAM and 0.68 on GuitarSet, against 0.80). The chord columns equal v5's to every digit on every track, because the model emitted no `sus4(b7)` on either dataset. The exact mapping is checked by the unit tests and by a recording analyzed locally, where 17 beats of `A:sus4` became `A:sus4(b7)` (`V7sus4`, diatonic, dominant in D major) with the grid, the key and every other beat unchanged.
 
+DSP engine, at the commit that adds these rows (`sus4(b7)` never called):
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.842 | 0.796 | 0.750 | 0.750 | 0.693 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 |
+| GuitarSet (180 takes), `dsp` | 0.722 | 0.661 | 0.529 | 0.345 | 0.395 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 |
+
+The rows equal v5's to the printed digits: the DSP never calls `sus4(b7)`, so it labels none of either dataset, and the only change is the 157-state transition (below). A locally analyzed recording, DSP engine, has the same beats and every beat's chord as under v5.
+
+#### Tuning the v6 offset
+
+The caches were rebuilt at the 157-label set before any point was scored, because the octave check ("The octave check") decodes the doubled grid with the vocabulary and the offsets, so v5's caches hold grids from a decoder that no longer exists. The direct comparison found every track's `times` equal to v5's, on all 200 tracks. Each swept point was scored on the grid it produces: the octave decision was recomputed per track from the cached inputs at that offset, and no track flipped at any point from 0 to -0.6, so no track was rebuilt. The highest share among tracks with at least 24 decoded changes at any swept point was 0.65 on Tiny AAM (track 1050) and 0.72 on GuitarSet (02_SS2-107-Ab_comp), against 0.80; at the committed point they are 0.60 and 0.68.
+
+The diagnostic point, `sus4(b7)` never called, is the committed one, and the floors are taken from it. The 157-state transition (a switch costs 0.08 nats more) moves v5's shipped rows by +0.00 pp on Tiny AAM's root and majmin and +0.01 pp on its sevenths (0.75005 to 0.75020), and on GuitarSet's majmin, sevenths and tetrads by +0.04, +0.04 and +0.01 pp (0.66055, 0.52905 and 0.34458 to 0.66096, 0.52941 and 0.34467). The floors: Tiny AAM root and majmin at most 0.3 pp under it and at or above v5's 0.84161 and 0.79635, which are the diagnostic values to five digits; sevenths within 0.5 pp; `N_est` unchanged; `sus4(b7)` at most 1 % of its duration; GuitarSet majmin and sevenths at most 0.3 pp under it.
+
+`sus4(b7)` was swept alone on a 0.05 grid from 0 to -0.6, refined to steps as small as 0.0025 where a bound fell between points. Three synthesized cases bound it, and no shared value passes them and the floors:
+
+- A played V7sus4 in the D major cadence (A3 D4 E4 G4 over an A2 bass, then the dominant seventh) needs -0.23 or higher: the suite is green at -0.23 and the cadence case fails at -0.2325.
+- A plain Asus4 into A and the existing G:sus4 and added-ninth cases need -0.0875 or lower: the suite is green at -0.0875, the G:sus4 suspension and the added ninth fail at -0.075, and the plain Asus4 fails too at -0.0625.
+- The floors need -0.2375 or lower. Above it Tiny AAM's root or majmin is under v5's, by 0.03 pp of root at -0.22 to -0.23 (0.84132), 0.06 pp of majmin at -0.20 (0.79572), and 0.33 pp of majmin at -0.15, where `sus4(b7)` also covers 1.5 % of Tiny AAM, over the 1 % bar. At -0.10 the loss is 0.35 pp of root, 0.91 pp of majmin and 0.46 pp of GuitarSet's majmin.
+
+The interval is empty. The cadence needs -0.23 and the floors -0.2375, 0.0075 apart; at -0.2375 the suite fails only the cadence and every floor holds, and at -0.23 the suite is green and Tiny AAM's root is 0.03 pp under (0.84132 against 0.84161), with GuitarSet's majmin and sevenths 0.66011 and 0.52852. Nor would -0.23 pass v5's margin rule: it lies 0.0025 above the cadence's failure, so a one-step neighbour fails the suite and the other the floors. The DSP therefore never calls `sus4(b7)`: its offset is -inf, as `sus2`'s is, and `test_the_dsp_never_calls_a_seventh_sus4` and `test_the_decoder_never_calls_a_seventh_sus4` hold it there. `sus4(b7)` stays in the vocabulary, the harmony and the viewer, and comes from the model engine or a manual edit. The plain Asus4 into A and the dominant seventh stay in the suite as synthesized cases.
+
 ### Current rows
 
-Vocabulary v5's rows, scored by the CLI (`chordotomy evaluate`) on the final reference. "Stage II" has the rows before v5, and "Vocabulary v5" what moved and why.
+Vocabulary v6's rows, scored by the CLI (`chordotomy evaluate`) on the final reference. "Vocabulary v5" has the rows before v6 and what moved in v5, and "Vocabulary v6" what moved in v6 and why.
 
 | | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|

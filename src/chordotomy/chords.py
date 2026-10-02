@@ -158,8 +158,13 @@ QUALITY_OFFSET = {
     # played C:sus2 does (0.30 against 0.285 over C:maj), so no offset passes both synthesized
     # cases, and sus2 calls cost Tiny AAM majmin. The model engine and the editor still produce it.
     "sus2": float("-inf"),
-    # Provisional: never called until the offset is measured, so the label exists for the model
-    # engine and the editor before the DSP decides on it.
+    # The DSP never calls sus4(b7), for the same reason as sus2: no offset passes the synthesized
+    # cases and holds Tiny AAM's floors. A played V7sus4 in the D major cadence needs -0.23 or
+    # higher (the case fails at -0.2325). Tiny AAM, annotated in maj and min only, scores every
+    # call as a miss: held at its v5 root and majmin, it needs -0.2375 or lower (at -0.23 its root
+    # is 0.03 pp under, at -0.20 its majmin is 0.06 pp under). The two bounds miss each other by
+    # 0.0075, and the guards (a plain Asus4 into A, the added ninth) need -0.0875 or lower. The
+    # model engine and the editor still produce it.
     "sus4(b7)": float("-inf"),
 }
 
