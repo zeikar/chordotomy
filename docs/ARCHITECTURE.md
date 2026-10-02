@@ -677,6 +677,27 @@ The rows of the shipped bass rules (the DSP's salience test and the model's bass
 | Tiny AAM (20 tracks), `model` | 0.939 | 0.934 | 0.898 | 0.898 | 0.868 | 0.015 | 0.032 | 0.966 | 0.447 | 0.827 | 0.686 | 0.766 | 0.999 | 0.916 | 0.000 | nan | 0.000 |
 | GuitarSet (180 takes), `model` | 0.827 | 0.872 | 0.819 | 0.533 | 0.592 | 0.032 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.607 | 0.205 | 0.208 | 0.000 |
 
+### Other chord recognizers
+
+The same audio and the same scoring, on the final reference, for five open-source recognizers run locally on 2026-10-01, each with its own inference code at its documented settings on the CPU. They are a comparison, not dependencies: nothing of theirs ships with chordotomy. Each one's segments were scored as they came out, with `evaluate.score` and pooled by duration as `summarise` pools them; the chordotomy rows are "Current rows" above.
+
+| | Tiny AAM root | majmin | sevenths | tetrads | GuitarSet root | majmin | sevenths | tetrads |
+|---|---|---|---|---|---|---|---|---|
+| chordotomy, `model` | 0.939 | 0.934 | 0.898 | 0.898 | 0.827 | 0.872 | 0.819 | 0.533 |
+| lv-chordia 1.1.0, its own output | 0.951 | 0.947 | 0.911 | 0.911 | 0.846 | 0.893 | 0.839 | 0.546 |
+| BTC | 0.931 | 0.920 | 0.880 | 0.880 | 0.809 | 0.864 | 0.775 | 0.505 |
+| ChordMini BTC | 0.921 | 0.908 | 0.844 | 0.844 | 0.818 | 0.869 | 0.798 | 0.521 |
+| ChordMini 2E1D | 0.924 | 0.913 | 0.836 | 0.836 | 0.742 | 0.801 | 0.746 | 0.482 |
+| crema 0.2.0 | 0.898 | 0.893 | 0.794 | 0.794 | 0.816 | 0.873 | 0.785 | 0.516 |
+| chordotomy, `dsp` | 0.842 | 0.803 | 0.768 | 0.768 | 0.722 | 0.696 | 0.583 | 0.379 |
+
+- **lv-chordia 1.1.0** (Jiang, Chen, Li and Xia, ISMIR 2019; MIT): `chord_recognition(path, "submission")`, the whole track at once, with its own slash basses. chordotomy's model engine runs the same five nets and HMM, so the difference between the two rows is chordotomy's own: the labels snapped to the beat by majority, the 60 s windows, and its bass. The snap costs 1.2 to 1.3 points of Tiny AAM and 1.9 to 2.1 of GuitarSet, mostly where the beat grid is off (GuitarSet's `beat_F` is 0.517); it is what puts the chords on the beats where the harmonic analysis and the viewer work.
+- **BTC** (Park et al., ISMIR 2019; MIT): `jayg996/BTC-ISMIR19` at `2682317`, the large-vocabulary checkpoint, inference as in its `test.py`.
+- **ChordMini** (Phan, Jin, Liu and Dong, 2026; MIT): `ptnghia-j/ChordMini` at `aa6e3a8`, its two included checkpoints, `btc_model_best.pth` (a BTC trained with pseudo-labels and knowledge distillation) and `2e1d_model_best.pth` (ChordNet 2E1D), with the README's recommended inference settings.
+- **crema 0.2.0** (McFee and Bello, ISMIR 2017; BSD-2-Clause): `crema.analyze`, on Python 3.11 with TensorFlow 2.15 in an environment of its own, since it does not install on the Python chordotomy uses.
+
+Training data, as each publishes it: lv-chordia and crema on Isophonics, Billboard, RWC-Pop and USPOP; BTC on Isophonics, the Robbie Williams set and USPOP2002. None includes Tiny AAM or GuitarSet, both published later. ChordMini's unlabeled audio is FMA, DALI and MAESTRO; its labeled set is not published, so an overlap with GuitarSet cannot be ruled out. BTC and ChordMini write no bass (a major chord as a bare root, which mir_eval reads as major), so `majmin_inv` is not compared.
+
 ## Design decisions
 
 ### An analyzer, not a transcriber
@@ -800,7 +821,7 @@ The DSP does not call it. The offset was swept alone, as v5's were, against floo
 
 ### A pretrained model as the recognizer
 
-Until this stage the chords came from DSP alone. Pretrained models were never ruled out (see "An analyzer, not a transcriber"), but the one weighed before, Demucs for the bass, was turned down for its weights' terms, which could not be stated, and for torch's size (see "Bass from DSP, not Demucs"). lv-chordia answers both. Its weights are MIT: the authors committed them to the same MIT repository as the code, and the lv-chordia wheel ships them, so nothing is downloaded at run time. torch comes only with the optional `model` extra, so the default install, `chordotomy --version` and the DSP engine never import it or lv_chordia. What moved the stance was a local comparison on the two evaluation datasets, where the model scored above the DSP on every metric (see "Model engine" under Evaluation). On 2026-10-01 the user decided that the model is the default when it is installed.
+Until this stage the chords came from DSP alone. Pretrained models were never ruled out (see "An analyzer, not a transcriber"), but the one weighed before, Demucs for the bass, was turned down for its weights' terms, which could not be stated, and for torch's size (see "Bass from DSP, not Demucs"). lv-chordia answers both. Its weights are MIT: the authors committed them to the same MIT repository as the code (`music-x-lab/ISMIR2019-Large-Vocabulary-Chord-Recognition`). lv-chordia on PyPI is Open MIR Lab's packaging of that code and those weights (`openmirlab/lv-chordia`, MIT), and its wheel ships the five checkpoints byte for byte as the authors committed them (their git blob hashes match), so nothing is downloaded at run time. torch comes only with the optional `model` extra, so the default install, `chordotomy --version` and the DSP engine never import it or lv_chordia. What moved the stance was a local comparison on the two evaluation datasets, where the model scored above the DSP on every metric (see "Model engine" under Evaluation). On 2026-10-01 the user decided that the model is the default when it is installed.
 
 The training data, stated plainly: lv-chordia's authors trained the nets on 1217 songs from Isophonics, Billboard, RWC-Pop and USPOP, public chord annotations over commercial recordings. Nothing is trained here. The user accepted weights trained that way. The README states the training data, so that anyone who would rather not can leave the extra out and keep the DSP.
 
@@ -845,7 +866,7 @@ Template similarity is not a probability. Showing "GM7 81%" would claim precisio
 
 The project is MIT, so it takes no GPL or AGPL dependencies. That rules out Essentia (AGPL-3.0) and Chordino / NNLS Chroma (GPL); their ideas get reimplemented on librosa instead. librosa (ISC) and music21 (BSD-3) are fine. Demucs's code is MIT, but its pretrained weights are a separate question; see "Bass from DSP, not Demucs". Pretrained weights can carry terms separate from their code, such as non-commercial model files, so check both.
 
-The `model` extra was checked from the installed packages' metadata. lv-chordia's code is MIT ("Copyright (c) 2023 Music X Lab", the LICENSE in the wheel). Its weights are MIT as well: the authors committed them to the same repository, and the wheel redistributes them. Their training data is a separate question from their license; see "A pretrained model as the recognizer". torch is permissive, with the License-Expression `Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT`. The extra also brings audioop-lts (PSF-2.0) on Python 3.13 and later, h5py (BSD-3), pydub (MIT), and pretty-midi and mido (MIT). Nothing in the extra is GPL or AGPL. soxr (LGPL-2.1-or-later) is in the environment as librosa's dependency, not a new one. The package's Chordino path is never called.
+The `model` extra was checked from the installed packages' metadata. lv-chordia's code is MIT ("Copyright (c) 2023 Music X Lab", the LICENSE in the wheel). Its weights are MIT as well: the authors committed them to the same repository, and the wheel, Open MIR Lab's packaging (`openmirlab/lv-chordia`, MIT), redistributes them unchanged. Their training data is a separate question from their license; see "A pretrained model as the recognizer". torch is permissive, with the License-Expression `Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT`. The extra also brings audioop-lts (PSF-2.0) on Python 3.13 and later, h5py (BSD-3), pydub (MIT), and pretty-midi and mido (MIT). Nothing in the extra is GPL or AGPL. soxr (LGPL-2.1-or-later) is in the environment as librosa's dependency, not a new one. The package's Chordino path is never called.
 
 ### Synthesized test fixtures
 
