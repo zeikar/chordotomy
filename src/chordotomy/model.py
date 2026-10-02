@@ -2,7 +2,8 @@
 
 lv-chordia is the ensemble of Jiang, Chen, Li & Xia (ISMIR 2019): five nets and an HMM decoder
 over a chord dictionary. Its per-frame labels and scores are mapped to the v6 vocabulary and
-snapped to the DSP's beat grid; the beats, the twin resolution and the harmony stay the DSP's.
+snapped to a beat grid from Beat This!'s activation through librosa's one-tempo DP; the twin
+resolution and the harmony stay the DSP's.
 The bass is judged by the nets' bass head, which keeps the DSP's pick when it is a tone of the
 chord.
 

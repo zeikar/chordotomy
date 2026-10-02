@@ -113,9 +113,8 @@ def fetch(name: str = CHECKPOINT) -> Path:
     url = f"{CHECKPOINT_URL}/{name}.ckpt"
     tmp = None
     try:
-        # Present but unreadable or failing the pin (damaged, a different file, or another
-        # user's): it goes like a bad download.
-        path.unlink(missing_ok=True)
+        # A present file that fails the pin stays until the verified download replaces it: another
+        # process may be writing a good one, and a failed download must not remove it.
         path.parent.mkdir(parents=True, exist_ok=True)
         sha = hashlib.sha256()
         count = 0
