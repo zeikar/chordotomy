@@ -18,7 +18,7 @@ jobs:
         python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uv sync --extra dev --python ${{ matrix.python }}
       - run: uv run pytest
       - run: uv run ruff check . && uv run ruff format --check .
@@ -33,7 +33,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       # The release tag is the version with a v in front; publishing anything else is a mistake.
       - run: |
           version=$(uv version --short)
