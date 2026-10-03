@@ -136,7 +136,7 @@ The repo is also a Claude Code plugin with one skill, `explain-harmony`. Install
 /plugin install chordotomy@chordotomy
 ```
 
-Then ask something like "explain the harmony of song.mp3". The skill runs `chordotomy analyze` locally with the plugin's own copy (it needs uv), reads the JSON, and explains the secondary dominants, borrowed chords, and bass lines. The audio stays on your machine; Claude reads only the chord timeline.
+Then ask something like "explain the harmony of song.mp3". The skill runs `chordotomy analyze` locally with the plugin's own copy (it needs uv), reads the JSON, and explains the secondary dominants, borrowed chords, and bass lines. A YouTube link works too: the skill downloads the audio with the `yt-dlp` and `ffmpeg` you have installed and, for YouTube, `deno` (it installs nothing), analyzes the file, and records the video's page URL in the timeline. The audio stays on your machine; Claude reads only the chord timeline.
 
 Working in this repo, `.claude/settings.json` registers the checkout itself as a directory marketplace and enables the plugin, so the skill runs from the working tree. The first session asks you to trust it; `claude plugin marketplace add .` does the same by hand.
 

@@ -1,6 +1,6 @@
 ---
 name: explain-harmony
-description: This skill should be used when the user wants the harmony of a recording, or of a chordotomy `.chords.json` timeline, explained, e.g. "analyze the harmony of song.mp3", "explain the chords in this song", "why does the progression in this track work", "find the secondary dominants / borrowed chords in this recording", "Roman-numeral analysis of this audio file", "이 곡 화성 분석해줘", "이 노래 코드 진행 설명해줘", "차용화음 / 세컨더리 도미넌트 찾아줘". Runs the local chordotomy analyzer and explains the notable moves from its JSON. Not for a progression typed as text with no audio or timeline.
+description: This skill should be used when the user wants the harmony of a recording, a YouTube (or other yt-dlp-supported) link, or a chordotomy `.chords.json` timeline explained, e.g. "analyze the harmony of song.mp3", "explain the chords in this song", "why does the progression in this track work", "find the secondary dominants / borrowed chords in this recording", "Roman-numeral analysis of this audio file", "explain the harmony of this YouTube video <link>", "analyze the chords of https://youtu.be/…", "이 곡 화성 분석해줘", "이 노래 코드 진행 설명해줘", "차용화음 / 세컨더리 도미넌트 찾아줘", "이 유튜브 영상 화성 분석해줘". Runs the local chordotomy analyzer and explains the notable moves from its JSON. Not for a progression typed as text with no audio or timeline.
 ---
 
 # Explain a song's harmony with chordotomy
@@ -11,10 +11,11 @@ Audio never leaves the machine. Run the analyzer locally, and never upload or se
 
 ## Step 1: Get the timeline
 
-The input is an audio file or an existing `*.chords.json`.
+The input is an audio file, an existing `*.chords.json`, or a URL.
 
 - **Given a `.chords.json`:** go to Step 2.
 - **Given audio:** first look for `<audio stem>.edited.chords.json` next to it (the viewer saves corrections under that name), then `<audio stem>.chords.json`. If either exists, use the first one found and do not re-run.
+- **Given a URL:** follow "From a URL" below.
 - **Re-extracting:** never pass `--force` on an existing timeline without asking the user first. `--force` extracts the chords from the audio again and discards any corrections.
 - **Analyzing in a stated key:** if the user states a key, or asks to re-analyze in another key, write to a new file next to the audio that names the key, rather than overwriting, e.g. `--key A:min -o "<audio dir>/<stem>.A-minor.chords.json"`. If that keyed file already exists, use it instead of re-running. `--key` takes `<root>:maj` or `<root>:min`, and flat roots such as `Bb:maj` are accepted.
 
@@ -31,18 +32,55 @@ The analyzer writes `<audio stem>.chords.json` next to the audio (or to `-o`) an
 - **`error: <audio>: no beats detected`** (exit 1): the file is silent or shorter than one beat. Say so and stop.
 - **`error: <audio>: Error opening … Format not recognised`** (exit 1): the decoder reads wav, flac, ogg and mp3, but not m4a or aac. Suggest converting locally, e.g. `ffmpeg -i song.m4a song.wav`, which keeps the audio on the machine.
 - **`error: cannot fetch the Beat This! weights …`** (exit 1): the model engine downloads its beat tracker's weights (81 MB) on its first run and found no network. Show the message, which names the fix (`chordotomy fetch-weights` once online, or `--engine dsp`), and stop.
-- **Exit 2:** a usage error, such as a missing file or a bad `--key`. Show its message.
+- **Exit 2:** a usage error, such as a missing file, a bad `--key`, or a `--source-url` that isn't `http(s)`. Show its message.
+
+### From a URL
+
+The download runs on the user's own tools, and the file stays on the machine. The analyzer receives only the file's name and the URL string.
+
+1. **Check the tools.** First run `command -v uv` and `command -v chordotomy`; with neither, stop as the list above says, before downloading anything. Then run `command -v yt-dlp` and `command -v ffmpeg`, and for a YouTube link `command -v deno`, the JavaScript runtime yt-dlp needs for YouTube. If any is missing, tell the user to install it and stop; install nothing yourself. On macOS that is `brew install yt-dlp ffmpeg deno`, naming only the missing ones; elsewhere, yt-dlp's install page, https://github.com/yt-dlp/yt-dlp#installation.
+2. **Download.** In the current working directory, run `yt-dlp --no-playlist -I 1 -x --audio-format mp3 --print after_move:webpage_url --print after_move:filepath "<url>"` with a timeout of up to 10 minutes. It fetches one video's audio as mp3, since the decoder reads wav, flac, ogg and mp3 but not m4a or webm; for a playlist or channel link with no video in it, that is the first video, so tell the user which. It prints two lines: the video's canonical page URL (`<webpage_url>`), then the file's absolute path, named `<title> [<id>].mp3`. The file is in the current directory, so use its basename as `<audio>` from here on: an absolute path would put the user's home directory in `source.path` of a timeline that may be shared. A title can hold `$`, `` ` `` or `'`, so in every command given `<audio>` or a path built from it (the analyze command and its `-o`, `<timeline>` below, Step 2's `<file>.chords.json`), single-quote that path in place of the template's double quotes, writing each `'` as `'\''`.
+3. **If yt-dlp fails,** show its message and stop. Report a private, removed or restricted video to the user as such; don't work around it.
+4. **Use or make the timeline.** Apply the "Given audio" rules to `<audio>`: an existing `<stem>.edited.chords.json`, else `<stem>.chords.json`, is used without re-running. With none, run the analyze command chosen above with `--source-url "<webpage_url>"` appended: the printed page URL, not the pasted one, which may carry `list=`, `t=` or `si=` parameters. Append it to every analyze run on this file, a keyed or `--force` one too. For an existing timeline, check `schema_version` and `source.url`, which the first line of Step 2's compact view shows:
+   - **9, with `source.url` `null`:** first write `<webpage_url>` into it with the snippet below, `<timeline>` being its path. It changes that one field and keeps every edit.
+   - **`source.url` set:** leave it. If it differs from `<webpage_url>`, tell the user both.
+   - **Any other schema:** leave it as it is. Below 9, tell the user that this timeline carries no link to the video.
+
+```bash
+python3 - "<timeline>" "<webpage_url>" <<'EOF'
+import json, os, shutil, sys, tempfile
+path, url = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    d = json.load(f)
+if d.get("schema_version") != 9 or d["source"]["url"] is not None:
+    sys.exit("left as it is: not schema 9 with source.url null")
+d["source"]["url"] = url
+data = (json.dumps(d, indent=2, ensure_ascii=False) + "\n").encode("utf-8", "backslashreplace")
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), suffix=".tmp")
+try:
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    shutil.copymode(path, tmp)
+    os.replace(tmp, path)
+except BaseException:
+    os.unlink(tmp)
+    raise
+EOF
+```
+
+5. **Keep `<audio>`** for the rest of the session, so a second question about the same video needs no second download.
 
 ## Step 2: Read the JSON
 
 The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines. Read a compact view instead of the raw file:
 
 ```bash
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| source", json.dumps(d.get("source"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 8:
+Check `schema_version`. This skill is written for version 9:
 
+- **Below 9:** there is no `source.url`.
 - **Below 8:** there is no `sus4(b7)` and no `7sus4` numeral; an lv-chordia timeline below 8 wrote a 7sus4 as `sus4`.
 - **Below 7:** there is no `aug`, `dim` (the triad) or `sus2`, and no `+`, bare `°` or `sus2` numerals; an lv-chordia timeline below 7 wrote a diminished triad as `dim7`, an augmented chord as `maj` and a sus2 as the sus4 a fifth up.
 - **Below 6:** there is no `generator.engine`; the chords are the DSP recognizer's.
@@ -50,13 +88,14 @@ Check `schema_version`. This skill is written for version 8:
 - **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
 - **Below 3:** there is no `bass` and no `inversion`.
 - **Below 2:** there is no key and there are no numerals either.
-- **Above 8:** this skill may be out of date. Explain only the fields listed here.
+- **Above 9:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 8, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+In every case other than 9, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
 
 The fields:
 
 - **`generator.engine`:** the chord recognizer that produced `chord` and `candidates`: `name` (`dsp`, chordotomy's own DSP front end, or `lv-chordia`, a pretrained model) and `version` (chordotomy's version for `dsp`, the lv-chordia package version for `lv-chordia`).
+- **`source.url`:** the web page the recording came from, `null` for a local file.
 - **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
 - **Per segment:**
   - `start_time`, `end_time`
