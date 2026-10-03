@@ -16,15 +16,16 @@ const Edit = ((Harmony) => {
     Harmony.ROOTS.flatMap((root) => Harmony.QUALITY_NAMES.map((quality) => `${root}:${quality}`)),
   );
 
-  // A schema-4, 5, 6 or 7 timeline as an 8. An 8 only adds a chord quality, so a 6 or 7 changes its
-  // version alone, keeping its generator and segments. Only the DSP wrote files before 6, so it is
-  // the engine, at the chordotomy version that wrote the file; `engine` follows that version, where
-  // timeline.py writes it. A 4 also had no edits: `edited: false` goes last on every segment,
-  // where timeline.py writes it. An 8 is returned as it is. The analyzer's fields stand until the
-  // first edit.
+  // A schema-4 to 8 timeline as a 9. A 9 adds `source.url`, which no earlier file had: it is null
+  // whatever an older file carried, so a stray string never survives into a 9. A 6, 7 or 8 changes
+  // its version and url alone, keeping its generator and segments. Only the DSP wrote files before
+  // 6, so it is the engine, at the chordotomy version that wrote the file; `engine` follows that
+  // version, where timeline.py writes it. A 4 also had no edits: `edited: false` goes last on every
+  // segment, where timeline.py writes it. A 9 is returned as it is. The analyzer's fields stand
+  // until the first edit.
   function upgrade(data) {
     const version = data.schema_version;
-    if (version === 8) return data;
+    if (version === 9) return data;
     const { generator } = data;
     const segments =
       version === 4
@@ -32,7 +33,8 @@ const Edit = ((Harmony) => {
         : data.segments;
     return {
       ...data,
-      schema_version: 8,
+      schema_version: 9,
+      source: { ...data.source, url: null },
       generator:
         version < 6
           ? { ...generator, engine: { name: "dsp", version: generator.version } }

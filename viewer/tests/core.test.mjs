@@ -332,24 +332,71 @@ const withSegment = (fields, version = 4) => ({
   segments: [{ ...SEGMENT, ...fields }],
 });
 
-test("schema versions 4 to 8 are accepted", () => {
+test("schema versions 4 to 9 are accepted", () => {
   const ok = {
-    schema_version: 8,
+    schema_version: 9,
     generator: { name: "chordotomy", version: "0.0.0", engine: DSP },
-    source: { path: "song.mp3", duration: 1 },
+    source: { path: "song.mp3", duration: 1, url: null },
     beats: [],
     segments: [],
   };
   assert.equal(Core.timelineProblem(ok), null);
+  assert.equal(Core.timelineProblem({ ...ok, schema_version: 8 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 7 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 6 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 5 }), null);
   assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
   assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 9 }), /versions 4 to 8.*newer chordotomy/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 10 }), /versions 4 to 9.*newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
   assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);
+});
+
+test("a 9 carries a source url that is null or a string", () => {
+  const nine = withSegment({ edited: false }, 9);
+  const withUrl = (source) => ({ ...nine, source });
+  const source = { path: "song.mp3", duration: 1.5 };
+  // Only the shape is checked here: the renderer, not the opener, decides what is linked.
+  for (const url of [null, "https://www.youtube.com/watch?v=abc", "not a url"]) {
+    assert.equal(Core.timelineProblem(withUrl({ ...source, url })), null);
+  }
+  for (const bad of [source, { ...source, url: 5 }, { ...source, url: ["https://x"] }]) {
+    assert.match(Core.timelineProblem(withUrl(bad)), /source has a missing or invalid url/);
+  }
+  assert.equal(Core.timelineProblem({ ...withSegment({ edited: false }, 8), source }), null);
+});
+
+test("only what the browser parses as http(s) is a link", () => {
+  for (const url of [
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "https://youtu.be/dQw4w9WgXcQ",
+    "HTTPS://Example.com/x",
+    "http://localhost/x",
+    "https://1.2.3.4/",
+    "https://user:pw@example.com:8443/a?b=c#d",
+    "https://bücher.example/",
+    "https://[::1]:8080/x",
+  ]) {
+    assert.equal(Core.isHttpUrl(url), true, url);
+  }
+  for (const value of [
+    "javascript:alert(1)",
+    "file:///etc/passwd",
+    "ftp://x/y",
+    "youtube.com/watch?v=abc",
+    "https://",
+    "https://:80/a",
+    "https://bad host.example/a",
+    "not a url",
+    "",
+    null,
+    undefined,
+    5,
+    ["https://x"],
+  ]) {
+    assert.equal(Core.isHttpUrl(value), false, String(value));
+  }
 });
 
 test("a 6 must name its engine, and an older file the chordotomy version that wrote it", () => {

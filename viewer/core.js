@@ -9,9 +9,9 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  // The viewer reads 4 to 8 and writes 8; an older file is upgraded in memory (see Edit.upgrade).
+  // The viewer reads 4 to 9 and writes 9; an older file is upgraded in memory (see Edit.upgrade).
   const MIN_SCHEMA_VERSION = 4;
-  const SCHEMA_VERSION = 8;
+  const SCHEMA_VERSION = 9;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
   // and, if its numeral suffix is new, in NUMERAL_SUFFIX, numeralParts' pattern and app.js's
@@ -308,6 +308,18 @@ const Core = ((Harmony) => {
   const isLabel = (value) =>
     value === "N" || (typeof value === "string" && CHORD_LABEL.test(value));
   const isText = (value) => typeof value === "string";
+
+  // Whether a string is a web address the page may link: one the browser parses as http or https.
+  // A bare host, `javascript:` or `file:` is not, so a hand-edited file can't put one in an href.
+  function isHttpUrl(value) {
+    if (!isText(value)) return false;
+    try {
+      const { protocol } = new URL(value);
+      return protocol === "http:" || protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
   const nullOr = (check) => (value) => value === null || check(value);
   const INVERSION_NAMES = [...Harmony.INVERSIONS, "non_chord"];
   // What the segment fields the viewer reads may hold, chord and bass aside: timelineProblem names
@@ -346,6 +358,10 @@ const Core = ((Harmony) => {
     if (!data.beats.every(Number.isFinite)) return "This timeline has a beat that isn't a time.";
     // An edit to the last segment runs it to the end of the audio.
     if (!Number.isFinite(data.source?.duration)) return "This timeline has no source duration.";
+    // Only the field's shape: whether a string is a link is isHttpUrl's call where it is shown.
+    if (version >= 9 && data.source.url !== null && !isText(data.source.url)) {
+      return "This timeline's source has a missing or invalid url.";
+    }
     // Edit.upgrade records an older file as the DSP's at the chordotomy version that wrote it.
     const { generator } = data;
     if (version < 6 && !isText(generator?.version)) {
@@ -551,6 +567,7 @@ const Core = ((Harmony) => {
     dueStrikes,
     engineText,
     formatTime,
+    isHttpUrl,
     keyName,
     numeralParts,
     numeralText,

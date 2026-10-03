@@ -139,7 +139,7 @@
     if (opened) installTimeline(opened, timelineFile.name);
   }
 
-  // The timeline in `file`, checked and upgraded to schema 8, or the reason it can't be shown.
+  // The timeline in `file`, checked and upgraded to schema 9, or the reason it can't be shown.
   async function readTimeline(file) {
     let data;
     try {
@@ -973,7 +973,7 @@
   document.addEventListener("click", () => (pressedAt = null));
   document.addEventListener("pointercancel", () => (pressedAt = null));
 
-  // Saving is allowed with nothing unsaved too: it writes an opened schema-4 to 7 file as an 8.
+  // Saving is allowed with nothing unsaved too: it writes an opened schema-4 to 8 file as a 9.
   $("save").addEventListener("click", (event) => {
     releaseFocus(event);
     save();

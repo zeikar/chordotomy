@@ -106,8 +106,9 @@ const assertFieldOrder = (timeline) => {
 };
 const spans = (timeline) => timeline.segments.map((s) => [s.start_beat, s.end_beat]);
 
-test("upgrade turns a schema-4 timeline into an 8 by the DSP with nothing edited", () => {
-  assert.equal(base.schema_version, 8);
+test("upgrade turns a schema-4 timeline into a 9 by the DSP with nothing edited", () => {
+  assert.equal(base.schema_version, 9);
+  assert.deepEqual(base.source, { path: "song.mp3", duration: 5.0, url: null });
   assert.deepEqual(Object.keys(base), Object.keys(v4));
   // In the CLI's order: the engine follows the chordotomy version, which is the DSP's.
   assert.deepEqual(Object.entries(base.generator), [
@@ -124,14 +125,14 @@ test("upgrade turns a schema-4 timeline into an 8 by the DSP with nothing edited
   assert.equal(Edit.upgrade(base), base);
 });
 
-test("upgrade turns a schema-5 timeline into an 8 by the DSP, keeping its edits", () => {
+test("upgrade turns a schema-5 timeline into a 9 by the DSP, keeping its edits", () => {
   const v5 = deepFreeze({
     ...setChord(base, 2, "D:7", "F#"),
     schema_version: 5,
     generator: { name: "chordotomy", version: "0.1.0" },
   });
   const upgraded = Edit.upgrade(v5);
-  assert.equal(upgraded.schema_version, 8);
+  assert.equal(upgraded.schema_version, 9);
   assert.deepEqual(upgraded.generator, {
     name: "chordotomy",
     version: "0.1.0",
@@ -141,16 +142,16 @@ test("upgrade turns a schema-5 timeline into an 8 by the DSP, keeping its edits"
   assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
 });
 
-test("upgrade turns a schema-6 timeline into an 8 that keeps its generator and segments", () => {
+test("upgrade turns a schema-6 timeline into a 9 that keeps its generator and segments", () => {
   const v6 = deepFreeze({ ...setChord(base, 2, "D:7", "F#"), schema_version: 6 });
   const upgraded = Edit.upgrade(v6);
-  assert.equal(upgraded.schema_version, 8);
+  assert.equal(upgraded.schema_version, 9);
   assert.equal(upgraded.generator, v6.generator);
   assert.equal(upgraded.segments, v6.segments);
   assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
 });
 
-test("upgrade turns a schema-7 timeline into an 8 that keeps its generator and segments", () => {
+test("upgrade turns a schema-7 timeline into a 9 that keeps its generator and segments", () => {
   const generator = {
     name: "chordotomy",
     version: "0.0.0",
@@ -158,7 +159,7 @@ test("upgrade turns a schema-7 timeline into an 8 that keeps its generator and s
   };
   const v7 = deepFreeze({ ...setChord(base, 2, "D:7", "F#"), schema_version: 7, generator });
   const upgraded = Edit.upgrade(v7);
-  assert.equal(upgraded.schema_version, 8);
+  assert.equal(upgraded.schema_version, 9);
   assert.equal(upgraded.generator, generator);
   assert.equal(upgraded.segments, v7.segments);
   assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
@@ -439,7 +440,7 @@ test("serialize writes the file as the CLI does", () => {
   const timeline = setChord(base, 1, "F#:hdim7", "F#");
   const text = Edit.serialize(timeline);
   assert.deepEqual(JSON.parse(text), timeline);
-  assert.ok(text.startsWith('{\n  "schema_version": 8,\n'));
+  assert.ok(text.startsWith('{\n  "schema_version": 9,\n'));
   assert.ok(text.endsWith("}\n"));
   assert.ok(text.includes('"numeral": "viiø7/V"'));
 });
@@ -453,10 +454,21 @@ test("a 6 keeps the engine it was read with, through the upgrade and an edit to 
   const model = deepFreeze({ ...base, schema_version: 6, generator });
   const upgraded = Edit.upgrade(model);
   assert.equal(upgraded.generator, generator);
-  assert.equal(Edit.upgrade(upgraded), upgraded); // an 8 as it is
+  assert.equal(Edit.upgrade(upgraded), upgraded); // a 9 as it is
   const saved = JSON.parse(Edit.serialize(setChord(upgraded, 1, "F#:hdim7", "F#")));
-  assert.equal(saved.schema_version, 8);
+  assert.equal(saved.schema_version, 9);
   assert.deepEqual(Object.entries(saved.generator), Object.entries(generator));
+});
+
+test("a 9 keeps its source url through an edit to the saved file", () => {
+  const url = "https://www.youtube.com/watch?v=abc";
+  const nine = deepFreeze({ ...base, source: { ...base.source, url } });
+  assert.equal(Edit.upgrade(nine), nine);
+  const saved = JSON.parse(Edit.serialize(setChord(nine, 1, "F#:hdim7", "F#")));
+  assert.equal(saved.source.url, url);
+  assert.equal(Core.timelineProblem(saved), null);
+  const stray = deepFreeze({ ...v4, schema_version: 8, source: { ...v4.source, url: "javascript:alert(1)" } });
+  assert.equal(Edit.upgrade(stray).source.url, null);
 });
 
 test("the save name is the audio stem plus .edited.chords.json", () => {
