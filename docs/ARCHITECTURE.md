@@ -887,7 +887,7 @@ People will feed it commercial recordings. A hosted upload service would mean st
 
 ### A source URL, not a downloader
 
-A timeline travels without its recording, so the JSON names where the recording is. The CLI stores the string and never fetches it, and the package takes no yt-dlp dependency, so the analyzer stays an analyzer of files the user already has and carries no downloader's terms-of-service question or release cadence. The skill drives the user's own `yt-dlp` and `ffmpeg` and installs nothing. The viewer shows a plain link, not an embed, because an iframe or the YouTube script would make the page talk to a third party, which the CSP forbids and the README promises against. Only `http(s)` URLs become links, since the JSON is shared, untrusted input.
+A timeline travels without its recording, so the JSON names where the recording is. The CLI stores the string and never fetches it, and the package takes no yt-dlp dependency, so the analyzer stays an analyzer of files the user already has and carries no downloader's terms-of-service question or release cadence. The skill runs yt-dlp through `uvx`: a separate program in its own environment, not a dependency of the package, kept with its `deno` runtime in uv's cache rather than on the user's `PATH`, and taken at its latest version on every run, since an old one breaks when YouTube changes. Only `ffmpeg` has to be on the machine. The viewer shows a plain link, not an embed, because an iframe or the YouTube script would make the page talk to a third party, which the CSP forbids and the README promises against. Only `http(s)` URLs become links, since the JSON is shared, untrusted input.
 
 ### Bass from DSP, not Demucs
 
