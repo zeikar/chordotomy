@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pytest
 import soundfile
-from conftest import librosa_activation
+from conftest import librosa_activation, usage_text
 from typer.testing import CliRunner
 
 import chordotomy.beats
@@ -83,8 +83,8 @@ def test_bad_key_is_a_usage_error(clip, tmp_path) -> None:
     result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--key", "Cm"])
 
     assert result.exit_code == 2
-    assert "--key" in result.stderr
-    assert "not a key" in result.stderr
+    assert "--key" in usage_text(result.stderr)
+    assert "not a key" in usage_text(result.stderr)
     assert not out.exists()
 
 
@@ -301,8 +301,8 @@ def test_the_model_engine_without_the_extra_is_a_usage_error(clip, tmp_path, mon
     result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "model"])
 
     assert result.exit_code == 2
-    assert "--engine" in result.stderr
-    assert "uv sync --extra model" in result.stderr
+    assert "--engine" in usage_text(result.stderr)
+    assert "uv sync --extra model" in usage_text(result.stderr)
     assert not out.exists()
 
 
@@ -431,8 +431,7 @@ def test_fetch_weights_without_the_extra_is_a_usage_error() -> None:
     result = CliRunner().invoke(app, ["fetch-weights"])
 
     assert result.exit_code == 2
-    # Rich wraps the message inside a bordered error box.
-    assert "uv sync --extra model" in " ".join(result.output.replace("│", " ").split())
+    assert "uv sync --extra model" in usage_text(result.output)
 
 
 def test_fetch_weights_prints_the_path(monkeypatch, tmp_path) -> None:

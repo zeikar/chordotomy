@@ -7,6 +7,7 @@ tones, a `bpm` and an envelope `decay`; `chord_at` assumes the default tempo. Ke
 8 beats: `chroma_cqt` warns on shorter ones, which fails under `-W error::UserWarning`.
 """
 
+import re
 from collections.abc import Callable
 
 import librosa
@@ -40,6 +41,13 @@ def librosa_activation(y: np.ndarray) -> np.ndarray:
     """librosa's own onset envelope, the one beat_track(y=y) tracks: a stubbed model engine given
     it as Beat This!'s activation keeps the DSP's grid."""
     return librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP, aggregate=np.median)
+
+
+def usage_text(output: str) -> str:
+    """A usage error's message as plain words. Typer draws it in a Rich box, wrapped to the
+    terminal, and under GitHub Actions it forces Rich's terminal mode, adding ANSI styles."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return " ".join(re.sub(r"[│╭╮╰╯─]", " ", plain).split())
 
 
 BPM = 120

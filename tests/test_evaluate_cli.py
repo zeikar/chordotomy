@@ -4,6 +4,7 @@ import zipfile
 
 import pytest
 import soundfile
+from conftest import usage_text
 from typer.testing import CliRunner
 
 pytest.importorskip("mir_eval")
@@ -124,7 +125,7 @@ def test_limit_below_one_is_a_usage_error(no_network, limit) -> None:
     result = _run("tiny-aam", "--limit", limit)
 
     assert result.exit_code == 2
-    assert "--limit" in result.stderr
+    assert "--limit" in usage_text(result.stderr)
 
 
 @pytest.mark.parametrize("missing", ["mir_eval", "pooch"])
@@ -225,8 +226,8 @@ def test_the_model_engine_without_the_extra_is_a_usage_error(no_network) -> None
     result = _run("tiny-aam", "--engine", "model")
 
     assert result.exit_code == 2
-    assert "--engine" in result.stderr
-    assert "uv sync --extra model" in result.stderr
+    assert "--engine" in usage_text(result.stderr)
+    assert "uv sync --extra model" in usage_text(result.stderr)
 
 
 @pytest.fixture
