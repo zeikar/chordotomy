@@ -41,10 +41,11 @@ chordotomy analyze song.mp3                 # writes song.chords.json
 chordotomy analyze song.mp3 -o out.json
 chordotomy analyze song.mp3 --key A:min     # analyze in A minor instead of the estimated key
 chordotomy analyze song.mp3 --engine dsp    # the DSP front end, even with the model installed
+chordotomy analyze song.mp3 --source-url https://www.youtube.com/watch?v=…   # record where the recording came from
 chordotomy fetch-weights                    # model extra: download and verify Beat This!'s weights once
 ```
 
-`--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates.
+`--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates. `--source-url` records an `http(s)` page the recording came from in the JSON; nothing is downloaded.
 
 `--engine` picks the chord recognizer: `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` and `dsp` force one. The model engine's beats come from Beat This! and the DSP's from librosa, so the two engines' beats can differ for the same file. A missing or broken model install is an error that names the fix; it never falls back to the DSP silently. The JSON records which engine heard the chords.
 
@@ -52,7 +53,7 @@ chordotomy fetch-weights                    # model extra: download and verify B
 
 ### The output
 
-`song.chords.json` (schema 8) lists every beat, the estimated key, and the chord segments. One segment of the screenshot's timeline:
+`song.chords.json` (schema 9) lists every beat, the estimated key, and the chord segments. One segment of the screenshot's timeline:
 
 ```json
 {

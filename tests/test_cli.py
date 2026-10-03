@@ -48,8 +48,9 @@ def test_analyze_writes_the_timeline(clip, tmp_path) -> None:
     assert result.exit_code == 0
     assert "Wrote" in result.stdout
     data = json.loads(out.read_text())
-    assert data["schema_version"] == 8
+    assert data["schema_version"] == 9
     assert data["source"]["path"] == str(clip)
+    assert data["source"]["url"] is None
 
 
 def test_key_overrides_the_estimate(clip, tmp_path) -> None:
@@ -88,6 +89,59 @@ def test_bad_key_is_a_usage_error(clip, tmp_path) -> None:
     assert not out.exists()
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtu.be/dQw4w9WgXcQ",
+        "HTTPS://Example.com/x",
+        "http://localhost/x",
+        "https://1.2.3.4/",
+        "https://user:pw@example.com:8443/a?b=c#d",
+        "https://bücher.example/",
+        "https://[::1]:8080/x",
+    ],
+)
+def test_source_url_is_recorded(clip, tmp_path, url) -> None:
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--source-url", url])
+
+    assert result.exit_code == 0
+    data = json.loads(out.read_text())
+    assert data["source"]["url"] == url
+    assert data["schema_version"] == 9
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "youtube.com/watch?v=x",
+        "ftp://host/song.mp3",
+        "javascript:alert(1)",
+        "file:///tmp/song.mp3",
+        "https://",
+        "https://:80/a",
+        "https://user@/a",
+        "https://[::1x]/",
+        "https://example.com:99999/",
+        "https://example.com:abc/",
+        "https://bad host.example/a",
+        "https://example.com/a b",
+        " https://example.com/x",
+        "https://example.com/\t",
+    ],
+)
+def test_source_url_must_be_http(clip, tmp_path, url) -> None:
+    out = tmp_path / "out.json"
+
+    result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--source-url", url])
+
+    assert result.exit_code == 2
+    assert "--source-url" in usage_text(result.stderr)
+    assert not out.exists()
+
+
 def test_default_output_is_not_overwritten_without_force(clip, tmp_path) -> None:
     runner = CliRunner()
     out = tmp_path / "clip.chords.json"
@@ -111,7 +165,7 @@ def test_default_output_is_not_overwritten_without_force(clip, tmp_path) -> None
 def test_file_appearing_during_analysis_is_not_overwritten(clip, tmp_path, monkeypatch) -> None:
     out = tmp_path / "out.json"
 
-    def stub(path, key=None, engine=None):
+    def stub(path, key=None, engine=None, source_url=None):
         out.write_text("sentinel")
         return {"schema_version": 1}
 
@@ -134,7 +188,9 @@ def test_timeline_is_written_as_utf8(clip, tmp_path, monkeypatch, force) -> None
         "source": {"path": "노래.wav"},
         "segments": [{"numeral": "viiø7/V"}, {"numeral": "vii°7/ii"}],
     }
-    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: data)
+    monkeypatch.setattr(
+        chordotomy.timeline, "analyze", lambda path, key=None, engine=None, source_url=None: data
+    )
 
     args = ["analyze", str(clip), "-o", str(out)] + (["--force"] if force else [])
     result = CliRunner().invoke(app, args)
@@ -152,7 +208,9 @@ def test_an_undecodable_path_is_written_as_an_escape(clip, tmp_path, monkeypatch
     # A filename that is not UTF-8 decodes with a surrogate on Linux, and UTF-8 cannot encode it.
     out = tmp_path / "out.json"
     data = {"source": {"path": "caf\udce9.wav"}}
-    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: data)
+    monkeypatch.setattr(
+        chordotomy.timeline, "analyze", lambda path, key=None, engine=None, source_url=None: data
+    )
 
     args = ["analyze", str(clip), "-o", str(out)] + (["--force"] if force else [])
     result = CliRunner().invoke(app, args)
@@ -241,7 +299,7 @@ def test_forced_write_does_not_follow_a_link_made_during_analysis(
     before = clip.read_bytes()
     out = tmp_path / "out.json"
 
-    def stub(path, key=None, engine=None):
+    def stub(path, key=None, engine=None, source_url=None):
         os.link(clip, out)
         return {"schema_version": 1}
 
@@ -275,7 +333,7 @@ def test_forced_write_keeps_the_existing_mode(clip, tmp_path) -> None:
 
     assert result.exit_code == 0
     assert out.stat().st_mode & 0o777 == 0o600
-    assert json.loads(out.read_text())["schema_version"] == 8
+    assert json.loads(out.read_text())["schema_version"] == 9
 
 
 @pytest.mark.parametrize("args", [[], ["--engine", "dsp"]], ids=["default", "dsp"])
@@ -310,7 +368,7 @@ def test_the_default_is_the_model_when_it_is_installed(clip, tmp_path, monkeypat
     out = tmp_path / "out.json"
     engines = []
 
-    def stub(path, key=None, engine=None):
+    def stub(path, key=None, engine=None, source_url=None):
         engines.append(engine)
         return {"schema_version": 6}
 
@@ -333,7 +391,9 @@ def test_the_model_engine_says_when_it_downloads_the_beat_weights(
     monkeypatch.setattr(chordotomy.model, "available", lambda: True)
     monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
     monkeypatch.setattr(chordotomy.beats, "verified", lambda: cached)
-    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: {})
+    monkeypatch.setattr(
+        chordotomy.timeline, "analyze", lambda path, key=None, engine=None, source_url=None: {}
+    )
     args = ["analyze", str(clip), "-o", str(tmp_path / "out.json"), "--engine", "model"]
 
     result = CliRunner().invoke(app, args)

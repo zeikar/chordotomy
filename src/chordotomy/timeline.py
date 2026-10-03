@@ -1,4 +1,4 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v8)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v9)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .chords import (
 )
 from .features import SR, beat_features, load_audio
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def chord_runs(segments: list[dict]) -> list[list[dict]]:
@@ -38,13 +38,20 @@ def progression(runs: list[list[dict]]) -> list[tuple[str, int]]:
     return [(run[0]["chord"], run[-1]["end_beat"] - run[0]["start_beat"]) for run in runs]
 
 
-def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] = "dsp") -> dict:
+def analyze(
+    path: Path,
+    key: str | None = None,
+    engine: Literal["dsp", "model"] = "dsp",
+    *,
+    source_url: str | None = None,
+) -> dict:
     """Analyze an audio file into a chord-timeline dict of plain, JSON-serialisable types.
 
     engine picks the chord recognizer and the envelope the beats are tracked on: the DSP's
     templates on librosa's onset strength, or the lv-chordia model on Beat This!'s activation,
     whose weights are downloaded on first use. Raises NoBeatsError on audio without beats, and
-    EngineError when the model engine cannot run.
+    EngineError when the model engine cannot run. source_url is the web page the recording came
+    from; it is recorded in the timeline as given and never fetched.
     """
     if engine not in ("dsp", "model"):
         raise ValueError(f"unknown engine {engine!r}; expected 'dsp' or 'model'")
@@ -83,7 +90,7 @@ def analyze(path: Path, key: str | None = None, engine: Literal["dsp", "model"] 
     return {
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "chordotomy", "version": __version__, "engine": recognizer},
-        "source": {"path": str(path), "duration": duration},
+        "source": {"path": str(path), "duration": duration, "url": source_url},
         "key": key_info,
         "beats": beat_times,
         "segments": [

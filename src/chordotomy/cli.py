@@ -10,6 +10,7 @@ import tempfile
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 import soundfile
 import typer
@@ -56,6 +57,26 @@ def _parse_key(value: str | None) -> str | None:
         return harmony.parse_key(value)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+def _parse_source_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    # urlsplit silently drops tabs and newlines, so whitespace and control characters are
+    # refused on the raw value. Anything else, internationalized hosts included, is kept.
+    try:
+        parts = urlsplit(value)
+        host = parts.hostname
+        parts.port  # noqa: B018 - raises ValueError on a malformed or out-of-range port
+    except ValueError as exc:
+        raise typer.BadParameter(f"not an http(s) URL: {value}") from exc
+    if (
+        parts.scheme not in ("http", "https")
+        or not host
+        or any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+    ):
+        raise typer.BadParameter(f"not an http(s) URL: {value}")
+    return value
 
 
 def _require_model() -> None:
@@ -150,6 +171,17 @@ def analyze(
             ),
         ),
     ] = None,
+    source_url: Annotated[
+        str | None,
+        typer.Option(
+            "--source-url",
+            callback=_parse_source_url,
+            help=(
+                "Web page the recording came from, e.g. a YouTube link; "
+                "stored in the JSON, never downloaded."
+            ),
+        ),
+    ] = None,
     engine: EngineOption = Engine.AUTO,
 ) -> None:
     """Analyze AUDIO into a beat-aligned chord-timeline JSON."""
@@ -164,7 +196,7 @@ def analyze(
 
     try:
         _announce(engine)
-        result = timeline.analyze(audio, key=key, engine=engine.value)
+        result = timeline.analyze(audio, key=key, engine=engine.value, source_url=source_url)
     except (soundfile.LibsndfileError, NoBeatsError) as exc:
         raise _fail(f"{audio}: {exc}") from exc
     except model.EngineError as exc:

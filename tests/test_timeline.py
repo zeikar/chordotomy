@@ -47,13 +47,15 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 8
+    assert result["schema_version"] == 9
     assert result["generator"] == {
         "name": "chordotomy",
         "version": __version__,
         "engine": {"name": "dsp", "version": __version__},
     }
     assert result["source"]["path"] == str(path)
+    assert list(result["source"]) == ["path", "duration", "url"]
+    assert result["source"]["url"] is None
     duration = result["source"]["duration"]
     assert abs(duration - 6.0) <= 0.01
     beats = result["beats"]

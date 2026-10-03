@@ -43,7 +43,7 @@ Beats come from `librosa.beat.beat_track`, librosa's dynamic-programming beat tr
 
 The activation (`beats.activation`) is the per-frame beat probability of Beat This! (Foscarin, Schlüter & Widmer, ISMIR 2024), from its `final0` checkpoint. The net reads a log-mel spectrogram at 50 frames a second, 128 bands from 30 Hz to 11 kHz. The engine builds it with `torch.stft` and librosa's Slaney mel filterbank instead of beat_this's own front end, which is torchaudio's, so torchaudio is never imported; the two agree to 2e-5 on a synthesized clip (7.7e-5 on a Tiny AAM recording in the research). The net runs over chunks of 1,500 frames, the 30 s it was trained on, cut and joined as beat_this's `split_piece` and `aggregate_prediction` do: 6 frames are dropped at both ends of each chunk, and where the kept spans overlap, the earlier chunk's is kept. The chunking has to be beat_this's because it changes every frame's output, not only the borders': the transformer attends over its whole chunk. The sigmoid of the beat logits is interpolated linearly onto chordotomy's frames, 512 samples apart at 22050 Hz, and `beat_track(onset_envelope=..., trim=False)` follows it with librosa's default tempo prior, as on the DSP. One gate comes first. The one-tempo DP puts beats into digital silence, 10 into 4 s of zeros, so Beat This!'s own peak picking decides whether a file has beats at all. It takes a frame as a beat when its logit is the maximum of the 7 frames around it and above 0, a probability over 0.5, so a file with no logit above 0 has no beats (`NoBeatsError`), as does a clip too short for the spectrogram (at most 512 samples). From the tracker's beats on, the doubling, the octave check and the edge extension (`_double`, `_too_slow`, `_extend`) are the same in both engines, each on its own grid. "The model engine's beats come from Beat This!" under Design decisions says why.
 
-Beats need not be evenly spaced. The decoder takes each beat's own length (see the smoothing paragraph below). `beats` in the JSON carries times, not a period, so a grid whose period changes is still schema 8. The viewer draws every beat at one width. The bass cut below counts beats, not seconds (`BASS_HOLD`).
+Beats need not be evenly spaced. The decoder takes each beat's own length (see the smoothing paragraph below). `beats` in the JSON carries times, not a period, so a grid whose period changes is still schema 9. The viewer draws every beat at one width. The bass cut below counts beats, not seconds (`BASS_HOLD`).
 
 The chord CQT starts at C1 and spans 252 bins, seven octaves at 36 bins per octave (a third of a semitone), the resolution of Mauch & Dixon. Its tuning is one `estimate_tuning` value on the harmonic signal, shared with the bass CQT below.
 
@@ -181,17 +181,18 @@ The viewer re-analyzes edited chords with a JavaScript port of this analysis, `v
 
 ## The chord-timeline JSON
 
-This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 8.
+This is the project's public seam. It carries beat positions, not just seconds, so another tool, or a notation stage someone else builds, can consume it. `chordotomy analyze` writes it as schema version 9.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schema_version` | int, `8` | schema version of this file |
+| `schema_version` | int, `9` | schema version of this file |
 | `generator.name` | `"chordotomy"` | |
 | `generator.version` | str | the chordotomy version that wrote the file |
 | `generator.engine.name` | `"dsp"` or `"lv-chordia"` | the recognizer that produced `chord` and `candidates`: chordotomy's DSP front end, or the lv-chordia model |
 | `generator.engine.version` | str | chordotomy's version for `dsp`, the lv-chordia package version otherwise |
 | `source.path` | str | the audio path as given on the command line |
 | `source.duration` | float, seconds, 3 decimals | |
+| `source.url` | str or null | an `http://` or `https://` page the recording came from, as given to `--source-url`, which refuses only another scheme, a missing host, whitespace or control characters and what `urlsplit` can't parse (the `explain-harmony` skill passes the canonical page URL of a video it downloaded); `null` when none was given; the analyzer never fetches it; the viewer shows it as a link when the browser can parse it as http(s) |
 | `beats` | list of float seconds, 3 decimals, ascending | beat index = list position |
 | `key` | object or `null` | the key the numerals are relative to; `null` only when the timeline has no chord and no `--key` was given |
 | `key.label` | str | `<root>:maj` or `<root>:min`, sharps only, e.g. `C:maj`, `A:min` |
@@ -219,13 +220,13 @@ Segments are contiguous: each `start_beat` equals the previous `end_beat`, and t
 
 The file is UTF-8, and non-ASCII characters are written as themselves rather than as `\u` escapes: the numerals' `ø` and `°`, and a non-ASCII `source.path`. A path that is not valid UTF-8 keeps `\u` escapes for the bytes that don't decode.
 
-The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`. Schema 4 kept schema 3's fields and widened what they hold: the chord qualities, the numerals, what `third` means in `inversion`, which chords `secondary_dominant` covers, and what `candidates[1]` means after a respelling. Schema 5 added `segments[].edited`, so a corrected chord is told apart from a heard one. Schema 6 added `generator.engine`; a file below 6 was written by the DSP. Schema 7 widened the chord vocabulary (`aug`, `dim`, `sus2`) and the numerals (`+`, `°`, `sus2`). Schema 8 widened the chord vocabulary (`sus4(b7)`) and the numerals (`7sus4`). The viewer reads 4 to 8 and saves an 8: it fills in `edited: false` on a 4, and on a 4 or 5 the engine `{"name": "dsp", "version": <generator.version>}`.
+The schema is stable. Any change to the documented schema, an added field included, is breaking and bumps `schema_version`. Schema 4 kept schema 3's fields and widened what they hold: the chord qualities, the numerals, what `third` means in `inversion`, which chords `secondary_dominant` covers, and what `candidates[1]` means after a respelling. Schema 5 added `segments[].edited`, so a corrected chord is told apart from a heard one. Schema 6 added `generator.engine`; a file below 6 was written by the DSP. Schema 7 widened the chord vocabulary (`aug`, `dim`, `sus2`) and the numerals (`+`, `°`, `sus2`). Schema 8 widened the chord vocabulary (`sus4(b7)`) and the numerals (`7sus4`). Schema 9 added `source.url`, the web page the recording came from. The viewer reads 4 to 8 and saves an 8: it fills in `edited: false` on a 4, and on a 4 or 5 the engine `{"name": "dsp", "version": <generator.version>}`.
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "generator": {"name": "chordotomy", "version": "0.0.0", "engine": {"name": "dsp", "version": "0.0.0"}},
-  "source": {"path": "song.mp3", "duration": 5.0},
+  "source": {"path": "song.mp3", "duration": 5.0, "url": null},
   "key": {"label": "C:maj", "source": "estimated", "candidates": ["C:maj", "F:maj", "G:maj"]},
   "beats": [0.023, 0.534, 1.045, 1.533, 2.043, 2.531, 3.042, 3.529, 4.04, 4.528],
   "segments": [
@@ -881,6 +882,10 @@ The port is small: key estimation, numerals and roles, inversions, and the group
 ### Local-first
 
 People will feed it commercial recordings. A hosted upload service would mean storing copyrighted audio, so audio never leaves the machine.
+
+### A source URL, not a downloader
+
+A timeline travels without its recording, so the JSON names where the recording is. The CLI stores the string and never fetches it, and the package takes no yt-dlp dependency, so the analyzer stays an analyzer of files the user already has and carries no downloader's terms-of-service question or release cadence. The skill drives the user's own `yt-dlp` and `ffmpeg` and installs nothing. The viewer shows a plain link, not an embed, because an iframe or the YouTube script would make the page talk to a third party, which the CSP forbids and the README promises against. Only `http(s)` URLs become links, since the JSON is shared, untrusted input.
 
 ### Bass from DSP, not Demucs
 
