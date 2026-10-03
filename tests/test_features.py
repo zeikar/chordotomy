@@ -2,6 +2,7 @@ import librosa
 import numpy as np
 import pytest
 import soundfile
+from conftest import TRESILLO, TRIPLETS
 
 from chordotomy import features
 from chordotomy.chords import LABELS, N_GATE_DB, ONSET_FRACTION, match, pick_bass
@@ -151,6 +152,63 @@ def test_the_grid_extends_at_the_edge_gaps(synth, monkeypatch) -> None:
     assert len(head) == 3 and len(tail) == 3
     assert np.allclose(head, 0.5, atol=HOP / SR)
     assert np.allclose(tail, 0.75, atol=HOP / SR)
+
+
+def _peaks(y: np.ndarray, times, height: float = 1.0) -> np.ndarray:
+    """An onset envelope for y, one value per HOP frame: height on the frames nearest times, 0
+    elsewhere."""
+    envelope = np.zeros(1 + len(y) // HOP)
+    envelope[np.round(np.asarray(times) * SR / HOP).astype(int)] = height
+    return envelope
+
+
+def test_the_beats_follow_a_given_envelope(synth) -> None:
+    # The audio's pulse is 0.5 s and the envelope's 0.6 s, so the beats can only come from it.
+    y = synth([("C:maj", 16)])
+    peaks = np.arange(0, len(y) / SR, 0.6)
+
+    f = beat_features(y, onset_envelope=_peaks(y, peaks))
+
+    assert f.treble.shape[1] == len(f.times)
+    assert np.abs(f.times[:, None] - peaks).min(axis=1).max() <= HOP / SR
+    assert len(f.times) == len(peaks)
+
+
+def test_a_syncopated_envelope_keeps_one_grid(synth) -> None:
+    # 16 bars at 86 BPM: the pulse at 1.0, and over the last 8 bars the `syncopated` fixture's hats
+    # at 0.6, 3-3-2 sixteenths and quarter-note triplets by turns, two bars each. The audio is
+    # 45 s at 120 BPM, which the envelope overrides.
+    y = synth([("C:maj", 90)])
+    beat = round(60 / 86 * SR) / SR
+    pulse = np.arange(64) * beat
+    hats = [
+        (4 * bar + at) * beat
+        for bar in range(8, 16)
+        for at in (TRESILLO, TRIPLETS)[(bar - 8) // 2 % 2]
+    ]
+
+    f = beat_features(y, onset_envelope=np.maximum(_peaks(y, pulse), _peaks(y, hats, 0.6)))
+
+    gaps = np.diff(f.times)
+    # Measured: 65 beats of 0.697 to 0.720 s, and a beat on every pulse position.
+    assert gaps.max() < 1.2 * gaps.min(), (gaps.min(), gaps.max())
+    hit = np.abs(f.times[:, None] - pulse).min(axis=0) <= 0.07
+    assert hit.mean() >= 0.95, hit.mean()
+
+
+def test_an_envelope_without_onsets_has_no_beats(synth) -> None:
+    y = synth([("C:maj", 8)])
+
+    with pytest.raises(NoBeatsError):
+        beat_features(y, onset_envelope=np.zeros(1 + len(y) // HOP))
+
+
+@pytest.mark.parametrize("extra", [-1, 1])
+def test_a_misaligned_envelope_is_rejected(synth, extra) -> None:
+    y = synth([("C:maj", 8)])
+
+    with pytest.raises(ValueError, match="frames"):
+        beat_features(y, onset_envelope=np.ones(1 + len(y) // HOP + extra))
 
 
 def _changes_at(starts) -> np.ndarray:

@@ -5,8 +5,9 @@ import librosa
 import numpy as np
 import pytest
 import soundfile
+from conftest import librosa_activation
 
-from chordotomy import __version__, features, model, timeline
+from chordotomy import __version__, beats, features, model, timeline
 from chordotomy.chords import LABELS
 from chordotomy.features import HOP, SR, NoBeatsError
 from chordotomy.timeline import analyze
@@ -653,11 +654,13 @@ def _stub_model(monkeypatch, chord: str, heard: list[tuple[str | None, int]], we
     monkeypatch.setattr(model, "recognize", recognize)
     monkeypatch.setattr(model, "version", lambda: "9.9")
     monkeypatch.setattr(model, "BASS_SUPPORT", 0.5)
+    monkeypatch.setattr(beats, "activation", librosa_activation)
 
 
-def test_the_model_engine_runs_on_the_dsp_grid(synth, chord_at, tmp_path, monkeypatch) -> None:
-    # The fake model hears other chords than the audio holds, so the chords come from it, the
-    # grid from the DSP and the bass from the head (which says what the register holds).
+def test_the_model_engine_snaps_to_the_beat_grid(synth, chord_at, tmp_path, monkeypatch) -> None:
+    # The fake model hears other chords than the audio holds, so the chords come from it, snapped
+    # to the beats of the activation (librosa's envelope here), and the bass from the head (which
+    # says what the register holds).
     heard = [("A:min", 4), ("D:min", 4), ("G:7", 4), ("C:maj", 4)]
     runner_up = LABELS.index("E:min")
 
@@ -671,6 +674,7 @@ def test_the_model_engine_runs_on_the_dsp_grid(synth, chord_at, tmp_path, monkey
 
     monkeypatch.setattr(model, "recognize", recognize)
     monkeypatch.setattr(model, "version", lambda: "9.9")
+    monkeypatch.setattr(beats, "activation", librosa_activation)
     progression = [("C:maj", 4, 40), ("F:maj", 4, 41), ("G:maj", 4, 43), ("C:maj", 4, 36)]
 
     result = analyze(_write(tmp_path, synth(progression)), engine="model")
@@ -688,7 +692,7 @@ def test_a_heard_7sus4_gets_its_numeral_and_inversion(
     synth, chord_at, tmp_path, monkeypatch
 ) -> None:
     # Whatever the DSP decides about calling a sus4(b7), the label reaches the timeline with its
-    # harmony and its inversion: the fake model hears it, the DSP grid and bass place it.
+    # harmony and its inversion: the fake model hears it, the beat grid and the bass place it.
     heard = [("D:maj", 4), ("A:sus4(b7)", 4), ("A:7", 4), ("D:maj", 4)]
 
     def recognize(y):
@@ -700,6 +704,7 @@ def test_a_heard_7sus4_gets_its_numeral_and_inversion(
 
     monkeypatch.setattr(model, "recognize", recognize)
     monkeypatch.setattr(model, "version", lambda: "9.9")
+    monkeypatch.setattr(beats, "activation", librosa_activation)
     progression = [("D:maj", 4, 38), ("D:maj", 4, 43), ("D:maj", 4, 45), ("D:maj", 4, 38)]
 
     result = analyze(_write(tmp_path, synth(progression)), engine="model")
@@ -767,14 +772,49 @@ def test_the_model_engine_writes_no_bass_when_the_head_hears_none(
     assert only["inversion"] is None
 
 
-def test_no_beats_fails_before_the_model_loads(tmp_path, monkeypatch) -> None:
-    def recognize(y):
-        pytest.fail("the model ran on audio without beats")
+def _no_model(y):
+    pytest.fail("the model ran on audio without beats")
 
-    monkeypatch.setattr(model, "recognize", recognize)
+
+def test_no_beats_fails_before_the_model_loads(tmp_path, monkeypatch) -> None:
+    # Silence's envelope is all zeros, so the tracker finds no beat.
+    monkeypatch.setattr(model, "recognize", _no_model)
+    monkeypatch.setattr(beats, "activation", librosa_activation)
 
     with pytest.raises(NoBeatsError):
         analyze(_write(tmp_path, np.zeros(4 * SR, dtype=np.float32)), engine="model")
+
+
+def test_no_beat_from_beat_this_fails_before_the_model_loads(synth, tmp_path, monkeypatch) -> None:
+    # The audio has beats, but Beat This!'s gate finds none.
+    def gate(y):
+        raise NoBeatsError("no beats detected")
+
+    monkeypatch.setattr(model, "recognize", _no_model)
+    monkeypatch.setattr(beats, "activation", gate)
+
+    with pytest.raises(NoBeatsError):
+        analyze(_write(tmp_path, synth([("C:maj", 8)])), engine="model")
+
+
+def test_the_model_engine_tracks_its_own_activation(synth, tmp_path, monkeypatch) -> None:
+    path = _write(tmp_path, synth([("C:maj", 16)]))
+    _stub_model(monkeypatch, "C:maj", [("C", 16)], 0.97)
+
+    def activation(y):
+        # Unit peaks every 0.6 s, 100 BPM, over audio struck every 0.5 s.
+        envelope = np.zeros(1 + len(y) // HOP)
+        envelope[np.round(np.arange(0, len(y) / SR, 0.6) * SR / HOP).astype(int)] = 1.0
+        return envelope
+
+    monkeypatch.setattr(beats, "activation", activation)
+
+    model_gaps = np.diff(analyze(path, engine="model")["beats"])
+    dsp_gaps = np.diff(analyze(path, engine="dsp")["beats"])
+
+    # The engines' grids differ by design: each follows its own envelope.
+    assert abs(np.median(model_gaps) - 0.6) <= 0.03, np.median(model_gaps)
+    assert abs(np.median(dsp_gaps) - 0.5) <= 0.025, np.median(dsp_gaps)
 
 
 def test_a_mix_like_clip_keeps_its_chords(mix, chord_at, tmp_path) -> None:

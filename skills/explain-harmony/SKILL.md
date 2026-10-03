@@ -30,6 +30,7 @@ The analyzer writes `<audio stem>.chords.json` next to the audio (or to `-o`) an
 
 - **`error: <audio>: no beats detected`** (exit 1): the file is silent or shorter than one beat. Say so and stop.
 - **`error: <audio>: Error opening … Format not recognised`** (exit 1): the decoder reads wav, flac, ogg and mp3, but not m4a or aac. Suggest converting locally, e.g. `ffmpeg -i song.m4a song.wav`, which keeps the audio on the machine.
+- **`error: cannot fetch the Beat This! weights …`** (exit 1): the model engine downloads its beat tracker's weights (81 MB) on its first run and found no network. Show the message, which names the fix (`chordotomy fetch-weights` once online, or `--engine dsp`), and stop.
 - **Exit 2:** a usage error, such as a missing file or a bad `--key`. Show its message.
 
 ## Step 2: Read the JSON

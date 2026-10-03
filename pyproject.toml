@@ -1,6 +1,6 @@
 [project]
 name = "chordotomy"
-version = "0.1.1"
+version = "0.2.0"
 description = "Dissect a song's harmony: beat-aligned chords, Roman numerals, and the moves worth noticing."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -56,7 +56,12 @@ model = [
   # The engine uses chord_recognition.MODEL_NAMES, ChordNet, NetworkInterface and
   # XHMMDecoder directly, so the pin is one minor version.
   "lv-chordia>=1.1,<1.2",
-  "torch>=2.2",
+  # The engine imports beat_this.model.beat_tracker.BeatThis and
+  # beat_this.utils.replace_state_dict_key, and reduces beat_this.model.postprocessor's peak
+  # criterion to its gate, so the pin is one minor version.
+  "beat-this>=1.1,<1.2",
+  # 2.4 is the floor of rotary-embedding-torch 0.9.1, which beat-this needs.
+  "torch>=2.4",
   # pydub (imported by lv_chordia.mir) needs audioop, removed in Python 3.13.
   "audioop-lts; python_version >= '3.13'",
 ]

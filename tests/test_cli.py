@@ -4,13 +4,14 @@ import json
 import os
 import subprocess
 import sys
-import types
 
 import numpy as np
 import pytest
 import soundfile
+from conftest import librosa_activation
 from typer.testing import CliRunner
 
+import chordotomy.beats
 import chordotomy.model
 import chordotomy.timeline
 from chordotomy import __version__
@@ -325,6 +326,23 @@ def test_the_default_is_the_model_when_it_is_installed(clip, tmp_path, monkeypat
     assert "engine: lv-chordia 9.9.9" in result.stderr
 
 
+@pytest.mark.parametrize("cached", [False, True])
+def test_the_model_engine_says_when_it_downloads_the_beat_weights(
+    clip, tmp_path, monkeypatch, cached
+) -> None:
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
+    monkeypatch.setattr(chordotomy.beats, "verified", lambda: cached)
+    monkeypatch.setattr(chordotomy.timeline, "analyze", lambda path, key=None, engine=None: {})
+    args = ["analyze", str(clip), "-o", str(tmp_path / "out.json"), "--engine", "model"]
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0
+    assert ("fetch-weights" in result.stderr) is not cached
+    assert (str(chordotomy.beats.checkpoint_path()) in result.stderr) is not cached
+
+
 def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) -> None:
     out = tmp_path / "out.json"
 
@@ -334,6 +352,7 @@ def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) 
     monkeypatch.setattr(chordotomy.model, "available", lambda: True)
     monkeypatch.setattr(chordotomy.model, "version", lambda: "9.9.9")
     monkeypatch.setattr(chordotomy.model, "recognize", broken)
+    monkeypatch.setattr(chordotomy.beats, "activation", librosa_activation)
 
     result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "model"])
 
@@ -344,12 +363,21 @@ def test_a_broken_model_is_an_error_not_a_fallback(clip, tmp_path, monkeypatch) 
 
 
 def test_the_dsp_engine_touches_no_torch(clip, tmp_path, monkeypatch) -> None:
-    class Fake(types.ModuleType):
-        def __getattr__(self, name):
-            raise AssertionError(f"{self.__name__}.{name} used by the DSP")
+    # Block the imports instead of faking the modules: libraries legitimately probe sys.modules
+    # (scipy.stats touches torch.Tensor if torch is there), so a stand-in fails for the wrong
+    # reason depending on what an earlier test already imported. Absent from sys.modules plus a
+    # finder that raises means any real import by the DSP path fails the test.
+    blocked = ("torch", "lv_chordia", "beat_this", "torchaudio")
 
-    for name in ("torch", "lv_chordia"):
-        monkeypatch.setitem(sys.modules, name, Fake(name))
+    class Blocker:
+        def find_spec(self, name, path=None, target=None):
+            if name.split(".")[0] in blocked:
+                raise ImportError(f"{name} imported by the DSP engine")
+
+    for name in list(sys.modules):
+        if name.split(".")[0] in blocked:
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, "meta_path", [Blocker(), *sys.meta_path])
     out = tmp_path / "out.json"
 
     result = CliRunner().invoke(app, ["analyze", str(clip), "-o", str(out), "--engine", "dsp"])
@@ -359,15 +387,15 @@ def test_the_dsp_engine_touches_no_torch(clip, tmp_path, monkeypatch) -> None:
 
 
 def test_importing_the_cli_touches_no_librosa() -> None:
-    # A fresh interpreter with stand-ins for librosa, torch and lv_chordia whose every attribute
-    # raises, so none of them (nor numba) is really loaded, and an eager note_to_midi or
-    # cq_to_chroma, or any torch use, at import would fail.
+    # A fresh interpreter with stand-ins for librosa, torch, lv_chordia, beat_this and torchaudio
+    # whose every attribute raises, so none of them (nor numba) is really loaded, and an eager
+    # note_to_midi or cq_to_chroma, or any torch use, at import would fail.
     code = (
         "import sys, types\n"
         "class Fake(types.ModuleType):\n"
         "    def __getattr__(self, name):\n"
         "        raise AssertionError(f'{self.__name__}.{name} used at import')\n"
-        "for name in ('librosa', 'torch', 'lv_chordia'):\n"
+        "for name in ('librosa', 'torch', 'lv_chordia', 'beat_this', 'torchaudio'):\n"
         "    sys.modules[name] = Fake(name)\n"
         "import chordotomy.cli\n"
     )
@@ -396,4 +424,39 @@ def test_a_missing_package_version_is_an_error_not_a_traceback(
     assert result.exit_code == 1
     assert "error:" in result.stderr
     assert "uv sync --extra model" in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_fetch_weights_without_the_extra_is_a_usage_error() -> None:
+    result = CliRunner().invoke(app, ["fetch-weights"])
+
+    assert result.exit_code == 2
+    # Rich wraps the message inside a bordered error box.
+    assert "uv sync --extra model" in " ".join(result.output.replace("│", " ").split())
+
+
+def test_fetch_weights_prints_the_path(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "beat_this-final0.ckpt"
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.beats, "verified", lambda: False)
+    monkeypatch.setattr(chordotomy.beats, "fetch", lambda: path)
+
+    result = CliRunner().invoke(app, ["fetch-weights"])
+
+    assert result.exit_code == 0
+    assert str(path) in result.stdout
+
+
+def test_fetch_weights_failure_is_an_error_not_a_traceback(monkeypatch) -> None:
+    def offline():
+        raise chordotomy.model.EngineError("cannot fetch the weights; pass --engine dsp")
+
+    monkeypatch.setattr(chordotomy.model, "available", lambda: True)
+    monkeypatch.setattr(chordotomy.beats, "verified", lambda: False)
+    monkeypatch.setattr(chordotomy.beats, "fetch", offline)
+
+    result = CliRunner().invoke(app, ["fetch-weights"])
+
+    assert result.exit_code == 1
+    assert result.stderr.count("error:") == 1
     assert "Traceback" not in result.output

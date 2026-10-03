@@ -9,12 +9,18 @@ tones, a `bpm` and an envelope `decay`; `chord_at` assumes the default tempo. Ke
 
 from collections.abc import Callable
 
+import librosa
 import numpy as np
 import pytest
 from scipy.signal import fftconvolve
 
+import chordotomy.beats
 import chordotomy.model
-from chordotomy.features import SR
+from chordotomy.features import HOP, SR
+
+
+def _no_beat_this(y: np.ndarray) -> np.ndarray:
+    pytest.fail("the model beat tracker ran in the default suite")
 
 
 @pytest.fixture(autouse=True)
@@ -22,9 +28,18 @@ def dsp_engine(monkeypatch):
     """The default suite runs the DSP whether or not the model extra is installed.
 
     `--engine auto` then resolves to the DSP and `--engine model` is unavailable;
-    test_model_engine.py opts back in.
+    test_model_engine.py opts back in. Beat This! never runs: a test that runs the model engine
+    stubs its activation, test_beats_engine.py and the tests of test_model_engine.py that take
+    `beat_this_weights` restore the real one, and test_beats.py calls it directly.
     """
     monkeypatch.setattr(chordotomy.model, "available", lambda: False)
+    monkeypatch.setattr(chordotomy.beats, "activation", _no_beat_this)
+
+
+def librosa_activation(y: np.ndarray) -> np.ndarray:
+    """librosa's own onset envelope, the one beat_track(y=y) tracks: a stubbed model engine given
+    it as Beat This!'s activation keeps the DSP's grid."""
+    return librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP, aggregate=np.median)
 
 
 BPM = 120
