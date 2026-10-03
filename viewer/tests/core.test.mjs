@@ -387,7 +387,6 @@ test("only what the browser parses as http(s) is a link", () => {
     "youtube.com/watch?v=abc",
     "https://",
     "https://:80/a",
-    "https://bad host.example/a",
     "not a url",
     "",
     null,

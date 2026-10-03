@@ -292,6 +292,8 @@ Saving downloads the timeline as `<stem>.edited.chords.json`, where `<stem>` is 
 
 A batch of dropped or picked files opens whole or not at all, so the recording and the timeline shown are always a pair the user chose together. The timeline is read and validated before anything changes, every field of every segment included, so whatever opens can be drawn and edited. With unsaved edits the viewer asks once before it replaces them, and the browser asks before the page closes. A batch with only a recording replaces the recording and keeps the edits.
 
+A timeline opened without its recording shows a link to `source.url` in place of the hint to open one. It is a plain `<a>`, set only when the browser's own URL parser reads the string as `http` or `https` (`Core.isHttpUrl`); anything else leaves the plain hint and no link, and `Edit.upgrade` nulls the field below schema 9. The link opens in a new tab with `rel="noopener noreferrer"`. It is not an embed, so the CSP stays as it is and the page still makes no request of its own; a click is the user's own navigation. Once a recording is open, the player takes the link's place.
+
 ## Evaluation
 
 `chordotomy evaluate {tiny-aam,guitarset} [--limit N] [--engine auto|model|dsp]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.

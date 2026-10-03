@@ -179,6 +179,7 @@
     audio.src = audioUrl;
     audio.hidden = false;
     $("no-audio").hidden = true;
+    $("source").hidden = true;
     $("listen").hidden = false;
     for (const hint of document.querySelectorAll(".needs-recording")) hint.hidden = false;
     showName("audio-name", file.name);
@@ -196,6 +197,7 @@
     $("viewer").hidden = false;
     strip.scrollLeft = 0;
     refreshView();
+    renderSource();
     checkDurations();
   }
 
@@ -345,6 +347,24 @@
     const root = $("edit-root").value;
     const chord = quality.value === "N" ? "N" : `${root}:${quality.value}`;
     setChord(pinned ?? current, chord, pickedBass(root));
+  }
+
+  // Without the recording, a timeline made with --source-url points to where it came from. The
+  // link is set only from a string Core.isHttpUrl accepts, so a hand-edited file can't make it a
+  // javascript: link; anything else leaves the plain hint. A recording that is open needs neither.
+  function renderSource() {
+    const url = timeline.source && timeline.source.url;
+    const link = $("source-link");
+    const shown = Core.isHttpUrl(url) && !audioUrl;
+    if (shown) {
+      link.href = url;
+      link.textContent = url;
+    } else {
+      link.removeAttribute("href");
+      link.textContent = "";
+    }
+    $("source").hidden = !shown;
+    $("no-audio").hidden = shown || audioUrl !== null;
   }
 
   // Files are paired by the user, so a length mismatch is the one hint that they don't belong

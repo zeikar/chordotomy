@@ -205,7 +205,8 @@ kbd {
   text-underline-offset: 2px;
 }
 
-.empty a {
+.empty a,
+.no-audio a {
   color: inherit;
   text-underline-offset: 2px;
 }
@@ -828,6 +829,10 @@ body:has(#empty:not([hidden])) .status {
 
 .no-audio {
   flex: 1 1 28rem;
+}
+
+.no-audio a {
+  overflow-wrap: anywhere;
 }
 
 /* Mute recording sits by the player it acts on; the chord controls form a group of their own. */
