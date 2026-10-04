@@ -13,12 +13,13 @@ import json
 from pathlib import Path
 
 from chordotomy import chords, harmony, timeline
-from chordotomy.chords import LABELS, QUALITIES, ROOTS
+from chordotomy.chords import QUALITIES, ROOTS
 from chordotomy.harmony import KEYS
 
 PATH = Path(__file__).with_name("harmony_vectors.json")
 
-CHORDS = [label for label in LABELS if label != "N"]
+# Every label of the vocabulary, the added ninths too, which the DSP does not decode.
+CHORDS = [f"{root}:{quality}" for quality in QUALITIES for root in ROOTS]
 # Per mode, a template as (semitones above the tonic, quality, beats), transposed to every key of
 # that mode. An offset of None is an N.
 KEY_TEMPLATES = {
@@ -60,6 +61,7 @@ TIES = [
     ("Am F C G", None, [("A:min", 1), ("F:maj", 1), ("C:maj", 1), ("G:maj", 1)]),
     ("Am twice as long", None, [("A:min", 2), ("F:maj", 1), ("C:maj", 1), ("G:maj", 1)]),
     ("tonic sevenths", None, [("A:min7", 2), ("C:maj7", 2)]),
+    ("tonic added ninths", None, [("A:min(9)", 2), ("C:maj(9)", 2)]),
     ("C G C G", None, [("C:maj", 1), ("G:maj", 1)] * 2),
     ("G C G C", None, [("G:maj", 1), ("C:maj", 1)] * 2),
     ("N ignored", None, [("N", 4), ("C:maj", 2), ("N", 1), ("G:7", 2)]),
@@ -170,7 +172,7 @@ def _progressions() -> list[dict]:
                 for following in [*followings, f"{_up(root, 2)}:maj", "N", None]:
                     cases.append(_two_chords(f"{root}:{quality}", following, key))
     # Minor's overlap of secondary dominants and borrowed chords, before chords a fifth down.
-    for label in ("A:maj", "D:maj", "A:7", "D:7"):
+    for label in ("A:maj", "D:maj", "A:7", "D:7", "A:maj(9)", "D:maj(9)"):
         below = _up(label.split(":")[0], -7)
         followings = [f"{below}:{q}" for q in ("maj", "min", "7", "min7")]
         for following in [*followings, "N", None]:

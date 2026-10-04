@@ -16,8 +16,10 @@ ROOTS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 # The quality strings are Harte's, because evaluate hands labels to mir_eval: it parses A:sus4(b7)
 # and its slash forms, and would reject an ad-hoc 7sus4.
 # Left out, for the reasons in docs/decisions.md: maj6 (min7's pitch set, I6 reads as a
-# first-inversion figure, and the model never emits it); add9 and 9/11/13 (beyond a beat-median
-# chroma, where the fifth's twelfth lands on the ninth; the model maps them to sevenths).
+# first-inversion figure, and the model never emits it); 9/11/13 (beyond a beat-median chroma,
+# where the fifth's twelfth lands on the ninth; the model maps them to sevenths). The added ninths,
+# maj(9) and min(9), are in the vocabulary for corrections only (see DECODED); their ninth is
+# listed last, so inversion counts it as the added tone, as min6's sixth.
 QUALITIES = {
     "maj": (0, 4, 7),
     "min": (0, 3, 7),
@@ -32,7 +34,14 @@ QUALITIES = {
     "dim": (0, 3, 6),
     "sus2": (0, 2, 7),
     "sus4(b7)": (0, 5, 7, 10),
+    "maj(9)": (0, 4, 7, 2),
+    "min(9)": (0, 3, 7, 2),
 }
+# The qualities the DSP decodes, LABELS's. The added ninths are left out: no recognizer writes
+# them (the DSP's chroma can't tell an added ninth from the fifth's twelfth, and lv-chordia's
+# dictionary has none), only a correction does. A label that is never chosen still counts in the
+# decoder's switch probability, so leaving them out keeps every decode as it was.
+DECODED = [quality for quality in QUALITIES if quality not in ("maj(9)", "min(9)")]
 # Quality-major, and the order is the tie-break: smooth takes the first argmax.
 # Pitch-set twins score exactly alike without bass evidence (G:min6 and E:hdim7; the four dim7
 # labels on one set; C:aug, E:aug and G#:aug), and then the earlier label wins: min6 over hdim7,
@@ -40,7 +49,7 @@ QUALITIES = {
 # by where it leads. C:sus2 and G:sus4 are twins in the vocabulary only: the DSP never calls
 # sus2 (QUALITY_OFFSET), so it decodes sus4 alone. A sus4(b7) has no twin: A-D-E-G is no other
 # label's pitch set.
-LABELS = [f"{root}:{quality}" for quality in QUALITIES for root in ROOTS] + ["N"]
+LABELS = [f"{root}:{quality}" for quality in DECODED for root in ROOTS] + ["N"]
 # A tone's first four partials in semitones above it: the fundamental, the octave, the twelfth
 # and the double octave. Partial k weighs PARTIAL_DECAY ** (k - 1) in a template.
 PARTIALS = (0, 12, 19, 24)
@@ -442,9 +451,9 @@ BASS_BINS = 36
 # needs to be both a local maximum and at least this fraction of the register's strongest.
 BASS_SALIENCE = 0.5
 # Position names index a quality's QUALITIES intervals in order: third is the seventh of a 7, maj7,
-# min7, hdim7 or dim7, the added sixth of a min6 and the seventh of a sus4(b7); sus4 and sus2 have
-# no third, and their first is the fourth or the second, their second the fifth (a sus4(b7)'s first
-# is the fourth too).
+# min7, hdim7 or dim7, the added sixth of a min6, the added ninth of a maj(9) or min(9) and the
+# seventh of a sus4(b7); sus4 and sus2 have no third, and their first is the fourth or the second,
+# their second the fifth (a sus4(b7)'s first is the fourth too).
 INVERSIONS = ("root", "first", "second", "third")
 
 

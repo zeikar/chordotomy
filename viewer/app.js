@@ -33,6 +33,7 @@
     "°": "diminished",
     "+": "augmented",
     add6: "add 6",
+    add9: "add 9",
     sus4: "sus 4",
     sus2: "sus 2",
     "7sus4": "seven sus 4",

@@ -43,6 +43,8 @@ const Core = ((Harmony) => {
     dim: "dim",
     sus2: "sus2",
     "sus4(b7)": "7sus4",
+    "maj(9)": "add9",
+    "min(9)": "madd9",
   };
   // Each quality's chord tones in semitones above the root, in the order `inversion` counts them.
   const INTERVALS = Harmony.QUALITIES;
@@ -62,6 +64,9 @@ const Core = ((Harmony) => {
     sus2: [0, 1, 4],
     // Root, fourth, fifth, seventh.
     "sus4(b7)": [0, 3, 4, 6],
+    // Root, third, fifth, and the added ninth one letter up.
+    "maj(9)": [0, 2, 4, 1],
+    "min(9)": [0, 2, 4, 1],
   };
   // Seconds into a chord after which ← goes back to its start rather than to the chord before.
   const RESTART = 1;
@@ -88,8 +93,8 @@ const Core = ((Harmony) => {
     seventh: { first: ["6", "5"], second: ["4", "3"], third: ["4", "2"] },
   };
   // A numeral's suffix: the quality marker that stays beside the figures, and which figures it
-  // takes. add6, sus4, sus2 and 7sus4 take none: their inversions are not stacks of thirds, so no
-  // figure names them, and the chord name already shows the bass.
+  // takes. add6, add9, sus4, sus2 and 7sus4 take none: their inversions are not stacks of thirds,
+  // so no figure names them, and the chord name already shows the bass.
   const NUMERAL_SUFFIX = {
     "": { quality: "", figures: "triad" },
     7: { quality: "", figures: "seventh" },
@@ -99,6 +104,7 @@ const Core = ((Harmony) => {
     "°": { quality: "°", figures: "triad" },
     "+": { quality: "+", figures: "triad" },
     add6: { quality: "add6", figures: null },
+    add9: { quality: "add9", figures: null },
     sus4: { quality: "sus4", figures: null },
     sus2: { quality: "sus2", figures: null },
     "7sus4": { quality: "7sus4", figures: null },
@@ -219,7 +225,7 @@ const Core = ((Harmony) => {
   function numeralParts(numeral, inversion) {
     const [head, target = null] = numeral.split("/");
     // A longer suffix stands before the one it starts with (°7 before °, 7sus4 before 7).
-    const match = /^([b#]?)([IViv]+)(maj7|7sus4|7|ø7|°7|°|\+|add6|sus4|sus2)?$/.exec(head);
+    const match = /^([b#]?)([IViv]+)(maj7|7sus4|7|ø7|°7|°|\+|add6|add9|sus4|sus2)?$/.exec(head);
     if (!match) {
       return { accidental: "", roman: numeral, quality: "", suffix: "", figures: [], target: null };
     }

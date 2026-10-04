@@ -240,6 +240,29 @@ test("a 7sus4 is taken and analyzed", () => {
   ]);
 });
 
+test("an added ninth is taken and analyzed as its triad", () => {
+  const fields = (s) => [s.chord, s.bass, s.inversion, s.numeral, s.role, s.function, s.edited];
+  const next = setChord(setChord(base, 2, "D:maj(9)", "F#"), 3, "A:min(9)", "B");
+  assert.deepEqual(fields(next.segments[2]), [
+    "D:maj(9)",
+    "F#",
+    "first",
+    "Vadd9/V",
+    "secondary_dominant",
+    null,
+    true,
+  ]);
+  assert.deepEqual(fields(next.segments[3]), [
+    "A:min(9)",
+    "B",
+    "third",
+    "viadd9",
+    "diatonic",
+    "tonic",
+    true,
+  ]);
+});
+
 test("a diminished or sus2 triad is taken and analyzed", () => {
   const fields = (s) => [s.chord, s.bass, s.inversion, s.numeral, s.role, s.function, s.edited];
   const dim = setChord(base, 2, "B:dim", "D");

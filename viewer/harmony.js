@@ -33,6 +33,8 @@ const Harmony = (() => {
     ["dim", [0, 3, 6]],
     ["sus2", [0, 2, 7]],
     ["sus4(b7)", [0, 5, 7, 10]],
+    ["maj(9)", [0, 4, 7, 2]],
+    ["min(9)", [0, 3, 7, 2]],
   ];
   // Wherever order matters, read QUALITY_NAMES: Object.keys(QUALITIES) lists "7" first, as JS
   // enumerates integer-like keys before the others.
@@ -72,8 +74,9 @@ const Harmony = (() => {
   };
   // Case shows the third: lowercase for a minor or diminished one; sus4, sus2 and sus4(b7) have
   // none and stay upper.
-  const LOWERCASE = new Set(["min", "min7", "min6", "hdim7", "dim7", "dim"]);
-  // min6 is `add6` because `iv6` is the first-inversion figure. ø and ° are the characters
+  const LOWERCASE = new Set(["min", "min7", "min6", "hdim7", "dim7", "dim", "min(9)"]);
+  // min6 is `add6` because `iv6` is the first-inversion figure; the added ninths are `add9` for
+  // the same reason, as `I9` would read as a ninth chord. ø and ° are the characters
   // themselves: core.js turns only the b and # accidentals into glyphs, so an ASCII stand-in
   // would reach the reader as a letter.
   const NUMERAL_SUFFIX = {
@@ -90,6 +93,8 @@ const Harmony = (() => {
     dim: "°",
     sus2: "sus2",
     "sus4(b7)": "7sus4",
+    "maj(9)": "add9",
+    "min(9)": "add9",
   };
   // Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
   const FUNCTIONS = {
@@ -109,8 +114,8 @@ const Harmony = (() => {
     min: { 3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII" },
   };
   const PARALLEL = { maj: "min", min: "maj" };
-  // Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule. The
-  // sus4(b7) entry keeps the table complete for every tetrad; for this quality the parallel-mode
+  // Each tetrad's triad, below its seventh (or min6's sixth, or an added ninth), for the
+  // borrowed-seventh rule. The sus4(b7) entry keeps the table complete for every tetrad; for this quality the parallel-mode
   // test already covers every borrowed case, so it changes no classification.
   const TRIAD = {
     7: "maj",
@@ -120,7 +125,12 @@ const Harmony = (() => {
     hdim7: "dim",
     dim7: "dim",
     "sus4(b7)": "sus4",
+    "maj(9)": "maj",
+    "min(9)": "min",
   };
+  // The chords a secondary dominant can be: a major triad, alone or with a seventh or an added
+  // ninth.
+  const DOMINANTS = new Set(["maj", "7", "maj(9)"]);
   const CANDIDATES = 3;
 
   const mod = (n, m) => ((n % m) + m) % m;
@@ -165,11 +175,12 @@ const Harmony = (() => {
     return followingRoot === root && isDiatonic(offset, quality, mode);
   }
 
-  // A tonic seventh chord (Cmaj7, Am7) settles a key as its triad does, so the tie-breaks compare
-  // it to the key label as that triad.
+  // A tonic seventh chord (Cmaj7, Am7) or added ninth (Cadd9) settles a key as its triad does, so
+  // the tie-breaks compare it to the key label as that triad.
   function tonicTriad(label) {
     const [root, quality] = label.split(":");
-    const triad = { maj7: "maj", min7: "min" }[quality] || quality;
+    const triad =
+      { maj7: "maj", min7: "min", "maj(9)": "maj", "min(9)": "min" }[quality] || quality;
     return `${root}:${triad}`;
   }
 
@@ -301,14 +312,16 @@ const Harmony = (() => {
     let targetOffset = mod(offset - 7, 12);
     // An augmented triad never counts: it is symmetric, so its root is the bass's or
     // resolve_twins's spelling, not a fifth relation that identifies it. sus2 never counts either,
-    // as sus4 does not, nor does a sus4(b7): no third, so no leading tone.
-    const secondary = (quality === "maj" || quality === "7") && targetOffset in TARGETS[mode];
+    // as sus4 does not, nor does a sus4(b7): no third, so no leading tone. An added ninth keeps the
+    // triad's leading tone, so a maj(9) counts as its triad does; a maj7 does not, its major
+    // seventh no dominant's.
+    const secondary = DOMINANTS.has(quality) && targetOffset in TARGETS[mode];
     const borrowed = isBorrowed(offset, quality, mode);
     if (secondary) {
       const target = TARGETS[mode][targetOffset];
       const resolution = ROOTS[(ROOTS.indexOf(tonic) + targetOffset) % 12];
-      // Only the major triads on the tonic and subdominant of a minor key are also chords of the
-      // parallel mode, and for those the very next chord being diatonic on the target's root is
+      // Only the major triads on the tonic and subdominant of a minor key, alone or with an added
+      // ninth, are also chords of the parallel mode, and for those the very next chord being diatonic on the target's root is
       // the one thing that tells V/VII from a borrowed IV. The borrowed-seventh rule does not
       // widen this overlap, so I7 and IV7 in minor stay V7/iv and V7/VII wherever they go.
       // Outside this overlap and the leading-tone chords below, `following` is ignored, so a
@@ -316,7 +329,7 @@ const Harmony = (() => {
       const parallel = isDiatonic(offset, quality, PARALLEL[mode]);
       if (!parallel || resolves(following, resolution, tonic, mode)) {
         return {
-          numeral: (quality === "7" ? "V7" : "V") + "/" + target,
+          numeral: "V" + NUMERAL_SUFFIX[quality] + "/" + target,
           role: "secondary_dominant",
           function: null,
           target,

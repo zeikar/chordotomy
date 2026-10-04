@@ -40,8 +40,9 @@ NUMERALS = {
 }
 # Case shows the third: lowercase for a minor or diminished one; sus4, sus2 and sus4(b7) have none
 # and stay upper.
-LOWERCASE = {"min", "min7", "min6", "hdim7", "dim7", "dim"}
-# min6 is `add6` because `iv6` is the first-inversion figure, and `add6` cannot be read as one.
+LOWERCASE = {"min", "min7", "min6", "hdim7", "dim7", "dim", "min(9)"}
+# min6 is `add6` because `iv6` is the first-inversion figure, and `add6` cannot be read as one; the
+# added ninths are `add9` for the same reason, as `I9` would read as a ninth chord.
 # ø and ° are the characters themselves, not ASCII stand-ins: the viewer turns only the b and #
 # accidentals into glyphs, so a stand-in would reach the reader as a letter.
 NUMERAL_SUFFIX = {
@@ -58,6 +59,8 @@ NUMERAL_SUFFIX = {
     "dim": "°",
     "sus2": "sus2",
     "sus4(b7)": "7sus4",
+    "maj(9)": "add9",
+    "min(9)": "add9",
 }
 # Tonic substitutes on III / VI; VII is the subtonic dominant in minor.
 FUNCTIONS = {
@@ -77,7 +80,8 @@ TARGETS = {
     "min": {3: "III", 5: "iv", 7: "V", 8: "VI", 10: "VII"},
 }
 PARALLEL = {"maj": "min", "min": "maj"}
-# Each tetrad's triad, below its seventh (or min6's sixth), for the borrowed-seventh rule. The
+# Each tetrad's triad, below its seventh (or min6's sixth, or an added ninth), for the
+# borrowed-seventh rule. The
 # sus4(b7) entry keeps the table complete for every tetrad; for this quality the parallel-mode test
 # already covers every borrowed case, so it changes no classification.
 TRIAD = {
@@ -88,7 +92,11 @@ TRIAD = {
     "hdim7": "dim",
     "dim7": "dim",
     "sus4(b7)": "sus4",
+    "maj(9)": "maj",
+    "min(9)": "min",
 }
+# The chords a secondary dominant can be: a major triad, alone or with a seventh or an added ninth.
+DOMINANTS = ("maj", "7", "maj(9)")
 CANDIDATES = 3
 
 
@@ -145,10 +153,10 @@ def _resolves(following: str | None, root: str, tonic: str, mode: str) -> bool:
 
 
 def _tonic_triad(label: str) -> str:
-    # A tonic seventh chord (Cmaj7, Am7) settles a key as its triad does, so the tie-breaks
-    # compare it to the key label as that triad.
+    # A tonic seventh chord (Cmaj7, Am7) or added ninth (Cadd9) settles a key as its triad does,
+    # so the tie-breaks compare it to the key label as that triad.
     root, quality = label.split(":")
-    triad = {"maj7": "maj", "min7": "min"}.get(quality, quality)
+    triad = {"maj7": "maj", "min7": "min", "maj(9)": "maj", "min(9)": "min"}.get(quality, quality)
     return f"{root}:{triad}"
 
 
@@ -283,16 +291,18 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
     # An augmented triad never counts: it is symmetric, so its root is the bass's or
     # resolve_twins's spelling, not a fifth relation that identifies it, and C+ = E+ = G#+ would be
     # V+/IV, V+/vi or bVI+ by tie-break alone. sus2 never counts either, as sus4 does not, nor does
-    # a sus4(b7): no third, so no leading tone.
-    secondary = quality in ("maj", "7") and target_offset in TARGETS[mode]
+    # a sus4(b7): no third, so no leading tone. An added ninth keeps the triad's leading tone, so a
+    # maj(9) counts as its triad does; a maj7 does not, its major seventh no dominant's.
+    secondary = quality in DOMINANTS and target_offset in TARGETS[mode]
     borrowed = _is_borrowed(offset, quality, mode)
     if secondary:
         target = TARGETS[mode][target_offset]
         resolution = ROOTS[(ROOTS.index(tonic) + target_offset) % 12]
-        # Only the major triads on the tonic and subdominant of a minor key are also chords of the
-        # parallel mode, and for those the very next chord being diatonic on the target's root is
-        # the one thing that tells V/VII from a borrowed IV (G:maj and G:7 both resolve it; D:7
-        # does not resolve A:maj, as it is not diatonic); another chord or an N is no resolution.
+        # Only the major triads on the tonic and subdominant of a minor key, alone or with an added
+        # ninth, are also chords of the parallel mode, and for those the very next chord being
+        # diatonic on the target's root is the one thing that tells V/VII from a borrowed IV (G:maj
+        # and G:7 both resolve it; D:7 does not resolve A:maj, as it is not diatonic); another
+        # chord or an N is no resolution.
         # The borrowed-seventh rule does not widen this overlap, so I7 and IV7 in minor stay V7/iv
         # and V7/VII wherever they go.
         # Outside this overlap and the leading-tone chords below, `following` is ignored, so a
@@ -300,7 +310,7 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
         if not _is_diatonic(offset, quality, PARALLEL[mode]) or _resolves(
             following, resolution, tonic, mode
         ):
-            text = ("V7" if quality == "7" else "V") + "/" + target
+            text = "V" + NUMERAL_SUFFIX[quality] + "/" + target
             return {
                 "numeral": text,
                 "role": "secondary_dominant",

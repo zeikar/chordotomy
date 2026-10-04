@@ -47,9 +47,9 @@ _REINSTALL = (
     "reinstall lv-chordia with `uv sync --extra model --reinstall-package lv-chordia`, "
     "or pass --engine dsp"
 )
-# The dictionary's qualities, the slash dropped, to v6's; nothing maps to min6. Every triad, sus,
-# seventh and the 7sus4 map exactly; only 9, 11, 13, maj9 and min9 lose tones. 11 stays 7 because
-# Harte's 11 includes the third.
+# The dictionary's qualities, the slash dropped, to v6's; nothing maps to min6, nor to the added
+# ninths, which the dictionary does not have. Every triad, sus, seventh and the 7sus4 map exactly;
+# only 9, 11, 13, maj9 and min9 lose tones. 11 stays 7 because Harte's 11 includes the third.
 QUALITY = {
     "maj": "maj",
     "min": "min",

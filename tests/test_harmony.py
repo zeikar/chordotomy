@@ -49,6 +49,11 @@ def test_tonic_sevenths_break_ties_like_triads() -> None:
     assert triads[0] == sevenths[0] == "A:min"
 
 
+def test_tonic_added_ninths_break_ties_like_triads() -> None:
+    added = estimate_key([("A:min(9)", 2), ("C:maj(9)", 2)])
+    assert added[0] == "A:min"
+
+
 def test_tonic_seventh_counts_toward_duration_tie_break() -> None:
     loop = [("A:min7", 2), ("F:maj", 1), ("C:maj", 1), ("G:maj", 1)]
     assert estimate_key(loop)[0] == "A:min"
@@ -138,6 +143,16 @@ def test_estimate_key_takes_every_quality() -> None:
         ("A:sus4(b7)", "A:min", "I7sus4", "tonic"),
         ("D:sus4(b7)", "A:min", "IV7sus4", "predominant"),
         ("G:sus4(b7)", "A:min", "VII7sus4", "dominant"),
+        ("C:maj(9)", "C:maj", "Iadd9", "tonic"),
+        ("F:maj(9)", "C:maj", "IVadd9", "predominant"),
+        ("G:maj(9)", "C:maj", "Vadd9", "dominant"),
+        ("D:min(9)", "C:maj", "iiadd9", "predominant"),
+        ("A:min(9)", "C:maj", "viadd9", "tonic"),
+        ("A:min(9)", "A:min", "iadd9", "tonic"),
+        ("D:min(9)", "A:min", "ivadd9", "predominant"),
+        ("C:maj(9)", "A:min", "IIIadd9", "tonic"),
+        ("F:maj(9)", "A:min", "VIadd9", "tonic"),
+        ("G:maj(9)", "A:min", "VIIadd9", "dominant"),
     ],
 )
 def test_analyze_chord_diatonic(label: str, key: str, numeral: str, function: str) -> None:
@@ -169,6 +184,11 @@ def test_analyze_chord_n() -> None:
         ("C:7", "C:maj", "V7/IV", "IV"),
         ("C:7", "A:min", "V7/VI", "VI"),
         ("B:7", "A:min", "V7/V", "V"),
+        # An added ninth keeps the triad's leading tone, whether the ninth is the key's (B over A)
+        # or not (F# over E).
+        ("D:maj(9)", "C:maj", "Vadd9/V", "V"),
+        ("A:maj(9)", "C:maj", "Vadd9/ii", "ii"),
+        ("E:maj(9)", "C:maj", "Vadd9/vi", "vi"),
     ],
 )
 def test_analyze_chord_secondary_dominant(label: str, key: str, numeral: str, target: str) -> None:
@@ -190,6 +210,11 @@ def test_analyze_chord_secondary_dominant(label: str, key: str, numeral: str, ta
         # Their dominant sevenths are no part of the overlap: rule 2 claims them wherever they go.
         *[("A:7", f, "V7/iv", "secondary_dominant", "iv") for f in ("D:min", "D:7", "N", None)],
         *[("D:7", f, "V7/VII", "secondary_dominant", "VII") for f in ("G:maj", "G:min", "N", None)],
+        # With an added ninth they are still chords of A major, so the overlap holds.
+        ("A:maj(9)", "D:min", "Vadd9/iv", "secondary_dominant", "iv"),
+        *[("A:maj(9)", f, "Iadd9", "borrowed", None) for f in ("D:maj", "N", None)],
+        ("D:maj(9)", "G:maj", "Vadd9/VII", "secondary_dominant", "VII"),
+        ("D:maj(9)", None, "IVadd9", "borrowed", None),
     ],
 )
 def test_overlap_resolves_only_on_a_diatonic_chord_on_the_target_root(
@@ -307,6 +332,11 @@ def test_leading_tone_chord_resolves_only_on_a_diatonic_chord_on_the_target_root
         ("D:dim7", "C:maj", "ii°7"),
         ("C:min6", "C:maj", "iadd6"),
         ("G:min6", "C:maj", "vadd6"),
+        # An added ninth on a C minor triad, from either mode of C: Ab Bb, and A over G minor.
+        ("G#:maj(9)", "C:maj", "bVIadd9"),
+        ("G:min(9)", "C:maj", "vadd9"),
+        # The raised leading tone counts in V and V7 only; with its F#, E(add9) is A major's.
+        ("E:maj(9)", "A:min", "Vadd9"),
     ],
 )
 def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
@@ -366,6 +396,8 @@ def test_analyze_chord_borrowed(label: str, key: str, numeral: str) -> None:
         # The seventh or the fifth is outside both modes of C: D#'s seventh Db, B's fifth F#.
         ("D#:sus4(b7)", "C:maj", "bIII7sus4"),
         ("B:sus4(b7)", "C:maj", "VII7sus4"),
+        # E minor's ninth F# is in neither mode of C, and a min(9) is never a secondary dominant.
+        ("E:min(9)", "C:maj", "iiiadd9"),
     ],
 )
 def test_analyze_chord_chromatic(label: str, key: str, numeral: str) -> None:

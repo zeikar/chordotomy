@@ -37,6 +37,8 @@ INTERVALS = {
     "dim": (0, 3, 6),
     "sus2": (0, 2, 7),
     "sus4(b7)": (0, 5, 7, 10),
+    "maj(9)": (0, 4, 7, 2),
+    "min(9)": (0, 3, 7, 2),
 }
 
 
@@ -64,6 +66,8 @@ def test_vocabulary() -> None:
     for label in labels:
         assert label in LABELS
     assert len(set(LABELS)) == len(LABELS)
+    # The added ninths are corrections only: no decoder state, so the decode is v6's.
+    assert not any(label.endswith("(9)") for label in LABELS)
 
 
 def _pitch_set(label: str) -> set[int]:
@@ -90,7 +94,9 @@ def no_offsets(monkeypatch) -> None:
 
 
 def test_match_ranks_ideal_chroma_first(no_offsets) -> None:
-    names = [f"{root}:{quality}" for quality in INTERVALS for root in ROOT_NAMES]
+    # Every label the DSP decodes: the added ninths have no template.
+    decoded = [quality for quality in INTERVALS if not quality.endswith("(9)")]
+    names = [f"{root}:{quality}" for quality in decoded for root in ROOT_NAMES]
     chroma = np.zeros((12, len(names)))
     for column, name in enumerate(names):
         chroma[list(_pitch_set(name)), column] = 1.0
@@ -660,6 +666,11 @@ def test_segments_cut_on_the_bass_rank_candidates_over_their_own_beats() -> None
         ("A:sus4(b7)", "E", "second"),
         ("A:sus4(b7)", "G", "third"),
         ("A:sus4(b7)", "C#", "non_chord"),
+        # An added ninth is the third position, as min6's added sixth is.
+        ("C:maj(9)", "E", "first"),
+        ("C:maj(9)", "D", "third"),
+        ("A:min(9)", "B", "third"),
+        ("A:min(9)", "G", "non_chord"),
         ("C:maj", "D", "non_chord"),
         ("C:maj", "A#", "non_chord"),
         ("N", "C", None),
