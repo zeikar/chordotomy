@@ -3,7 +3,7 @@ import json
 import pytest
 
 from chordotomy.chords import QUALITIES
-from chordotomy.harmony import analyze, analyze_chord, estimate_key, parse_key
+from chordotomy.harmony import analyze, analyze_chord, estimate_key, key_regions, parse_key
 
 
 @pytest.mark.parametrize(
@@ -382,20 +382,21 @@ NO_ANALYSIS = {"numeral": None, "role": None, "function": None, "target": None}
 
 
 def test_analyze_estimates_the_key() -> None:
-    key, analyses = analyze(PROGRESSION)
+    key, keys, analyses = analyze(PROGRESSION)
     assert key is not None
     assert key["label"] == "C:maj"
     assert key["source"] == "estimated"
     assert len(key["candidates"]) == 3
     assert len(set(key["candidates"])) == 3
     assert key["candidates"][0] == key["label"]
+    assert keys == [{"start_beat": 0, "end_beat": 11, "label": "C:maj"}]
     assert [a["numeral"] for a in analyses] == ["I", "vi", "V7/V", "V7", None, "I"]
-    json.dumps((key, analyses))
+    json.dumps((key, keys, analyses))
 
 
 def test_analyze_given_key_keeps_the_estimated_candidates() -> None:
-    estimated, _ = analyze(PROGRESSION)
-    key, analyses = analyze(PROGRESSION, key="A:min")
+    estimated, _, _ = analyze(PROGRESSION)
+    key, _, analyses = analyze(PROGRESSION, key="A:min")
     assert estimated is not None
     assert key == {
         "label": "A:min",
@@ -406,16 +407,17 @@ def test_analyze_given_key_keeps_the_estimated_candidates() -> None:
 
 
 def test_analyze_without_a_chord() -> None:
-    assert analyze([("N", 4)]) == (None, [NO_ANALYSIS])
+    assert analyze([("N", 4)]) == (None, [], [NO_ANALYSIS])
     assert analyze([("N", 4)], key="C:maj") == (
         {"label": "C:maj", "source": "given", "candidates": []},
+        [{"start_beat": 0, "end_beat": 4, "label": "C:maj"}],
         [NO_ANALYSIS],
     )
 
 
 def test_analyze_labels_a_leading_tone_chord_by_the_next_segment() -> None:
     progression = [("C:maj", 2), ("C#:dim7", 1), ("D:min7", 1), ("G:7", 2), ("C:maj", 2)]
-    key, analyses = analyze(progression)
+    key, _, analyses = analyze(progression)
     assert key is not None
     assert key["label"] == "C:maj"
     assert [a["numeral"] for a in analyses] == ["I", "vii°7/ii", "ii7", "V7", "I"]
@@ -436,7 +438,7 @@ def test_analyze_looks_ahead_to_the_next_segment() -> None:
         ("D:maj", 1),
         ("G:7", 1),
     ]
-    _, analyses = analyze(progression, key="A:min")
+    _, _, analyses = analyze(progression, key="A:min")
     assert [a["numeral"] for a in analyses] == [
         "i", "V/iv", "iv", "I", None, "iv", "IV", "i", "I", "V/VII", "VII7"
     ]  # fmt: skip
@@ -453,3 +455,130 @@ def test_analyze_looks_ahead_to_the_next_segment() -> None:
         "secondary_dominant",
         "diatonic",
     ]
+
+
+def _two_beats(*labels: str) -> list[tuple[str, int]]:
+    return [(label, 2) for label in labels]
+
+
+def _spans(regions: list[dict]) -> list[tuple[int, int, str]]:
+    return [(r["start_beat"], r["end_beat"], r["label"]) for r in regions]
+
+
+VERSE = _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 4
+# The issue's ending: E major's I–V–IV–V, then F major's for the last 20 beats.
+HALF_STEP_UP = (
+    _two_beats("E:maj", "B:maj", "A:maj", "B:maj") * 8
+    + _two_beats("F:maj", "C:maj", "A#:maj", "C:maj") * 2
+    + [("F:maj", 4)]
+)
+
+
+def test_a_short_tonicization_stays_in_the_key() -> None:
+    # The ii–V7/ii vamp and Fm–Bb read 36 better in D minor than in C: less than the two changes
+    # cost at 24, more than at 16.
+    progression = VERSE + [("D:min", 4), ("A:7", 4)] * 2 + [("F:min", 4), ("A#:maj", 4)] + VERSE
+    assert _spans(key_regions(progression)) == [(0, 88, "C:maj")]
+    assert _spans(key_regions(progression, penalty=16)) == [
+        (0, 32, "C:maj"),
+        (32, 56, "D:min"),
+        (56, 88, "C:maj"),
+    ]
+
+
+def test_a_half_step_ending_is_its_own_region() -> None:
+    # The ending reads 48 in F and 0 in E: kept while the change costs less, and at 48, where it
+    # gains only what it costs, not split.
+    for penalty in (24, 44):
+        assert _spans(key_regions(HALF_STEP_UP, penalty=penalty)) == [
+            (0, 64, "E:maj"),
+            (64, 84, "F:maj"),
+        ]
+    assert _spans(key_regions(HALF_STEP_UP, penalty=48)) == [(0, 84, "E:maj")]
+
+
+def test_a_change_that_gains_only_the_penalty_never_splits() -> None:
+    # 8 beats of a tonic read 24 in its key and 0 in the section's, the penalty exactly. The path
+    # with fewer changes wins the tie, at either end and whichever key comes first in KEYS.
+    e_section = _two_beats("E:maj", "B:maj", "A:maj", "B:maj") * 8
+    f_section = _two_beats("F:maj", "C:maj", "A#:maj", "C:maj") * 8
+    assert _spans(key_regions([("E:maj", 8), *f_section])) == [(0, 72, "F:maj")]
+    assert _spans(key_regions([*e_section, ("F:maj", 8)])) == [(0, 72, "E:maj")]
+    assert _spans(key_regions([*f_section, ("E:maj", 8)])) == [(0, 72, "F:maj")]
+    assert _spans(key_regions([*VERSE, ("B:maj", 8)])) == [(0, 40, "C:maj")]
+
+
+def test_a_relative_minor_chorus_stays_in_the_key() -> None:
+    # Am–Dm–E7 reads 56 better in A minor, more than two changes cost, but C major never switches
+    # straight to its relative, and D minor reads it only 32 better, less than the two changes there
+    # and back.
+    progression = VERSE + [("A:min", 4), ("D:min", 2), ("E:7", 2)] * 4 + VERSE
+    assert _spans(key_regions(progression)) == [(0, 96, "C:maj")]
+
+
+def test_an_n_at_a_change_stays_with_the_key_before_it() -> None:
+    progression = (
+        _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 6
+        + [("N", 4)]
+        + _two_beats("D:maj", "G:maj", "A:maj", "D:maj") * 6
+    )
+    assert _spans(key_regions(progression)) == [(0, 52, "C:maj"), (52, 100, "D:maj")]
+
+
+def test_a_change_goes_as_late_as_the_weights_allow() -> None:
+    # The N and the pivot Em weigh the same in C and G, and so does G–C on either side of them (V–I
+    # in C, I–IV in G), so the change scores the same at beat 44, 48, 52, 54 or 58. A tie goes to
+    # the latest, the first D.
+    progression = (
+        _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 6
+        + [("N", 4), ("E:min", 2)]
+        + _two_beats("G:maj", "C:maj", "D:maj", "G:maj") * 6
+    )
+    assert _spans(key_regions(progression)) == [(0, 58, "C:maj"), (58, 102, "G:maj")]
+
+
+def test_leading_and_trailing_n_join_the_first_and_last_regions() -> None:
+    regions = key_regions([("N", 4), *HALF_STEP_UP, ("N", 4)])
+    assert _spans(regions) == [(0, 68, "E:maj"), (68, 92, "F:maj")]
+
+
+def test_an_n_alone_between_relative_keys_stays_with_the_key_before_it() -> None:
+    # An N lets the path reach the relative key for two changes (48) and no lost weight: C, the N in
+    # a third key, then A minor scores 212, against 210 through D minor, 190 all in C and 164 all in
+    # A minor. A G-major bridge over the verse's last G–C also scores 212 with two changes; the
+    # later change wins the tie. The estimator cannot name the N's key, so the N stays with C.
+    progression = VERSE * 2 + [("N", 4)] + [("A:min", 4), ("D:min", 2), ("E:7", 2)] * 5
+    assert _spans(key_regions(progression)) == [(0, 68, "C:maj"), (68, 108, "A:min")]
+
+
+def test_key_regions_without_a_chord() -> None:
+    assert key_regions([("N", 4), ("N", 2)]) == []
+
+
+def test_a_region_is_named_by_the_estimator() -> None:
+    # The path stays in C major, the earlier of two keys that score the same; the estimator's
+    # tie-breaks name the region A minor, as they name the whole song.
+    progression = [("A:min7", 4), ("C:maj7", 4)] * 4
+    key, keys, _ = analyze(progression)
+    assert key is not None
+    assert key["label"] == estimate_key(progression)[0] == "A:min"
+    assert keys == key_regions(progression) == [{"start_beat": 0, "end_beat": 32, "label": "A:min"}]
+
+
+def test_a_given_key_is_one_region() -> None:
+    _, keys, analyses = analyze(HALF_STEP_UP, key="C:maj")
+    assert keys == [{"start_beat": 0, "end_beat": 84, "label": "C:maj"}]
+    assert [a["numeral"] for a in analyses[-5:]] == ["IV", "I", "bVII", "I", "IV"]
+
+
+def test_each_chord_is_analyzed_in_its_region_key() -> None:
+    key, _, analyses = analyze(HALF_STEP_UP)
+    numerals = [a["numeral"] for a in analyses]
+    assert numerals[:-9] == ["I", "V", "IV", "V"] * 8
+    # In E these would read bII bVI #IV bVI.
+    assert numerals[-9:] == ["I", "V", "IV", "V", "I", "V", "IV", "V", "I"]
+    assert key == {
+        "label": "E:maj",
+        "source": "estimated",
+        "candidates": estimate_key(HALF_STEP_UP)[:3],
+    }

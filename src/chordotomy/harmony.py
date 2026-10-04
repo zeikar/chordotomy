@@ -1,8 +1,13 @@
-"""Harmonic analysis: a pure function of the chord sequence (no audio)."""
+"""Harmonic analysis: a pure function of the chord sequence (no audio).
+
+The key is estimated for the whole song, and per key region, the stretch a modulating song spends
+in one key; each chord is analyzed against its region's key.
+"""
 
 from __future__ import annotations
 
 from collections import Counter
+from itertools import groupby
 
 from .chords import QUALITIES, ROOTS
 
@@ -12,6 +17,22 @@ SCALE = {"maj": {0, 2, 4, 5, 7, 9, 11}, "min": {0, 2, 3, 5, 7, 8, 10}}
 # The tonic outweighs IV and V, which outweigh the other degrees (1; a chord that is not diatonic
 # weighs 0), so time spent on I, IV and V decides between keys that share most of their triads.
 DEGREE_WEIGHT = {0: 3, 5: 2, 7: 2}
+# What a key change costs, in the unit of the weights (beats × degree weight): a stretch becomes a
+# region of its own only when it reads more than that much better in another key. Two real songs
+# put the working range at 16–32, and synthesized ones bound it: a ii–V7/ii vamp and Fm–Bb inside a
+# C-major verse (36 better in D minor) split at 16 and hold at 24; a 20-beat half-step ending,
+# F–C–Bb–C ×2, F (48 in F, 0 in the song's E major), is kept through 44 and lost at 48, where it
+# gains only what the change costs; and a C-major verse with an A-minor chorus, Am–Dm–E7 ×4, stays
+# one region at 24 only with the relative rule below.
+KEY_CHANGE_PENALTY = 24
+# Relative keys share a scale, so only the degree weights tell them apart, and a switch between
+# them follows where the time goes inside a section rather than a modulation: a real song split
+# into C-sharp minor and E major over chords both keys share. So no region switches straight to its
+# relative. A third key can still bridge them: at a penalty of 12 to 15 the A-minor chorus above
+# goes C, D minor, C, as D minor reads it 32 better than C, and the estimator names that region A
+# minor.
+RELATIVE = {f"{root}:maj": f"{ROOTS[(i + 9) % 12]}:min" for i, root in enumerate(ROOTS)}
+RELATIVE |= {minor: major for major, minor in RELATIVE.items()}
 # Accidentals are relative to the key's own scale, so minor spells its natural-minor degrees plain.
 NUMERALS = {
     "maj": ("I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"),
@@ -131,6 +152,16 @@ def _tonic_triad(label: str) -> str:
     return f"{root}:{triad}"
 
 
+def _weight(label: str, key: str) -> int:
+    # One beat's weight, shared by the estimator and the key regions.
+    if label == "N":
+        return 0
+    tonic, mode = key.split(":")
+    root, quality = label.split(":")
+    offset = (ROOTS.index(root) - ROOTS.index(tonic)) % 12
+    return DEGREE_WEIGHT.get(offset, 1) if _is_diatonic(offset, quality, mode) else 0
+
+
 def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
     """Rank all 24 keys for a list of (chord label, beats); empty if there is no chord."""
     beats = Counter[str]()
@@ -144,18 +175,81 @@ def estimate_key(progression: list[tuple[str, int]]) -> list[str]:
     first = _tonic_triad(next(label for label, _ in progression if label != "N"))
 
     def rank(key: str) -> tuple[int, int, bool]:
-        tonic, mode = key.split(":")
-        tonic_index = ROOTS.index(tonic)
-        score = 0
-        for label, n in beats.items():
-            root, quality = label.split(":")
-            offset = (ROOTS.index(root) - tonic_index) % 12
-            if _is_diatonic(offset, quality, mode):
-                score += n * DEGREE_WEIGHT.get(offset, 1)
+        score = sum(n * _weight(label, key) for label, n in beats.items())
         return score, tonic_beats[key], first == key
 
     # sorted is stable, also with reverse=True, so KEYS order is the final tie-break.
     return sorted(KEYS, key=rank, reverse=True)
+
+
+def _region_keys(progression: list[tuple[str, int]], penalty: int) -> list[str]:
+    # A Viterbi path over the 24 keys, one per run, scoring the runs' weights in their keys less
+    # `penalty` per change. A path's score is the pair (that sum, minus its changes), so of two
+    # paths that sum the same the one with fewer changes wins: a change that gains only the penalty
+    # never splits, wherever it sits and whichever key comes first in KEYS. The path decides only
+    # where the regions lie: each is named by the estimator over its own runs, so a single region
+    # is named as the whole song is.
+    label, n = progression[0]
+    best = {key: (n * _weight(label, key), 0) for key in KEYS}
+    back = []
+    for label, n in progression[1:]:
+        pointers, scores = {}, {}
+        for current in KEYS:
+            # max keeps the first of equal scores, so a tie goes to the earliest in KEYS.
+            source = max(
+                (other for other in KEYS if other not in (current, RELATIVE[current])),
+                key=best.__getitem__,
+            )
+            stay = best[current]
+            switch = (best[source][0] - penalty, best[source][1] - 1)
+            # Switching on a tie puts each change as late as it can go, so a run that weighs the
+            # same in both keys (an N, a pivot chord) stays with the key before it.
+            pointers[current] = source if switch >= stay else current
+            total, minus_changes = max(stay, switch)
+            scores[current] = (total + n * _weight(label, current), minus_changes)
+        back.append(pointers)
+        best = scores
+    # Of paths with equal sums and equal changes, the one ending in the earliest key in KEYS.
+    path = [max(KEYS, key=best.__getitem__)]
+    for pointers in reversed(back):
+        path.append(pointers[path[-1]])
+    path.reverse()
+    run_keys: list[str] = []
+    for _, group in groupby(path):
+        start = len(run_keys)
+        end = start + len(list(group))
+        ranked = estimate_key(progression[start:end])
+        # A stretch of only N is a stepping stone to the relative key (C, N, then A minor). With a
+        # positive penalty it is never the first, as a leading N keeps the first chord's key at no
+        # cost, and it stays with the key before it, as any N at a change does.
+        run_keys += [ranked[0] if ranked else run_keys[-1]] * (end - start)
+    return run_keys
+
+
+def _regions(progression: list[tuple[str, int]], run_keys: list[str]) -> list[dict]:
+    # Neighbours named alike are one region.
+    regions: list[dict] = []
+    beat = 0
+    for (_, n), key in zip(progression, run_keys, strict=True):
+        if regions and regions[-1]["label"] == key:
+            regions[-1]["end_beat"] += n
+        else:
+            regions.append({"start_beat": beat, "end_beat": beat + n, "label": key})
+        beat += n
+    return regions
+
+
+def key_regions(
+    progression: list[tuple[str, int]], penalty: int = KEY_CHANGE_PENALTY
+) -> list[dict]:
+    """Split a list of (chord label, beats) into key regions; empty if there is no chord.
+
+    Each region is `{"start_beat", "end_beat", "label"}`; they are contiguous from beat 0 to the
+    total. `penalty` is what a key change costs, in beats × degree weight, and must be positive.
+    """
+    if all(label == "N" for label, _ in progression):
+        return []
+    return _regions(progression, _region_keys(progression, penalty))
 
 
 def numeral(offset: int, quality: str, mode: str) -> str:
@@ -233,16 +327,19 @@ def analyze_chord(label: str, key: str, following: str | None = None) -> dict[st
 
 def analyze(
     progression: list[tuple[str, int]], key: str | None = None
-) -> tuple[dict | None, list[dict]]:
-    """Analyze a list of (chord label, beats) into a key object and one analysis per entry.
+) -> tuple[dict | None, list[dict], list[dict]]:
+    """Analyze a list of (chord label, beats) into a key, key regions and one analysis per entry.
 
-    `key`, if given, must already be normalized by `parse_key`. The key object is `None` only
-    when there is no chord to estimate from and no key was given.
+    The key object is the whole song's. `key`, if given, must already be normalized by
+    `parse_key`; it is then the one region and every entry is analyzed in it. Otherwise the
+    regions are those of `key_regions`, and each entry is analyzed in its region's key. The key
+    object is `None`, and the regions empty, only when there is no chord to estimate from and no
+    key was given.
     """
     ranked = estimate_key(progression)
     if key is None and not ranked:
         # Every entry is N here, and an N is analyzed without looking at the key.
-        return None, [analyze_chord("N", "C:maj") for _ in progression]
+        return None, [], [analyze_chord("N", "C:maj") for _ in progression]
     label = key or ranked[0]
     # The candidates stay the estimator's ranking even when the key is given, so a wrong
     # override can be compared against what the chords suggest.
@@ -251,9 +348,14 @@ def analyze(
         "source": "estimated" if key is None else "given",
         "candidates": ranked[:CANDIDATES],
     }
+    if key is None:
+        run_keys = _region_keys(progression, KEY_CHANGE_PENALTY)
+    else:
+        run_keys = [key] * len(progression)
     labels = [chord for chord, _ in progression]
+    # The look-ahead reads the next run whatever its region.
     analyses = [
-        analyze_chord(chord, label, following)
-        for chord, following in zip(labels, [*labels[1:], None], strict=True)
+        analyze_chord(chord, run_key, following)
+        for chord, run_key, following in zip(labels, run_keys, [*labels[1:], None], strict=True)
     ]
-    return key_object, analyses
+    return key_object, _regions(progression, run_keys), analyses

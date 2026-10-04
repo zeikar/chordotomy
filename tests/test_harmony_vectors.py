@@ -27,3 +27,9 @@ def test_fixture_covers_the_vocabulary_and_keys() -> None:
     assert keys == set(KEYS)
     qualities = {label.split(":")[1] for label, _, _ in fixture["inversions"] if label != "N"}
     assert qualities == set(QUALITIES)
+
+
+def test_fixture_covers_key_changes() -> None:
+    regions = [case["expected"]["keys"] for case in _fixture()["progressions"]]
+    assert any(len(keys) > 1 for keys in regions)
+    assert {region["label"] for keys in regions for region in keys} <= set(KEYS)

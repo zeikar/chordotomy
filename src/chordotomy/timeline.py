@@ -81,7 +81,7 @@ def analyze(
     segments = resolve_twins(segment(states, scores, basses, inferred))
 
     runs = chord_runs(segments)
-    key_info, run_analyses = harmony.analyze(progression(runs), key)
+    key_info, _, run_analyses = harmony.analyze(progression(runs), key)
     analyses = [a for run, a in zip(runs, run_analyses, strict=True) for _ in run]
 
     duration = round(len(y) / SR, 3)

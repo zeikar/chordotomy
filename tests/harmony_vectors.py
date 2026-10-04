@@ -1,9 +1,10 @@
 """Golden vectors for the viewer's harmony, generated from the Python analysis.
 
-Python is the reference. `harmony_vectors.json` holds what `harmony.analyze`, `chords.inversion`,
-`timeline.chord_runs` and `timeline.progression` return on the cases below. The viewer's
-`harmony.js` replays every case and must agree with it. `test_harmony_vectors.py` fails when the
-file no longer matches the Python, so regenerate it after any change to those four:
+Python is the reference. `harmony_vectors.json` holds what `harmony.analyze` (the key, the key
+regions as `keys`, and the analyses), `chords.inversion`, `timeline.chord_runs` and
+`timeline.progression` return on the cases below. The viewer's `harmony.js` replays every case and
+must agree with it. `test_harmony_vectors.py` fails when the file no longer matches the Python, so
+regenerate it after any change to those four:
 
     uv run python tests/harmony_vectors.py
 """
@@ -67,6 +68,44 @@ TIES = [
     ("every quality on C", None, [(f"C:{quality}", 1) for quality in QUALITIES]),
     ("a diatonic maj7 votes", None, [("C:maj7", 4), ("G:maj", 2), ("D:min", 1)]),
 ]
+
+
+def _two_beats(*labels: str) -> list[tuple[str, int]]:
+    return [(label, 2) for label in labels]
+
+
+VERSE = _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 4
+E_SECTION = _two_beats("E:maj", "B:maj", "A:maj", "B:maj") * 8
+F_CYCLE = _two_beats("F:maj", "C:maj", "A#:maj", "C:maj")
+A_MINOR_CHORUS = [("A:min", 4), ("D:min", 2), ("E:7", 2)]
+# Key regions at the shipped penalty: the cases tests/test_harmony.py pins, and an edit that takes
+# a region away, the boundary 8 beats before the edited chord with it. A change that gains only the
+# penalty (8 beats of a tonic) splits nowhere.
+REGIONS = {
+    "a ii–V7/ii vamp in C": (
+        VERSE + [("D:min", 4), ("A:7", 4)] * 2 + [("F:min", 4), ("A#:maj", 4)] + VERSE
+    ),
+    "a half step up at the end": E_SECTION + F_CYCLE * 2 + [("F:maj", 4)],
+    "a relative minor chorus": VERSE + A_MINOR_CHORUS * 4 + VERSE,
+    "N between C and D": (
+        _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 6
+        + [("N", 4)]
+        + _two_beats("D:maj", "G:maj", "A:maj", "D:maj") * 6
+    ),
+    "a pivot Em between C and G": (
+        _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 6
+        + [("N", 4), ("E:min", 2)]
+        + _two_beats("G:maj", "C:maj", "D:maj", "G:maj") * 6
+    ),
+    "leading and trailing N": [("N", 4), *E_SECTION, *F_CYCLE * 2, ("F:maj", 4), ("N", 4)],
+    "N alone between relative keys": VERSE * 2 + [("N", 4)] + A_MINOR_CHORUS * 5,
+    "8 beats of E before F": [("E:maj", 8), *F_CYCLE * 8],
+    "8 beats of F after E": [*E_SECTION, ("F:maj", 8)],
+    "8 beats of E after F": [*F_CYCLE * 8, ("E:maj", 8)],
+    "8 beats of B after C": [*VERSE, ("B:maj", 8)],
+    "a half step up, before an edit": E_SECTION + F_CYCLE + [("F:maj", 4)],
+    "a half step up, its last F edited to E": E_SECTION + F_CYCLE + [("E:maj", 4)],
+}
 # Segments as (chord, start_beat, end_beat).
 RUNS = {
     "a chord split by the bass": [("C:maj", 0, 2), ("C:maj", 2, 4)],
@@ -81,12 +120,12 @@ def _up(root: str, semitones: int) -> str:
 
 
 def _progression_case(name: str, progression: list[tuple[str, int]], key: str | None) -> dict:
-    key_object, analyses = harmony.analyze(progression, key)
+    key_object, keys, analyses = harmony.analyze(progression, key)
     return {
         "name": name,
         "key": key,
         "progression": progression,
-        "expected": {"key": key_object, "analyses": analyses},
+        "expected": {"key": key_object, "keys": keys, "analyses": analyses},
     }
 
 
@@ -133,6 +172,8 @@ def _progressions() -> list[dict]:
             cases.append(_progression_case(f"{name} in {key}", progression, None))
     for name, key, progression in TIES:
         cases.append(_progression_case(name, progression, key))
+    for name, progression in REGIONS.items():
+        cases.append(_progression_case(name, progression, None))
     return cases
 
 
