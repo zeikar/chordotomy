@@ -19,6 +19,8 @@ htmlcov/
 .playwright-mcp/
 # Evaluation datasets, downloaded on demand (CC BY 4.0, never committed)
 datasets/
+# Scratch space for real recordings and their timelines (never committed)
+work/
 
 # Editor
 .idea/
