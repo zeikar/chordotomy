@@ -906,6 +906,16 @@ The penalty is most of the work, and nothing measures it directly: the evaluatio
 
 At 16 to 32 adrenaline!!! comes out as the song goes, and a short borrowed chord stays inside its key at every penalty, like the E♭ (`bVI`) at 2:44 inside G. The cover's split into C♯ minor and E major at 16 to 24 is the relative-key problem below, so the two songs put the working range at 16 to 32.
 
+The shipped path, with the relative rule and the tie-breaks, on the same two recordings analyzed again at `ba1141f`:
+
+| penalty | adrenaline!!! (lv-chordia) | ハロ/ハワユ cover (lv-chordia) | ハロ/ハワユ cover (DSP) |
+| --- | --- | --- | --- |
+| 8 | E – G – E – G – E – F | C♯m – B (1:15) – E (1:18) – G♯ (3:47) – E | Em – E (0:10) – G♯ (3:47) – E |
+| 16–32 | E – G – E – G – E – F | E | E |
+| 48–64 | E – G – E – G (the last E and the F ending lost) | E | E |
+
+The relative rule removes the invented E minor at 1:07 and the cover's split, so at the shipped 24 adrenaline!!! comes out as the song goes and the cover is one E-major region with either engine. The low end of the range is still set by the cover, which invents regions at 8.
+
 Synthesized progressions bound the penalty from both sides. A ii–V7/ii vamp and a borrowed iv–bVII inside a C-major verse (Dm and A7 twice, then Fm and Bb, 4 beats each) read 36 better in D minor than in C, so they stay in C at 24 and become a D-minor region at 16, a tonicization taken for a modulation. A 20-beat half-step ending in adrenaline!!!'s shape, F–C–Bb–C twice in two-beat chords and F for 4, after 64 beats of E major's I–V–IV–V, reads 48 in F and 0 in E, so it is a region of its own through a penalty of 44 and not at 48, where the change only breaks even. 24 sits in the middle of the songs' range and clears both bounds: above the 16 at which the vamp splits off as D minor, and below the 48 at which the half-step ending is lost.
 
 The path never switches straight to the relative key; the labels of two neighbouring regions can still be relatives, because each stretch is named afterwards by the estimator over its own runs (below). Relative keys share a scale, so only the degree weights tell them apart, and a switch between them follows where the time goes inside a section rather than a modulation: the prototype split the cover into C♯ minor and E major over chords both keys share. The rule keeps a pop song whose verse centres on vi and whose chorus centres on I in one key, rather than splitting between the two and flipping every numeral on one side. So a C-major verse with an A-minor chorus, Am for 4 beats and Dm and E7 for 2, four times, stays one region at 24, though the chorus reads 56 better in A minor, more than its two changes cost.
