@@ -63,7 +63,9 @@ def test_key_overrides_the_estimate(clip, tmp_path) -> None:
     assert data["global_key"]["label"] == "A:min"
     assert data["global_key"]["source"] == "given"
     assert data["global_key"]["candidates"][0] == "C:maj"
-    assert data["key_regions"] == [{"start_beat": 0, "end_beat": len(data["beats"]), "label": "A:min"}]
+    assert data["key_regions"] == [
+        {"start_beat": 0, "end_beat": len(data["beats"]), "label": "A:min"}
+    ]
     assert {s["numeral"] for s in data["segments"]} == {"III"}
 
 
