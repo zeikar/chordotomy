@@ -15,7 +15,7 @@ import numpy as np
 ROOTS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 # The quality strings are Harte's, because evaluate hands labels to mir_eval: it parses A:sus4(b7)
 # and its slash forms, and would reject an ad-hoc 7sus4.
-# Left out, for the reasons in docs/ARCHITECTURE.md: maj6 (min7's pitch set, I6 reads as a
+# Left out, for the reasons in docs/decisions.md: maj6 (min7's pitch set, I6 reads as a
 # first-inversion figure, and the model never emits it); add9 and 9/11/13 (beyond a beat-median
 # chroma, where the fifth's twelfth lands on the ninth; the model maps them to sevenths).
 QUALITIES = {
@@ -85,7 +85,8 @@ N_SCORE = 0.3
 # suite green. PARTIAL_DECAY then moved from 0.6 to 0.8 at a cost (0.3 pp of GuitarSet sevenths,
 # 0.5-0.6 pp of Tiny AAM) so that no one-step move breaks the two-beat A:min/C inside C:maj.
 # TEMPERATURE 0.035, BASS_TONE 0.6 and maj7/min7 -0.05 score higher, but give up that margin or
-# Tiny AAM's sevenths floor a step later; see "Tuning the v4 constants" in docs/ARCHITECTURE.md.
+# Tiny AAM's sevenths floor a step later; see "Tuning the v4 constants" in
+# docs/evaluation-history.md.
 # The weight of the bass chroma's evidence for a chord, against the treble's correlation.
 BASS_WEIGHT = 0.3
 # A chord's bass profile is 1 on its root and BASS_TONE on its other tones. A bass on the third
@@ -474,7 +475,7 @@ def pick_bass(profile: np.ndarray) -> str | None:
 # reads the chord's root; a chord tone is never tested. 1.0 asks a non-chord pick to be the
 # loudest note of the register, which a bass line is and a leak under the root is not, and is the
 # top: above it a held non-chord slash is no longer written. "Bass reliability" in
-# docs/ARCHITECTURE.md has the sweep.
+# docs/evaluation-history.md has the sweep.
 NONCHORD_SALIENCE = 1.0
 
 

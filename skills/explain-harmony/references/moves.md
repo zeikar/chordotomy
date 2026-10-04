@@ -2,7 +2,7 @@
 
 How to turn chordotomy's labels into short explanations. The JSON supplies the facts; this file supplies the reasons those facts work.
 
-The rules the analyzer used to assign each role are in the plugin's `docs/ARCHITECTURE.md`, section "Harmonic analysis". SKILL.md gives the full path as `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`. Don't resolve it against the user's working directory.
+The rules the analyzer used to assign each role are in the plugin's `docs/harmony.md`. SKILL.md gives the full path as `${CLAUDE_PLUGIN_ROOT}/docs/harmony.md`. Don't resolve it against the user's working directory.
 
 ## Spelling
 

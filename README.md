@@ -73,7 +73,7 @@ chordotomy fetch-weights                    # model extra: download and verify B
 }
 ```
 
-Chords are Harte labels. `candidates` is the recognizer's own ranking, never a percentage. `numeral` is always root position; the viewer combines it with `inversion`, so this segment shows as V⁶₅/vi. The full format is in [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#the-chord-timeline-json).
+Chords are Harte labels. `candidates` is the recognizer's own ranking, never a percentage. `numeral` is always root position; the viewer combines it with `inversion`, so this segment shows as V⁶₅/vi. The full format is in [docs/timeline-json.md](https://github.com/zeikar/chordotomy/blob/main/docs/timeline-json.md).
 
 ### The model engine (optional)
 
@@ -103,9 +103,9 @@ lv-chordia on PyPI is Open MIR Lab's packaging of the authors' original code and
 | crema (McFee and Bello, 2017) | 0.898 | 0.893 | 0.794 | 0.816 | 0.873 | 0.785 |
 | **chordotomy, DSP front end** | 0.842 | 0.803 | 0.768 | 0.722 | 0.696 | 0.583 |
 
-Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Neither is in the published training data of lv-chordia, BTC or crema; ChordMini's labeled training data is not published. GuitarSet is in Beat This!'s: its authors trained on these takes. So chordotomy's GuitarSet row comes from Beat This!'s fold checkpoints, each take scored by the checkpoint that did not train on it; that checkpoint has still heard other takes of the same tune. `chordotomy evaluate` runs the shipped `final0`, which scores 0.1 to 0.2 points higher there; its row is in [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#current-rows). Beat This! never trained on Tiny AAM.
+Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-guitar accompaniment takes. Neither is in the published training data of lv-chordia, BTC or crema; ChordMini's labeled training data is not published. GuitarSet is in Beat This!'s: its authors trained on these takes. So chordotomy's GuitarSet row comes from Beat This!'s fold checkpoints, each take scored by the checkpoint that did not train on it; that checkpoint has still heard other takes of the same tune. `chordotomy evaluate` runs the shipped `final0`, which scores 0.1 to 0.2 points higher there; its row is in [docs/evaluation.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation.md#current-rows). Beat This! never trained on Tiny AAM.
 
-chordotomy's model engine is lv-chordia's chords snapped to Beat This!'s beats, where its harmony and its viewer work. On those beats it scores above lv-chordia's own output on both datasets. The beat tracker still costs a little: scored without the bass, the same snap onto the datasets' annotated beats gains another 1.1 points of `majmin` on Tiny AAM and 0.6 on GuitarSet. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#other-chord-recognizers) has the versions and settings, and [its Evaluation section](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#evaluation) every column.
+chordotomy's model engine is lv-chordia's chords snapped to Beat This!'s beats, where its harmony and its viewer work. On those beats it scores above lv-chordia's own output on both datasets. The beat tracker still costs a little: scored without the bass, the same snap onto the datasets' annotated beats gains another 1.1 points of `majmin` on Tiny AAM and 0.6 on GuitarSet. Each metric scores only the reference chords it can compare (`majmin` leaves out sus, augmented and diminished chords), which is how GuitarSet's `majmin` can sit above its `root`. A bass outside the chord is scored as an added tone, so it can cost `majmin` and `sevenths` too. These are numbers for development, not a benchmark claim; [docs/evaluation.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation.md#other-chord-recognizers) has the versions and settings, and [every column](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation.md).
 
 ## Viewer
 
@@ -146,7 +146,7 @@ Working in this repo, `.claude/settings.json` registers the checkout itself as a
 - **Melody transcription.** It doesn't produce melody → MIDI.
 - **Song sections.** It doesn't label intro, verse, or chorus. Key changes are marked from the chords, without section names.
 
-It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#design-decisions) explains why.
+It stops at the chords and what they're doing. [docs/decisions.md](https://github.com/zeikar/chordotomy/blob/main/docs/decisions.md) explains why.
 
 ## Roadmap
 
@@ -179,7 +179,7 @@ The viewer re-analyzes edited chords with a JavaScript port of the Python harmon
 uv run python tests/harmony_vectors.py
 ```
 
-[docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md) has the pipeline, the JSON format, and the design decisions with their reasons.
+[docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md) has the pipeline and links the rest of `docs/`, among them the JSON format and the design decisions with their reasons.
 
 ### Real-audio evaluation (opt-in)
 
@@ -190,7 +190,7 @@ uv run chordotomy evaluate tiny-aam [--limit N]
 uv run chordotomy evaluate guitarset [--limit N]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. The model engine's GuitarSet beats then come from `final0`, which Beat This! trained on these takes; [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#beat-tracking) has the held-out recipe behind the Accuracy row. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#evaluation) explains each column. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. The model engine's GuitarSet beats then come from `final0`, which Beat This! trained on these takes; [docs/evaluation-history.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation-history.md#beat-tracking) has the held-out recipe behind the Accuracy row. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/evaluation.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation.md) explains each column. The scores are numbers for development only.
 
 ## Acknowledgements
 

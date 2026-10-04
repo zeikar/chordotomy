@@ -73,7 +73,7 @@ QUALITY = {
 
 # A bass outside the beat's chord needs this posterior from the bass head, else the beat reads the
 # chord's root. 0.7 is the middle of the plateau where the objectives stop moving and the floors
-# hold. "Bass reliability" in docs/ARCHITECTURE.md has the sweep.
+# hold. "Bass reliability" in docs/evaluation-history.md has the sweep.
 BASS_SUPPORT = 0.7
 
 

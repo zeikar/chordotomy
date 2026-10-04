@@ -1,0 +1,68 @@
+# Evaluation
+
+`chordotomy evaluate {tiny-aam,guitarset} [--limit N] [--engine auto|model|dsp]` scores the analyzer on real audio. It is opt-in and for development (the `eval` extra). Nothing in it reaches the timeline JSON. Both datasets are CC BY 4.0 on Zenodo. They are downloaded on demand into the checkout's gitignored `datasets/`, never committed.
+
+- **Tiny AAM**: 20 mixed tracks with one chord per beat, reduced to major, minor and `N`. Its annotation has no bass, so its `majmin_inv` assumes every reference chord is in root position; read it as bass agreement with that assumption, not as inversion accuracy. The annotation stops at the last played beat. The reference gives that beat the length of the gap before it, so a tempo change at the end is respected, and labels the rest of the file `N`. Until stage II it ran the last chord to the end of the file, which called the silent tail a chord, so an analyzer that called the tail `N` lost about 1 pp of every chord metric (["Corrected Tiny AAM reference"](evaluation-history.md#corrected-tiny-aam-reference)).
+- **GuitarSet**: the 180 accompaniment takes (`_comp`, mono mic), scored against the performed chord annotation, which carries the bass.
+
+Scoring is `mir_eval`, and the table is per track with an `overall` row weighted by duration. These things matter when reading it:
+
+- `majmin` reduces sevenths and sixths to the triad. It leaves out power chords, sus, augmented and diminished chords, so those intervals are not counted at all.
+- `N` against `N` counts as correct. A track the analyzer calls all `N` is scored right wherever the reference is also `N`, so `N_est` and `N_ref`, the shares of duration labeled `N`, are printed beside the scores. `N_prec` is the share of the estimate's `N` that is `N` in the reference, and `N_rec` the share of the reference's `N` that the estimate calls `N`, both by duration over the same intervals as the chord columns. Either is `nan` when there is no `N` to divide by; GuitarSet's reference has none.
+- `beat_F`, `CMLt` and `AMLt` score the timeline's own `beats`, the extended grid that every consumer reads and the engine snaps its chords to, against Tiny AAM's annotated beat times and GuitarSet's `beat_position` annotation. They are mir_eval's F-measure, Correct Metric Level Total and Any Metric Level Total. `CMLt` needs the right metrical level and phase; `AMLt` also accepts double tempo, half tempo and the off-beat. Both datasets skip beats before `BEAT_MIN_TIME` = 5 s, mir_eval's default, passed explicitly; a median GuitarSet take loses about 17 % of its length to it. The beat columns are weighted by duration, like the chord columns. `period` is the median estimated beat gap over the median reference gap, and its overall is the median over tracks: near 2 is a grid locked at half tempo, near 0.5 one at double. Since the Beat This! stage each engine has its own grid, so the beat columns are per engine.
+- `sevenths` scores only references that are `maj`, `min`, `7`, `maj7`, `min7` or `N`, and needs the seventh to match. On Tiny AAM, whose references are all major, minor or `N`, it is therefore a false-positive check (see ["Tuning the v4 constants"](evaluation-history.md#tuning-the-v4-constants)).
+- `tetrads` needs the root and the whole pitch set to match. It is the metric that checks the full pitch set of a half-diminished, diminished-seventh, minor-sixth, sus4, augmented, diminished, sus2 or 7sus4 reference: `root` scores only their roots, `majmin` leaves out half-diminished, diminished-seventh, sus4, augmented, diminished, sus2 and 7sus4 references (it compares a minor-sixth one by its minor triad), and `sevenths` leaves out all of them.
+- `majmin_inv` compares the bass as a scale degree above the root, so a right chord over the wrong bass, or over no detected bass (`bass` null), fails it.
+- A segment whose bass is not its root is scored as a slash chord (`C:maj/3`), and mir_eval reads the slash's degree into the estimate's pitch set. A bass on a chord tone adds nothing, but a bass outside the chord adds a tone: `C:maj/2` is C–D–E–G. So a `non_chord` bass costs `sevenths` and `tetrads`, and `majmin` too when it lies within a perfect fifth above the root, the part of the pitch set `majmin` compares. `root` ignores the bass.
+- `bass_ref`, `inv_prec`, `inv_rec` and `nonchord` score the bass beat by beat. Each beat lasts until the next one (the last until the end of the source), and its reference label is the interval holding the beat's midpoint; none, an `N` or an `X`, is a reference `N`. The first three are ratios with their own denominators, and the `overall` cell is the summed hits over the summed denominators, so a track weighs by what it adds to that metric, not by its length (a track's cell is `nan` only when its denominator is empty). `bass_ref`: of the beats where both the estimate and the reference are chords, the share whose written bass is the reference's; a null bass is a miss. An inversion is a bass off the root and on a tone of the chord, so a `non_chord` bass is not one. `inv_prec`: of the estimate's inversion beats, the share where the reference is an inversion over the same bass; `inv_rec`: of the reference's inversion beats, the share the estimate inverts over the same bass, an estimate `N` or null bass among them a miss. `nonchord` is the share of the duration in segments with `inversion == "non_chord"`, weighted by track duration. Tiny AAM's annotation has no bass, so its `bass_ref` reads the root, its `inv_rec` is `nan` and its `inv_prec` is 0 wherever an inversion is written, by assumption. Precision and recall count chord-tone inversions only: GuitarSet's non-chord reference slashes are its lowest string (4.4 % of its duration), not slashes a chart would write.
+
+The rows of every earlier stage are in [Evaluation history](evaluation-history.md).
+
+## Current rows
+
+The rows of the Beat This! stage (the model engine's beats from Beat This!'s activation, ["Beat tracking"](evaluation-history.md#beat-tracking)), scored by the CLI (`chordotomy evaluate`) on the final reference. The `dsp` rows are the bass stage's to every digit; ["Rows at the end of the bass stage"](evaluation-history.md#rows-at-the-end-of-the-bass-stage) has that stage's `model` rows. Each engine scores its own grid, so the beat columns are per engine. GuitarSet has two `model` rows, never pooled: each take's beats from the fold checkpoint that did not train on it ("take held out, tune seen"), and from the shipped `final0`, which trained on all 180 takes. ["Vocabulary v5"](evaluation-history.md#vocabulary-v5) has the rows before v6 and what moved in v5, and ["Vocabulary v6"](evaluation-history.md#vocabulary-v6) what moved in v6 and why.
+
+| | root | majmin | sevenths | tetrads | majmin_inv | N_est | N_ref | N_prec | N_rec | beat_F | CMLt | AMLt | period | bass_ref | inv_prec | inv_rec | nonchord |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tiny AAM (20 tracks), `dsp` | 0.842 | 0.803 | 0.768 | 0.768 | 0.713 | 0.003 | 0.032 | 0.819 | 0.071 | 0.827 | 0.686 | 0.766 | 0.999 | 0.851 | 0.000 | nan | 0.020 |
+| GuitarSet (180 takes), `dsp` | 0.722 | 0.696 | 0.583 | 0.379 | 0.446 | 0.005 | 0.000 | 0.000 | nan | 0.517 | 0.410 | 0.570 | 1.005 | 0.507 | 0.174 | 0.226 | 0.087 |
+| Tiny AAM (20 tracks), `model` | 0.955 | 0.950 | 0.914 | 0.914 | 0.889 | 0.015 | 0.032 | 0.988 | 0.444 | 0.896 | 0.797 | 0.802 | 1.002 | 0.926 | 0.000 | nan | 0.000 |
+| GuitarSet (180 takes), `model`, take held out | 0.854 | 0.900 | 0.847 | 0.550 | 0.611 | 0.029 | 0.000 | 0.000 | nan | 0.919 | 0.839 | 0.940 | 1.005 | 0.616 | 0.199 | 0.191 | 0.000 |
+| GuitarSet (180 takes), `model`, `final0` (trained on these takes) | 0.855 | 0.902 | 0.848 | 0.552 | 0.614 | 0.029 | 0.000 | 0.000 | nan | 0.958 | 0.889 | 0.978 | 1.005 | 0.617 | 0.201 | 0.197 | 0.000 |
+
+## Other chord recognizers
+
+The same audio and the same scoring, on the final reference, for five open-source recognizers run locally on 2026-10-01, each with its own inference code at its documented settings on the CPU. They are a comparison, not dependencies: nothing of theirs ships with chordotomy. Each one's segments were scored as they came out, with `evaluate.score` and pooled by duration as `summarise` pools them; the chordotomy rows are "Current rows" above, the `model` row's GuitarSet cells from its held-out row.
+
+| | Tiny AAM root | majmin | sevenths | tetrads | GuitarSet root | majmin | sevenths | tetrads |
+|---|---|---|---|---|---|---|---|---|
+| chordotomy, `model` | 0.955 | 0.950 | 0.914 | 0.914 | 0.854 | 0.900 | 0.847 | 0.550 |
+| lv-chordia 1.1.0, its own output | 0.951 | 0.947 | 0.911 | 0.911 | 0.846 | 0.893 | 0.839 | 0.546 |
+| BTC | 0.931 | 0.920 | 0.880 | 0.880 | 0.809 | 0.864 | 0.775 | 0.505 |
+| ChordMini BTC | 0.921 | 0.908 | 0.844 | 0.844 | 0.818 | 0.869 | 0.798 | 0.521 |
+| ChordMini 2E1D | 0.924 | 0.913 | 0.836 | 0.836 | 0.742 | 0.801 | 0.746 | 0.482 |
+| crema 0.2.0 | 0.898 | 0.893 | 0.794 | 0.794 | 0.816 | 0.873 | 0.785 | 0.516 |
+| chordotomy, `dsp` | 0.842 | 0.803 | 0.768 | 0.768 | 0.722 | 0.696 | 0.583 | 0.379 |
+
+- **lv-chordia 1.1.0** (Jiang, Chen, Li and Xia, ISMIR 2019; MIT): `chord_recognition(path, "submission")`, the whole track at once, with its own slash basses. chordotomy's model engine runs the same five nets and HMM, so the difference between the two rows is chordotomy's own: the labels snapped to the beat by majority, the 60 s windows, and its bass. On Beat This!'s grid the snap gains: chordotomy's root, majmin and sevenths are 0.3 to 0.4 points above lv-chordia's own on Tiny AAM and 0.7 to 0.8 above on GuitarSet, take held out. On librosa's grid, before the Beat This! stage, the same three columns were 1.2 to 1.3 points under on Tiny AAM and 1.9 to 2.1 under on GuitarSet, all of it from the beat grid. Tetrads went from 1.3 points under on both datasets to 0.3 and 0.4 above. The snap is what puts the chords on the beats where the harmonic analysis and the viewer work ("Where the beat snap costs", below).
+- **BTC** (Park et al., ISMIR 2019; MIT): `jayg996/BTC-ISMIR19` at `2682317`, the large-vocabulary checkpoint, inference as in its `test.py`.
+- **ChordMini** (Phan, Jin, Liu and Dong, 2026; MIT): `ptnghia-j/ChordMini` at `aa6e3a8`, its two included checkpoints, `btc_model_best.pth` (a BTC trained with pseudo-labels and knowledge distillation) and `2e1d_model_best.pth` (ChordNet 2E1D), with the README's recommended inference settings.
+- **crema 0.2.0** (McFee and Bello, ISMIR 2017; BSD-2-Clause): `crema.analyze`, on Python 3.11 with TensorFlow 2.15 in an environment of its own, since it does not install on the Python chordotomy uses.
+
+Training data, as each publishes it: lv-chordia and crema on Isophonics, Billboard, RWC-Pop and USPOP; BTC on Isophonics, the Robbie Williams set and USPOP2002. None includes Tiny AAM or GuitarSet, both published later. Beat This!, which tracks chordotomy's model-engine beats, trained on GuitarSet's accompaniment takes, hence the held-out row (["Beat tracking"](evaluation-history.md#beat-tracking)). ChordMini's unlabeled audio is FMA, DALI and MAESTRO; its labeled set is not published, so an overlap with GuitarSet cannot be ruled out. BTC and ChordMini write no bass (a major chord as a bare root, which mir_eval reads as major), so `majmin_inv` is not compared.
+
+## Where the beat snap costs
+
+The same model frames, labels only (no bass), quantized onto different grids by the beat majority `beat_states` uses, majmin:
+
+| grid | Tiny AAM | GuitarSet |
+|---|---|---|
+| none, the frames' own runs | 0.947 | 0.893 |
+| librosa's tracker (the `dsp` engine's grid, and the model's until the Beat This! stage) | 0.934 | 0.872 |
+| librosa's tracker, halved | 0.939 | 0.884 |
+| Beat This! activation → librosa DP (the model engine, shipped) | 0.950 | 0.900 take held out, 0.902 with `final0` |
+| the reference's annotated beats | 0.961 | 0.906 |
+| the annotated beats, halved | 0.955 | 0.899 |
+| the reference's own chord segments | 0.964 | 0.932 |
+
+Snapping to a right beat grid gains: on the annotated beats the majority clears the frames' boundary jitter and scores 1.3 to 1.4 points above them. So the snap's cost against lv-chordia's own output was the beat tracker's: on librosa's grid, 2.7 points of Tiny AAM's majmin and 3.4 of GuitarSet's against the annotated grid, in the tracks the tracker gets wrong (a GuitarSet jazz take at 0.779 on librosa's beats and 1.000 on the annotated ones). Halving librosa's beats recovers 0.5 and 1.2 points, by giving a misplaced change a finer place to land. The model engine's grid, Beat This!'s activation through the same DP, recovers 1.6 and 2.8 points, which puts the snapped labels above lv-chordia's own frame output on both datasets, by 0.3 and 0.7 points (0.9 with `final0`). It is 1.1 and 0.6 points under the annotated beats. Of what is left on Tiny AAM, about 0.3 points is what the readings of Beat This!'s output that follow tempo gain over one tempo per file (["Tempo changes are not followed"](evaluation-history.md#tempo-changes-are-not-followed)). On GuitarSet, the takes that lose most against librosa's grid are fast jazz takes that Beat This! half-locks (["Beat tracking"](evaluation-history.md#beat-tracking)). The datasets cannot measure the other cost of a beat grid, a chord that changes between beats: every reference chord change in both lies within a quarter beat of an annotated beat (0 of 1,347 and 0 of 1,980 are further off), so a syncopated change, common in pop, is not scored here. The last row is the ceiling of label accuracy with no boundary error at all.

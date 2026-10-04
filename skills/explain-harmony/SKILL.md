@@ -93,7 +93,7 @@ Check `schema_version`. This skill is written for version 10:
 - **Below 2:** there is no key and there are no numerals either.
 - **Above 10:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 10, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+In every case other than 10, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/timeline-json.md`.
 
 The fields:
 
@@ -169,4 +169,5 @@ Then offer follow-ups:
 ## Additional Resources
 
 - **`references/moves.md`:** how to explain each kind of move, spelling, and figured bass.
-- **`${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`:** the full JSON schema and the analysis rules (how keys, roles, the secondary-dominant look-ahead and the held bass are decided).
+- **`${CLAUDE_PLUGIN_ROOT}/docs/timeline-json.md`:** the full JSON schema, and how the held bass is decided.
+- **`${CLAUDE_PLUGIN_ROOT}/docs/harmony.md`:** the analysis rules (how keys, roles and the secondary-dominant look-ahead are decided).

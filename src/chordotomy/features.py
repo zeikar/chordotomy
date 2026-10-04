@@ -233,7 +233,7 @@ def beat_features(y: np.ndarray, onset_envelope: np.ndarray | None = None) -> Fe
     is the same for both.
     """
     # One tempo per file, whichever envelope: a local tempo curve took syncopation over an unchanged
-    # pulse for a tempo change (docs/ARCHITECTURE.md, "Tempo changes are not followed"). The
+    # pulse for a tempo change (docs/evaluation-history.md, "Tempo changes are not followed"). The
     # default trim dropped the last two real beats of a synthesized clip.
     if onset_envelope is None:
         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=SR, hop_length=HOP, trim=False)
