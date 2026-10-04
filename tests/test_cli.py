@@ -48,7 +48,7 @@ def test_analyze_writes_the_timeline(clip, tmp_path) -> None:
     assert result.exit_code == 0
     assert "Wrote" in result.stdout
     data = json.loads(out.read_text())
-    assert data["schema_version"] == 10
+    assert data["schema_version"] == 11
     assert data["source"]["path"] == str(clip)
     assert data["source"]["url"] is None
 
@@ -60,10 +60,10 @@ def test_key_overrides_the_estimate(clip, tmp_path) -> None:
 
     assert result.exit_code == 0
     data = json.loads(out.read_text())
-    assert data["key"]["label"] == "A:min"
-    assert data["key"]["source"] == "given"
-    assert data["key"]["candidates"][0] == "C:maj"
-    assert data["keys"] == [{"start_beat": 0, "end_beat": len(data["beats"]), "label": "A:min"}]
+    assert data["global_key"]["label"] == "A:min"
+    assert data["global_key"]["source"] == "given"
+    assert data["global_key"]["candidates"][0] == "C:maj"
+    assert data["key_regions"] == [{"start_beat": 0, "end_beat": len(data["beats"]), "label": "A:min"}]
     assert {s["numeral"] for s in data["segments"]} == {"III"}
 
 
@@ -74,7 +74,7 @@ def test_flat_key_is_spelled_with_sharps(clip, tmp_path) -> None:
 
     assert result.exit_code == 0
     data = json.loads(out.read_text())
-    assert data["key"]["label"] == "A#:maj"
+    assert data["global_key"]["label"] == "A#:maj"
     assert {s["numeral"] for s in data["segments"]} == {"V/V"}
     assert {s["role"] for s in data["segments"]} == {"secondary_dominant"}
 
@@ -111,7 +111,7 @@ def test_source_url_is_recorded(clip, tmp_path, url) -> None:
     assert result.exit_code == 0
     data = json.loads(out.read_text())
     assert data["source"]["url"] == url
-    assert data["schema_version"] == 10
+    assert data["schema_version"] == 11
 
 
 @pytest.mark.parametrize(
@@ -334,7 +334,7 @@ def test_forced_write_keeps_the_existing_mode(clip, tmp_path) -> None:
 
     assert result.exit_code == 0
     assert out.stat().st_mode & 0o777 == 0o600
-    assert json.loads(out.read_text())["schema_version"] == 10
+    assert json.loads(out.read_text())["schema_version"] == 11
 
 
 @pytest.mark.parametrize("args", [[], ["--engine", "dsp"]], ids=["default", "dsp"])

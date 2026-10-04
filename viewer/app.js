@@ -303,9 +303,9 @@
   }
 
   // The key in force at a segment of `tl`: its region's. A given key, or a timeline with no
-  // regions, has only `tl.key`.
+  // regions, has only `tl.global_key`.
   function segmentKey(segment, tl = timeline) {
-    return Core.keyAt(tl.keys, segment.start_beat) ?? tl.key?.label ?? null;
+    return Core.keyAt(tl.key_regions, segment.start_beat) ?? tl.global_key?.label ?? null;
   }
 
   // A segment's chord as the strip names it, in the key in force.
@@ -351,7 +351,7 @@
   // The key select: a label fixes the key, "" (Estimated) estimates it again.
   function setKey(label) {
     const next = Edit.setKey(timeline, label || null);
-    const name = next.key ? Core.keyName(next.key.label) : "none";
+    const name = next.global_key ? Core.keyName(next.global_key.label) : "none";
     commitEdit(next, label ? `Key set to ${name}` : `Key estimated: ${name}`);
   }
 
@@ -416,7 +416,7 @@
   // The key, given (by --key or the select) or estimated. `candidates` is the estimator's ranking
   // either way, so its first is what choosing Estimated gives; it is empty with no chord.
   function renderKey() {
-    const key = timeline.key;
+    const key = timeline.global_key;
     const candidates = key ? key.candidates : [];
     const given = key?.source === "given";
     // The whole-song key. renderNow replaces it with the playhead's region, but never runs for a
@@ -428,7 +428,7 @@
     select.value = given ? key.label : "";
     // Given, the candidates' heading says so; the line above them is for the other cases.
     $("key-source").hidden = given && candidates.length > 0;
-    const changes = timeline.keys.length - 1;
+    const changes = timeline.key_regions.length - 1;
     const changed = changes === 1 ? "once" : `${changes} times`;
     const change = changes > 0 ? `; the key changes ${changed}` : "";
     $("key-source").textContent = candidates.length
@@ -440,13 +440,13 @@
     $("key-candidates-label").hidden = candidates.length === 0;
     fillList($("key-candidates"), candidates.map(Core.keyName));
     // Regions are listed only when the estimate found more than one; a given key has one.
-    const showRegions = !given && timeline.keys.length > 1;
+    const showRegions = !given && timeline.key_regions.length > 1;
     $("key-regions-label").hidden = !showRegions;
     $("key-regions").hidden = !showRegions;
     fillList(
       $("key-regions"),
       showRegions
-        ? timeline.keys.map(
+        ? timeline.key_regions.map(
             (region) =>
               `${Core.formatTime(timeline.beats[region.start_beat])} ${Core.keyName(region.label)}`,
           )

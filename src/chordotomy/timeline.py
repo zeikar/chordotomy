@@ -1,4 +1,4 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v10)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v11)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .chords import (
 )
 from .features import SR, beat_features, load_audio
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def chord_runs(segments: list[dict]) -> list[list[dict]]:
@@ -91,8 +91,8 @@ def analyze(
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "chordotomy", "version": __version__, "engine": recognizer},
         "source": {"path": str(path), "duration": duration, "url": source_url},
-        "key": key_info,
-        "keys": keys,
+        "global_key": key_info,
+        "key_regions": keys,
         "beats": beat_times,
         "segments": [
             {

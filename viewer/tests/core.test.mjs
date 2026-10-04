@@ -338,31 +338,37 @@ const withSegment = (fields, version = 4) => ({
   schema_version: version,
   generator: { name: "chordotomy", version: "0.0.0", ...(version >= 6 && { engine: DSP }) },
   source: { path: "song.mp3", duration: 1.5 },
-  key: { label: "F#:maj", source: "estimated", candidates: ["F#:maj", "C#:maj", "A#:min"] },
+  // Schema 11 renamed the key.
+  [version >= 11 ? "global_key" : "key"]: {
+    label: "F#:maj",
+    source: "estimated",
+    candidates: ["F#:maj", "C#:maj", "A#:min"],
+  },
   beats: [0.5, 1.0],
   segments: [{ ...SEGMENT, ...fields }],
 });
 
-test("schema versions 4 to 10 are accepted", () => {
+test("schema versions 4 to 11 are accepted", () => {
   const ok = {
-    schema_version: 10,
+    schema_version: 11,
     generator: { name: "chordotomy", version: "0.0.0", engine: DSP },
     source: { path: "song.mp3", duration: 1, url: null },
-    key: null,
-    keys: [],
+    global_key: null,
+    key_regions: [],
     beats: [],
     segments: [],
   };
   assert.equal(Core.timelineProblem(ok), null);
-  const { keys, ...nine } = { ...ok, schema_version: 9 }; // the key regions came with schema 10
+  // A 10 named them key and keys, and the key regions came with it.
+  const { global_key: key, key_regions: keys, ...rest } = ok;
+  assert.equal(Core.timelineProblem({ ...rest, schema_version: 10, key, keys }), null);
+  const nine = { ...rest, schema_version: 9, key };
   assert.equal(Core.timelineProblem(nine), null);
-  assert.equal(Core.timelineProblem({ ...ok, schema_version: 8 }), null);
-  assert.equal(Core.timelineProblem({ ...ok, schema_version: 7 }), null);
-  assert.equal(Core.timelineProblem({ ...ok, schema_version: 6 }), null);
-  assert.equal(Core.timelineProblem({ ...ok, schema_version: 5 }), null);
-  assert.equal(Core.timelineProblem({ ...ok, schema_version: 4 }), null);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 3 }), /schema version 3.*analyze again/);
-  assert.match(Core.timelineProblem({ ...ok, schema_version: 11 }), /versions 4 to 10.*newer chordotomy/);
+  for (const version of [8, 7, 6, 5, 4]) {
+    assert.equal(Core.timelineProblem({ ...nine, schema_version: version }), null);
+  }
+  assert.match(Core.timelineProblem({ ...nine, schema_version: 3 }), /schema version 3.*analyze again/);
+  assert.match(Core.timelineProblem({ ...ok, schema_version: 12 }), /versions 4 to 11.*newer chordotomy/);
   assert.match(Core.timelineProblem({ key: null }), /no schema_version/);
   assert.match(Core.timelineProblem([]), /no schema_version/);
   assert.match(Core.timelineProblem({ schema_version: 4 }), /no beats or segments/);
@@ -382,51 +388,66 @@ test("a 9 carries a source url that is null or a string", () => {
   assert.equal(Core.timelineProblem({ ...withSegment({ edited: false }, 8), source }), null);
 });
 
-// The one-segment timeline as a 10: its source url, its unedited segment, and its key, F♯ major,
+// The one-segment timeline as an 11: its source url, its unedited segment, and its key, F♯ major,
 // as the one region over its two beats.
 const region = (start_beat, end_beat, label = "F#:maj") => ({ start_beat, end_beat, label });
-const ten = {
-  ...withSegment({ edited: false }, 10),
+const eleven = {
+  ...withSegment({ edited: false }, 11),
   source: { path: "song.mp3", duration: 1.5, url: null },
-  keys: [region(0, 2)],
+  key_regions: [region(0, 2)],
 };
 
-test("a 10's key regions tile the beats and agree with its key", () => {
-  const problem = (fields) => Core.timelineProblem({ ...ten, ...fields });
+test("an 11's key regions tile the beats and agree with its key", () => {
+  const problem = (fields) => Core.timelineProblem({ ...eleven, ...fields });
   assert.equal(problem({}), null);
-  const { keys, ...missing } = ten;
-  assert.match(Core.timelineProblem(missing), /no keys list/);
-  assert.match(problem({ keys: region(0, 2) }), /no keys list/);
+  const { key_regions, ...missing } = eleven;
+  assert.match(Core.timelineProblem(missing), /no key_regions list/);
+  assert.match(problem({ key_regions: region(0, 2) }), /no key_regions list/);
   // Empty exactly when there is no key.
-  assert.match(problem({ keys: [] }), /a key but no key regions/);
-  assert.match(problem({ key: null }), /key regions but no key/);
-  assert.equal(problem({ key: null, keys: [] }), null);
+  assert.match(problem({ key_regions: [] }), /a key but no key regions/);
+  assert.match(problem({ global_key: null }), /key regions but no key/);
+  assert.equal(problem({ global_key: null, key_regions: [] }), null);
   // Each region is an object holding what chordotomy writes.
-  assert.match(problem({ keys: [null] }), /key region 1 isn't an object/);
-  assert.match(problem({ keys: [region(0, "2")] }), /key region 1 has a missing or invalid end_beat/);
-  assert.match(problem({ keys: [region(0, 2, "Gb:maj")] }), /key region 1 has a missing or invalid label/);
+  assert.match(problem({ key_regions: [null] }), /key region 1 isn't an object/);
+  assert.match(problem({ key_regions: [region(0, "2")] }), /key region 1 has a missing or invalid end_beat/);
+  assert.match(problem({ key_regions: [region(0, 2, "Gb:maj")] }), /key region 1 has a missing or invalid label/);
   // They tile the beats as the segments do.
-  assert.match(problem({ keys: [region(0, 0), region(0, 2)] }), /key region 1 lies outside its beats/);
-  assert.match(problem({ keys: [region(0, 3)] }), /key region 1 lies outside its beats/);
-  assert.match(problem({ keys: [region(1, 2)] }), /key region 1 doesn't start where/); // a gap
+  assert.match(problem({ key_regions: [region(0, 0), region(0, 2)] }), /key region 1 lies outside its beats/);
+  assert.match(problem({ key_regions: [region(0, 3)] }), /key region 1 lies outside its beats/);
+  assert.match(problem({ key_regions: [region(1, 2)] }), /key region 1 doesn't start where/); // a gap
   const overlap = [region(0, 2), region(1, 2, "C#:maj")];
-  assert.match(problem({ keys: overlap }), /key region 2 doesn't start where/);
-  assert.match(problem({ keys: [region(0, 1)] }), /key region 1 stops short of the last beat/);
+  assert.match(problem({ key_regions: overlap }), /key region 2 doesn't start where/);
+  assert.match(problem({ key_regions: [region(0, 1)] }), /key region 1 stops short of the last beat/);
   // No boundary inside a segment: playback reads a segment's key at its first beat.
   const inside = [region(0, 1), region(1, 2, "C#:maj")];
-  assert.match(problem({ keys: inside }), /key region 2 starts inside a segment/);
+  assert.match(problem({ key_regions: inside }), /key region 2 starts inside a segment/);
   // A lone region is the key itself, so the key shown never disagrees with the one playing.
-  assert.match(problem({ keys: [region(0, 2, "C#:maj")] }), /region is labelled C#:maj, but its key is F#:maj/);
+  assert.match(problem({ key_regions: [region(0, 2, "C#:maj")] }), /region is labelled C#:maj, but its key is F#:maj/);
+  assert.match(problem({ global_key: { ...eleven.global_key, label: "Gb:maj" } }), /global_key Gb:maj/);
 });
 
-test("a 10's given key is one region; an estimated key may change at a segment", () => {
-  const first = { ...ten.segments[0], end_beat: 1, end_time: 1.0 };
-  const second = { ...ten.segments[0], start_beat: 1, start_time: 1.0 };
-  const two = { ...ten, segments: [first, second], keys: [region(0, 1), region(1, 2, "C#:maj")] };
+test("a 10's key and key regions are key and keys, checked alike", () => {
+  const { global_key: key, key_regions: keys, ...rest } = eleven;
+  const ten = { ...rest, schema_version: 10, key, keys };
+  assert.equal(Core.timelineProblem(ten), null);
+  const { keys: dropped, ...missing } = ten;
+  assert.match(Core.timelineProblem(missing), /no keys list/);
+  assert.match(Core.timelineProblem({ ...ten, keys: [region(0, 1)] }), /key region 1 stops short/);
+  assert.match(Core.timelineProblem({ ...ten, key: { ...key, label: "Gb:maj" } }), /key Gb:maj/);
+  // An 11's names are not a 10's, nor a 10's an 11's.
+  assert.match(Core.timelineProblem({ ...eleven, schema_version: 10 }), /no keys list/);
+  assert.match(Core.timelineProblem({ ...ten, schema_version: 11 }), /no key_regions list/);
+});
+
+test("an 11's given key is one region; an estimated key may change at a segment", () => {
+  const first = { ...eleven.segments[0], end_beat: 1, end_time: 1.0 };
+  const second = { ...eleven.segments[0], start_beat: 1, start_time: 1.0 };
+  const regions = [region(0, 1), region(1, 2, "C#:maj")];
+  const two = { ...eleven, segments: [first, second], key_regions: regions };
   assert.equal(Core.timelineProblem(two), null);
-  const given = { ...two, key: { ...two.key, source: "given" } };
+  const given = { ...two, global_key: { ...two.global_key, source: "given" } };
   assert.match(Core.timelineProblem(given), /given key must be one region, not 2/);
-  assert.equal(Core.timelineProblem({ ...given, keys: [region(0, 2)] }), null);
+  assert.equal(Core.timelineProblem({ ...given, key_regions: [region(0, 2)] }), null);
 });
 
 test("the key at a beat is its region's, and none outside them", () => {
@@ -597,17 +618,17 @@ test("beats must ascend and segments must tile them with matching times", () => 
 
 test("an odd value anywhere gets a reason, never a throw", () => {
   const odd = [null, 0, -1, "", "x", true, [], [null], {}, { label: "C:maj" }];
-  const timeline = ten;
-  const fields = ["generator", "source", "key", "keys", "beats", "segments"];
+  const timeline = eleven;
+  const fields = ["generator", "source", "global_key", "key_regions", "beats", "segments"];
   const places = [
     ...fields.map((field) => (value) => ({ ...timeline, [field]: value })),
     ...Object.keys(timeline.segments[0]).map((field) => (value) => ({
       ...timeline,
       segments: [{ ...timeline.segments[0], [field]: value }],
     })),
-    ...Object.keys(timeline.keys[0]).map((field) => (value) => ({
+    ...Object.keys(timeline.key_regions[0]).map((field) => (value) => ({
       ...timeline,
-      keys: [{ ...timeline.keys[0], [field]: value }],
+      key_regions: [{ ...timeline.key_regions[0], [field]: value }],
     })),
   ];
   for (const place of places) {

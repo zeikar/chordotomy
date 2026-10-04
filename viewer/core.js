@@ -9,9 +9,9 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  // The viewer reads 4 to 10 and writes 10; an older file is upgraded in memory (see Edit.upgrade).
+  // The viewer reads 4 to 11 and writes 11; an older file is upgraded in memory (see Edit.upgrade).
   const MIN_SCHEMA_VERSION = 4;
-  const SCHEMA_VERSION = 10;
+  const SCHEMA_VERSION = 11;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
   // and, if its numeral suffix is new, in NUMERAL_SUFFIX, numeralParts' pattern and app.js's
@@ -350,7 +350,7 @@ const Core = ((Harmony) => {
     target: nullOr(isText),
   };
   const SEGMENT_FIELDS_5 = { ...SEGMENT_FIELDS, edited: (value) => typeof value === "boolean" };
-  // What a key region (schema 10) holds.
+  // What a key region (schema 10 on) holds.
   const REGION_FIELDS = {
     start_beat: Number.isInteger,
     end_beat: Number.isInteger,
@@ -391,10 +391,12 @@ const Core = ((Harmony) => {
       return "This timeline's generator has a missing or invalid engine.";
     }
     // Everything downstream (names, numerals, the chord sound) assumes the schema's vocabulary.
-    // The key is null when there is no chord to estimate it from.
-    const { key } = data;
+    // The key is null when there is no chord to estimate it from. An 11 calls the key
+    // `global_key` and the key regions `key_regions`; a 10 called them `key` and `keys`.
+    const keyField = version >= 11 ? "global_key" : "key";
+    const key = data[keyField];
     if (key != null && !Harmony.KEYS.includes(key.label)) {
-      return `This timeline has a key chordotomy doesn't write: key ${key.label}.`;
+      return `This timeline has a key chordotomy doesn't write: ${keyField} ${key.label}.`;
     }
     if (
       key != null &&
@@ -436,7 +438,9 @@ const Core = ((Harmony) => {
         return `This timeline's ${where} has times that don't match its beats.`;
       }
     }
-    return version >= 10 ? keysProblem(data) : null;
+    if (version < 10) return null;
+    const regionsField = version >= 11 ? "key_regions" : "keys";
+    return regionsProblem(key, data[regionsField], regionsField, beats, segments);
   }
 
   // Why the span at `index` of `spans` (segments or key regions) doesn't take its place in a
@@ -455,10 +459,10 @@ const Core = ((Harmony) => {
     return null;
   }
 
-  // A reason a 10's key regions can't be shown, or null if they can. The segments are known to
-  // tile the beats by now.
-  function keysProblem({ key, keys, beats, segments }) {
-    if (!Array.isArray(keys)) return "This timeline has no keys list.";
+  // A reason the key regions (a 10's `keys`, an 11's `key_regions`) can't be shown, or null if they
+  // can. The segments are known to tile the beats by now.
+  function regionsProblem(key, keys, field, beats, segments) {
+    if (!Array.isArray(keys)) return `This timeline has no ${field} list.`;
     // The key is null, and the regions none, only when there is no chord to estimate from.
     if (key == null) return keys.length ? "This timeline has key regions but no key." : null;
     if (!keys.length) return "This timeline has a key but no key regions.";

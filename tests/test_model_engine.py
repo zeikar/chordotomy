@@ -67,7 +67,7 @@ def test_the_model_engine_writes_its_chords_and_version(
 
     result = analyze(_write(tmp_path, mix(progression)), engine="model")
 
-    assert result["schema_version"] == 10
+    assert result["schema_version"] == 11
     assert {s["bass"] for s in result["segments"]} <= {None, *ROOTS}
     assert result["generator"]["engine"] == {
         "name": "lv-chordia",

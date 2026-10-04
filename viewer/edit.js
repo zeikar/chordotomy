@@ -16,25 +16,31 @@ const Edit = ((Harmony) => {
     Harmony.ROOTS.flatMap((root) => Harmony.QUALITY_NAMES.map((quality) => `${root}:${quality}`)),
   );
 
-  // A schema-4 to 9 timeline as a 10, fields in timeline.py's order. A 10 adds `keys`: an older
-  // file was analyzed in its one key, so that is its one region over the beats (none when it has
-  // no key). Before 9 there was no `source.url`, so it is null whatever an older file carried,
-  // and a stray string never survives. Before 6 only the DSP wrote files, so the engine is the
-  // DSP at the chordotomy version that wrote the file. A 4 had no edits, so every segment gets
-  // `edited: false`, last. A 10 is returned as is.
+  // A schema-4 to 10 timeline as an 11, fields in timeline.py's order. An 11 calls the whole
+  // song's key `global_key` and the key regions `key_regions`, which a 10 called `key` and `keys`.
+  // Before 10 there were no regions: an older file was analyzed in its one key, so that is its one
+  // region over the beats (none when it has no key). Before 9 there was no `source.url`, so it is
+  // null whatever an older file carried, and a stray string never survives. Before 6 only the DSP
+  // wrote files, so the engine is the DSP at the chordotomy version that wrote the file. A 4 had
+  // no edits, so every segment gets `edited: false`, last. An 11 is returned as is.
   function upgrade(data) {
     const version = data.schema_version;
-    if (version === 10) return data;
+    if (version === 11) return data;
     const { generator, key, beats } = data;
     return {
-      schema_version: 10,
+      schema_version: 11,
       generator:
         version < 6
           ? { ...generator, engine: { name: "dsp", version: generator.version } }
           : generator,
       source: version < 9 ? { ...data.source, url: null } : data.source,
-      key,
-      keys: key == null ? [] : [{ start_beat: 0, end_beat: beats.length, label: key.label }],
+      global_key: key,
+      key_regions:
+        version === 10
+          ? data.keys
+          : key == null
+            ? []
+            : [{ start_beat: 0, end_beat: beats.length, label: key.label }],
       beats,
       segments:
         version === 4
@@ -76,12 +82,12 @@ const Edit = ((Harmony) => {
     const segments = runs.flatMap((run, index) =>
       run.map((segment) => withAnalysis(segment, analyses[index])),
     );
-    return { ...timeline, key, keys, segments };
+    return { ...timeline, global_key: key, key_regions: keys, segments };
   }
 
   // The key the user or --key fixed, or null when it is estimated or there is none.
   function givenKey(timeline) {
-    return timeline.key?.source === "given" ? timeline.key.label : null;
+    return timeline.global_key?.source === "given" ? timeline.global_key.label : null;
   }
 
   // The fields already exist on a segment, so spreading over them keeps the schema's order.
@@ -171,7 +177,8 @@ const Edit = ((Harmony) => {
     if (label === givenKey(timeline) || (label !== null && !Harmony.KEYS.includes(label))) {
       return timeline;
     }
-    return reanalyze({ ...timeline, key: label === null ? null : { label, source: "given" } });
+    const key = label === null ? null : { label, source: "given" };
+    return reanalyze({ ...timeline, global_key: key });
   }
 
   // Undo keeps whole timelines rather than inverse edits: they are small, the snapshots share

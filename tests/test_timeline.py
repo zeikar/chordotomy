@@ -51,12 +51,12 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
         "schema_version",
         "generator",
         "source",
-        "key",
-        "keys",
+        "global_key",
+        "key_regions",
         "beats",
         "segments",
     ]
-    assert result["schema_version"] == 10
+    assert result["schema_version"] == 11
     assert result["generator"] == {
         "name": "chordotomy",
         "version": __version__,
@@ -70,8 +70,8 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     beats = result["beats"]
     assert len(beats) >= 10
     assert abs(np.median(np.diff(beats)) - 0.5) <= 0.025
-    assert result["keys"] == [
-        {"start_beat": 0, "end_beat": len(beats), "label": result["key"]["label"]}
+    assert result["key_regions"] == [
+        {"start_beat": 0, "end_beat": len(beats), "label": result["global_key"]["label"]}
     ]
 
     segments = result["segments"]
@@ -118,7 +118,7 @@ def test_analyze_labels_the_progression(synth, tmp_path) -> None:
     result = analyze(_write(tmp_path, synth(progression)))
 
     json.dumps(result)
-    key = result["key"]
+    key = result["global_key"]
     assert key["label"] == "C:maj"
     assert key["source"] == "estimated"
     assert key["candidates"][0] == "C:maj"
@@ -133,7 +133,7 @@ def test_analyze_labels_the_progression(synth, tmp_path) -> None:
 def test_a_key_change_is_written_as_two_regions(synth, tmp_path) -> None:
     # The issue's half-step ending. The E section reads 36 in E and 0 in F, the F section 48 in F
     # and 0 in E: two regions score 36 + 48 - 24 = 60 against 48 all in F. So the whole song is F
-    # major, and the E section's numerals come from its region, not from `key`.
+    # major, and the E section's numerals come from its region, not from `global_key`.
     e_section = [(label, 2) for label in ("E:maj", "B:maj", "A:maj", "B:maj") * 2]
     f_section = [(label, 2) for label in ("F:maj", "C:maj", "A#:maj", "C:maj") * 2]
     progression = [*e_section, *f_section, ("F:maj", 4)]
@@ -141,13 +141,13 @@ def test_a_key_change_is_written_as_two_regions(synth, tmp_path) -> None:
     result = analyze(_write(tmp_path, synth(progression)))
 
     json.dumps(result)
-    key, segments = result["key"], result["segments"]
+    key, segments = result["global_key"], result["segments"]
     assert [s["chord"] for s in segments] == [label for label, _ in progression]
     assert key["source"] == "estimated"
     assert key["label"] == key["candidates"][0] == "F:maj"
     # The E section has no F, so its first F starts the F section.
     change = next(s["start_beat"] for s in segments if s["chord"] == "F:maj")
-    assert result["keys"] == [
+    assert result["key_regions"] == [
         {"start_beat": 0, "end_beat": change, "label": "E:maj"},
         {"start_beat": change, "end_beat": len(result["beats"]), "label": "F:maj"},
     ]
@@ -355,7 +355,7 @@ def test_a_ii_v_i_of_sevenths_keeps_its_sevenths(synth, tmp_path) -> None:
     result = analyze(_write(tmp_path, synth(progression)))
 
     segments = result["segments"]
-    assert result["key"]["label"] == "C:maj"
+    assert result["global_key"]["label"] == "C:maj"
     assert [s["chord"] for s in segments] == ["D:min7", "G:7", "C:maj7"]
     assert [s["numeral"] for s in segments] == ["ii7", "V7", "Imaj7"]
     assert [s["inversion"] for s in segments] == ["root", "root", "root"]
@@ -750,7 +750,7 @@ def test_a_heard_7sus4_gets_its_numeral_and_inversion(
     result = analyze(_write(tmp_path, synth(progression)), engine="model")
 
     segments = result["segments"]
-    assert result["key"]["label"] == "D:maj"
+    assert result["global_key"]["label"] == "D:maj"
     assert [s["chord"] for s in segments] == ["D:maj", "A:sus4(b7)", "A:7", "D:maj"]
     assert [s["bass"] for s in segments] == ["D", "G", "A", "D"]
     assert [s["inversion"] for s in segments] == ["root", "third", "root", "root"]
