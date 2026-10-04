@@ -171,6 +171,25 @@ The chord is neither diatonic, nor a secondary dominant, nor borrowed. Describe 
 
 Chromatic labels are the likeliest extraction errors, unless the segment is `edited`, in which case the chord is the user's. Otherwise, when a segment's `candidates` include a diatonic chord, mention it as the alternative reading.
 
+## Key changes (`keys`)
+
+Each region is one key; every numeral, role, function and target in it is relative to that region's key. A key change is a region boundary in the JSON, and `key` is only the whole-song estimate. Whether the music modulates is a reading the JSON doesn't make: say "key change" for the boundary and "modulation" only for your reading of the music. Name the relation between the two labels, from the root motion:
+
+- **A half-step lift:** the new tonic is a half step up (E → F).
+- **Up a minor third:** the new tonic is three half steps up (E → G).
+- **The parallel or relative key:** the same tonic with the other mode (C major → C minor), or the mode's relative (C major → A minor). The region search never moves straight from a key to its relative, though neighbouring regions can still be relatives after a bridging stretch the estimator labelled.
+- **A fifth up or down:** C → G, C → F.
+- Anything else: give the two keys and the interval, and don't force a name.
+
+Read how it was approached from the chords either side, naming the last chords before and the first after:
+
+- **Direct:** the old key's last chord is followed at once by the new key's tonic or its dominant, with nothing shared.
+- **Pivot-chord:** the chord on the boundary is diatonic in both keys (Am is vi in C and ii in G). A chord at a boundary belongs to exactly one region in the JSON; call it a pivot in prose when it fits both, and say which region holds it.
+
+Keep to what the JSON states: the times, the labels, the chords and their numerals. Don't say why the music modulates, and don't add a modulation the regions don't show.
+
+A section centred on vi inside one region: no key change was detected. The relative-key limit above means the region search cannot tell such a passage from a modulation to the relative key. Describe the vi emphasis you see, the chords and their weight, and don't decide whether the music modulates.
+
 ## Inversions and bass lines
 
 - **First inversion** (third in the bass): lighter than root position, and it usually lets the bass move by step, as in C – G/B – Am.

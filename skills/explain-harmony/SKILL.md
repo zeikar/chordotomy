@@ -44,7 +44,7 @@ yt-dlp runs through `uvx`, from uv's cache, so nothing is installed on `PATH`, a
 2. **Download.** In the current working directory, run `uvx --from 'yt-dlp[default,deno]@latest' yt-dlp --no-playlist -I 1 -x --audio-format mp3 --print after_move:webpage_url --print after_move:filepath '<url>'` with a timeout of up to 10 minutes. `@latest` takes the newest yt-dlp on every run, since an old one stops working when YouTube changes, and the `deno` extra brings the JavaScript runtime yt-dlp needs for YouTube. The first run fetches them, about 40 MB, into uv's cache; later runs reuse it. It fetches one video's audio as mp3, since the decoder reads wav, flac, ogg and mp3 but not m4a or webm; for a playlist or channel link with no video in it, that is the first video, so tell the user which. It prints two lines: the video's canonical page URL (`<webpage_url>`), then the file's absolute path, named `<title> [<id>].mp3`. The file is in the current directory, so use its basename as `<audio>` from here on: an absolute path would put the user's home directory in `source.path` of a timeline that may be shared.
 3. **If yt-dlp fails,** show its message and stop. Report a private, removed or restricted video to the user as such; don't work around it.
 4. **Use or make the timeline.** Apply the "Given audio" rules to `<audio>`: an existing `<stem>.edited.chords.json`, else `<stem>.chords.json`, is used without re-running. With none, run the analyze command chosen above with `--source-url '<webpage_url>'` appended: the printed page URL, not the pasted one, which may carry `list=`, `t=` or `si=` parameters. Append it to every analyze run on this file, a keyed or `--force` one too. For an existing timeline, check `schema_version` and `source.url`, which the first line of Step 2's compact view shows:
-   - **9, with `source.url` `null`:** first write `<webpage_url>` into it with the snippet below, `<timeline>` being its path. It changes that one field and keeps every edit.
+   - **9 or 10, with `source.url` `null`:** first write `<webpage_url>` into it with the snippet below, `<timeline>` being its path. It changes that one field and keeps every edit.
    - **`source.url` set:** leave it. If it differs from `<webpage_url>`, tell the user both.
    - **Any other schema:** leave it as it is. Below 9, tell the user that this timeline carries no link to the video.
 
@@ -54,8 +54,8 @@ import json, os, shutil, sys, tempfile
 path, url = sys.argv[1], sys.argv[2]
 with open(path, encoding="utf-8") as f:
     d = json.load(f)
-if d.get("schema_version") != 9 or d["source"]["url"] is not None:
-    sys.exit("left as it is: not schema 9 with source.url null")
+if d.get("schema_version") not in (9, 10) or d["source"]["url"] is not None:
+    sys.exit("left as it is: not schema 9 or 10 with source.url null")
 d["source"]["url"] = url
 data = (json.dumps(d, indent=2, ensure_ascii=False) + "\n").encode("utf-8", "backslashreplace")
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), suffix=".tmp")
@@ -77,11 +77,12 @@ EOF
 The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines. Read a compact view instead of the raw file:
 
 ```bash
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| source", json.dumps(d.get("source"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| source", json.dumps(d.get("source"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False), "| keys", json.dumps([[d["beats"][r["start_beat"]], r["label"]] for r in d.get("keys") or []], ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 9:
+Check `schema_version`. This skill is written for version 10:
 
+- **Below 10:** there is no `keys`; every numeral is relative to the one `key`.
 - **Below 9:** there is no `source.url`.
 - **Below 8:** there is no `sus4(b7)` and no `7sus4` numeral; an lv-chordia timeline below 8 wrote a 7sus4 as `sus4`.
 - **Below 7:** there is no `aug`, `dim` (the triad) or `sus2`, and no `+`, bare `°` or `sus2` numerals; an lv-chordia timeline below 7 wrote a diminished triad as `dim7`, an augmented chord as `maj` and a sus2 as the sus4 a fifth up.
@@ -90,21 +91,22 @@ Check `schema_version`. This skill is written for version 9:
 - **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
 - **Below 3:** there is no `bass` and no `inversion`.
 - **Below 2:** there is no key and there are no numerals either.
-- **Above 9:** this skill may be out of date. Explain only the fields listed here.
+- **Above 10:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 9, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
+In every case other than 10, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/ARCHITECTURE.md`, in the section "The chord-timeline JSON".
 
 The fields:
 
 - **`generator.engine`:** the chord recognizer that produced `chord` and `candidates`: `name` (`dsp`, chordotomy's own DSP front end, or `lv-chordia`, a pretrained model) and `version` (chordotomy's version for `dsp`, the lv-chordia package version for `lv-chordia`).
 - **`source.url`:** the web page the recording came from, `null` for a local file.
-- **`key`:** `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
+- **`key`:** the whole-song estimate: `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
+- **`keys`:** the key regions, contiguous over the beats: `start_beat`, `end_beat`, `label`. The compact view prints each as `[start_time, label]`. One region when `key.source` is `given`; `[]` when `key` is `null`.
 - **Per segment:**
   - `start_time`, `end_time`
   - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on thirteen qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7`, `sus4`, `aug`, `dim`, `sus2` and `sus4(b7)`.
   - `bass`, `inversion`
   - `edited` (`true` when the user corrected `chord` and `bass` in the viewer; `candidates` is then only what the analyzer heard, so `candidates[0]` may differ from `chord`)
-  - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`. `secondary_dominant` also covers secondary leading-tone chords: numeral `vii°/x`, `vii°7/x` or `viiø7/x`, with `target` set.
+  - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`, all relative to the key region that contains the segment. `secondary_dominant` also covers secondary leading-tone chords: numeral `vii°/x`, `vii°7/x` or `viiø7/x`, with `target` set.
 - **`N`:** a segment with no chord: silence, or a passage with no clear harmony, such as a drum break.
 
 ## Step 3: Pick the moves worth noticing
@@ -113,18 +115,21 @@ Consecutive segments can repeat a `chord` when the bass changes under it. Treat 
 
 Highlight, in time order:
 
-1. **Every secondary dominant or leading-tone run (`role: secondary_dominant`), with its next chord.** An `N` next means the chord did not resolve.
-2. **Every `borrowed` run.**
-3. **Every `chromatic` run.**
-4. **Bass lines.** Look for three or more consecutive `bass` values, each 1 or 2 semitones from the last, with no `null` in between. The bass has no octave, so call a line descending or ascending only when every step goes the same way around the pitch-class circle.
-5. **Every `non_chord` bass.**
-6. **Inversions worth a word.** For example, a second-inversion tonic right before V, or a V7 in third inversion.
+1. **Every key change,** when `keys` has more than one region: the time, the two keys, and the last chords before and the first after.
+2. **Every secondary dominant or leading-tone run (`role: secondary_dominant`), with its next chord.** An `N` next means the chord did not resolve.
+3. **Every `borrowed` run.**
+4. **Every `chromatic` run.**
+5. **Bass lines.** Look for three or more consecutive `bass` values, each 1 or 2 semitones from the last, with no `null` in between. The bass has no octave, so call a line descending or ascending only when every step goes the same way around the pitch-class circle.
+6. **Every `non_chord` bass.**
+7. **Inversions worth a word.** For example, a second-inversion tonic right before V, or a V7 in third inversion.
 
-Group repeats. When the same run is followed by the same next chord again, explain it once and list where it recurs ("at 0:12, 0:44 and 1:30"). If there is nothing in categories 1–3, say the harmony stays diatonic, and point out the V → I and IV → I motions instead.
+Group repeats. When the same run is followed by the same next chord again, explain it once and list where it recurs ("at 0:12, 0:44 and 1:30"). If there is nothing in categories 2–4, say the harmony stays diatonic, and point out the V → I and IV → I motions instead.
+
+A section centred on vi inside one region: no key change was detected, which does not rule out a modulation to the relative key. Describe the vi emphasis (see `references/moves.md`, "Key changes").
 
 ## Step 4: Explain each move
 
-Consult **`references/moves.md`** for how to explain each kind of move and read a `non_chord` bass. It also covers resolutions and chains, spelling, and figured-bass numerals.
+Consult **`references/moves.md`** for how to explain each kind of move, including key changes, and read a `non_chord` bass. It also covers resolutions and chains, spelling, and figured-bass numerals.
 
 Rules:
 
@@ -151,7 +156,8 @@ Moves worth noticing
 (The labels were extracted automatically by <engine>, except the segments the user corrected; <any caveat worth making>.)
 ```
 
-- **Progression line:** the numerals of the chord runs in order, with each segment's inversion figure. Collapse immediate repeats. For a long song, show the first 16 and say that it continues.
+- **Key line:** the whole-song `key`, as in the shape above. When `keys` has several regions, add a line "Regions: E major → G major (0:47) → …"; `key` need not be the first region's key.
+- **Progression line:** the numerals of the chord runs in order, with each segment's inversion figure. Collapse immediate repeats. Mark each key change with the new key and its time in brackets: "… – V7 – I [G major, 0:47] vi – …". Numerals after a mark are relative to the new key. For a long song, show the first 16 and say that it continues.
 - **Highlights:** list them in time order.
 - **Caveat line:** `<engine>` comes from `generator.engine`: its name and `version` for `lv-chordia` ("extracted automatically by lv-chordia 1.1.0"), and "chordotomy's DSP front end" for `dsp` and for a file below schema 6.
 
