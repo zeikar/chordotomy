@@ -1,6 +1,6 @@
 // The harmonic analysis, ported so the viewer can re-analyze a corrected timeline: key estimation,
-// numerals, roles and targets (src/chordotomy/harmony.py), the bass's position in a chord
-// (chords.inversion), and the run grouping the analysis reads (timeline.chord_runs and
+// key regions, numerals, roles and targets (src/chordotomy/harmony.py), the bass's position in a
+// chord (chords.inversion), and the run grouping the analysis reads (timeline.chord_runs and
 // timeline.progression). Tables and functions keep Python's names. Python is the reference and
 // tests/harmony_vectors.json pins this port to it (viewer/tests/harmony.test.mjs), so a rule
 // change starts in Python and ends with regenerating that file.
@@ -46,6 +46,24 @@ const Harmony = (() => {
   // diatonic weighs 0), so time spent on I, IV and V decides between keys that share most of
   // their triads.
   const DEGREE_WEIGHT = { 0: 3, 5: 2, 7: 2 };
+  // What a key change costs, in the unit of the weights (beats × degree weight): a stretch becomes
+  // a region of its own only when it reads more than that much better in another key. Two real
+  // songs put the working range at 16–32, and synthesized ones bound it: a ii–V7/ii vamp and
+  // Fm–Bb inside a C-major verse (36 better in D minor) split at 16 and hold at 24; a 20-beat
+  // half-step ending, F–C–Bb–C ×2, F (48 in F, 0 in the song's E major), is kept through 44 and
+  // lost at 48, where it gains only what the change costs; and a C-major verse with an A-minor
+  // chorus, Am–Dm–E7 ×4, stays one region at 24 only with the relative rule below.
+  const KEY_CHANGE_PENALTY = 24;
+  // Relative keys share a scale, so only the degree weights tell them apart, and a switch between
+  // them follows where the time goes inside a section rather than a modulation: a real song split
+  // into C-sharp minor and E major over chords both keys share. So no region switches straight to
+  // its relative. A third key can still bridge them: at a penalty of 12 to 15 the A-minor chorus
+  // above goes C, D minor, C, as D minor reads it 32 better than C, and the estimator names that
+  // region A minor.
+  const RELATIVE = Object.fromEntries(
+    ROOTS.map((root, i) => [`${root}:maj`, `${ROOTS[(i + 9) % 12]}:min`]),
+  );
+  for (const [major, minor] of Object.entries(RELATIVE)) RELATIVE[minor] = major;
   // Accidentals are relative to the key's own scale, so minor spells its natural-minor degrees
   // plain.
   const NUMERALS = {
@@ -155,6 +173,15 @@ const Harmony = (() => {
     return `${root}:${triad}`;
   }
 
+  // One beat's weight, shared by the estimator and the key regions.
+  function weight(label, key) {
+    if (label === "N") return 0;
+    const [tonic, mode] = key.split(":");
+    const [root, quality] = label.split(":");
+    const offset = mod(ROOTS.indexOf(root) - ROOTS.indexOf(tonic), 12);
+    return isDiatonic(offset, quality, mode) ? (DEGREE_WEIGHT[offset] ?? 1) : 0;
+  }
+
   // Rank all 24 keys for a list of [chord label, beats]; empty if there is no chord.
   function estimateKey(progression) {
     const beats = {};
@@ -169,14 +196,8 @@ const Harmony = (() => {
     const first = tonicTriad(progression.find(([label]) => label !== "N")[0]);
 
     const rank = (key) => {
-      const [tonic, mode] = key.split(":");
-      const tonicIndex = ROOTS.indexOf(tonic);
       let score = 0;
-      for (const [label, n] of Object.entries(beats)) {
-        const [root, quality] = label.split(":");
-        const offset = mod(ROOTS.indexOf(root) - tonicIndex, 12);
-        if (isDiatonic(offset, quality, mode)) score += n * (DEGREE_WEIGHT[offset] ?? 1);
-      }
+      for (const [label, n] of Object.entries(beats)) score += n * weight(label, key);
       return [score, tonicBeats[key] || 0, first === key ? 1 : 0];
     };
     const ranks = KEYS.map(rank);
@@ -186,6 +207,70 @@ const Harmony = (() => {
     return KEYS.map((_, index) => index)
       .sort((a, b) => compare(ranks[b], ranks[a]) || a - b)
       .map((index) => KEYS[index]);
+  }
+
+  // A Viterbi path over the 24 keys, one per run, scoring the runs' weights in their keys less
+  // `penalty` per change. A path's score is the pair [that sum, minus its changes], so of two paths
+  // that sum the same the one with fewer changes wins: a change that gains only the penalty never
+  // splits, wherever it sits and whichever key comes first in KEYS. The path decides only where
+  // the regions lie: each is named by the estimator over its own runs, so a single region is named
+  // as the whole song is.
+  function regionKeys(progression, penalty) {
+    // Pairs compare as Python's tuples do, and max keeps the first of equal ones, as Python's does.
+    const compare = (a, b) => a[0] - b[0] || a[1] - b[1];
+    const max = (keys, scores) =>
+      keys.reduce((top, key) => (compare(scores[key], scores[top]) > 0 ? key : top));
+    const [label, n] = progression[0];
+    let best = Object.fromEntries(KEYS.map((key) => [key, [n * weight(label, key), 0]]));
+    const back = [];
+    for (const [label, n] of progression.slice(1)) {
+      const pointers = {};
+      const scores = {};
+      for (const current of KEYS) {
+        // max keeps the first of equal scores, so a tie goes to the earliest in KEYS.
+        const others = KEYS.filter((other) => other !== current && other !== RELATIVE[current]);
+        const source = max(others, best);
+        const stay = best[current];
+        const change = [best[source][0] - penalty, best[source][1] - 1];
+        // Switching on a tie puts each change as late as it can go, so a run that weighs the same
+        // in both keys (an N, a pivot chord) stays with the key before it.
+        const switches = compare(change, stay) >= 0;
+        pointers[current] = switches ? source : current;
+        const [total, minusChanges] = switches ? change : stay;
+        scores[current] = [total + n * weight(label, current), minusChanges];
+      }
+      back.push(pointers);
+      best = scores;
+    }
+    // Of paths with equal sums and equal changes, the one ending in the earliest key in KEYS.
+    const path = [max(KEYS, best)];
+    for (const pointers of back.reverse()) path.push(pointers[path[path.length - 1]]);
+    path.reverse();
+    const runKeys = [];
+    for (let start = 0, end; start < path.length; start = end) {
+      end = start + 1;
+      while (end < path.length && path[end] === path[start]) end += 1;
+      const ranked = estimateKey(progression.slice(start, end));
+      // A stretch of only N is a stepping stone to the relative key (C, N, then A minor). With a
+      // positive penalty it is never the first, as a leading N keeps the first chord's key at no
+      // cost, and it stays with the key before it, as any N at a change does.
+      const key = ranked.length ? ranked[0] : runKeys[runKeys.length - 1];
+      runKeys.push(...Array(end - start).fill(key));
+    }
+    return runKeys;
+  }
+
+  // Neighbours named alike are one region.
+  function regions(progression, runKeys) {
+    const regions = [];
+    let beat = 0;
+    progression.forEach(([, n], index) => {
+      const region = regions[regions.length - 1];
+      if (region && region.label === runKeys[index]) region.end_beat += n;
+      else regions.push({ start_beat: beat, end_beat: beat + n, label: runKeys[index] });
+      beat += n;
+    });
+    return regions;
   }
 
   function numeral(offset, quality, mode) {
@@ -257,14 +342,16 @@ const Harmony = (() => {
     return { numeral: text, role: "chromatic", function: null, target: null };
   }
 
-  // Analyze a list of [chord label, beats] into a key object and one analysis per entry. `key`,
-  // if given, is a label from KEYS; null or undefined estimates it. The key object is null only
-  // when there is no chord to estimate from and no key was given.
+  // Analyze a list of [chord label, beats] into a key object, key regions and one analysis per
+  // entry. The key object is the whole song's. `key`, if given, is a label from KEYS; it is then
+  // the one region and every entry is analyzed in it. Null or undefined estimates it, the regions
+  // come from `regionKeys`, and each entry is analyzed in its region's key. The key object is null,
+  // and the regions empty, only when there is no chord to estimate from and no key was given.
   function analyze(progression, key = null) {
     const ranked = estimateKey(progression);
     if (key == null && !ranked.length) {
       // Every entry is N here, and an N is analyzed without looking at the key.
-      return { key: null, analyses: progression.map(() => analyzeChord("N", "C:maj")) };
+      return { key: null, keys: [], analyses: progression.map(() => analyzeChord("N", "C:maj")) };
     }
     const label = key ?? ranked[0];
     // The candidates stay the estimator's ranking even when the key is given, so a wrong
@@ -274,10 +361,17 @@ const Harmony = (() => {
       source: key == null ? "estimated" : "given",
       candidates: ranked.slice(0, CANDIDATES),
     };
+    const runKeys =
+      key == null ? regionKeys(progression, KEY_CHANGE_PENALTY) : progression.map(() => key);
+    // The look-ahead reads the next run whatever its region.
     const analyses = progression.map(([chord], index) =>
-      analyzeChord(chord, label, index + 1 < progression.length ? progression[index + 1][0] : null),
+      analyzeChord(
+        chord,
+        runKeys[index],
+        index + 1 < progression.length ? progression[index + 1][0] : null,
+      ),
     );
-    return { key: keyObject, analyses };
+    return { key: keyObject, keys: regions(progression, runKeys), analyses };
   }
 
   // Position of the bass note within a chord label: root/first/second/third or non_chord; null

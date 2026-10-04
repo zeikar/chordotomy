@@ -52,6 +52,7 @@ test("the vocabulary is Python's", () => {
     c.key,
     c.expected.key?.label,
     ...(c.expected.key?.candidates ?? []),
+    ...c.expected.keys.map((region) => region.label),
   ]);
   for (const key of keys.filter((key) => key != null)) {
     assert.ok(Harmony.KEYS.includes(key), `key ${key}`);
