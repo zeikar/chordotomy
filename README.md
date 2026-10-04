@@ -73,7 +73,7 @@ chordotomy fetch-weights                    # model extra: download and verify B
 }
 ```
 
-Chords are Harte labels. `candidates` is the recognizer's own ranking, never a percentage. `numeral` is always root position; the viewer combines it with `inversion`, so this segment shows as V⁶₅/vi. The full format is in [docs/timeline-json.md](https://github.com/zeikar/chordotomy/blob/main/docs/timeline-json.md).
+Chords are Harte labels. `candidates` is the written chord first, then the recognizer's next-best labels, never a percentage. `numeral` is always root position; the viewer combines it with `inversion`, so this segment shows as V⁶₅/vi. The full format is in [docs/timeline-json.md](https://github.com/zeikar/chordotomy/blob/main/docs/timeline-json.md).
 
 ### The model engine (optional)
 
@@ -150,7 +150,7 @@ It stops at the chords and what they're doing. [docs/decisions.md](https://githu
 
 ## Roadmap
 
-Everything on the original roadmap works: chords on the beat, the optional model engine, Roman-numeral analysis with highlights, slash chords and inversions, the Claude Code skill, and the viewer with playback, editing and manual entry. Known gaps, none scheduled:
+Everything on the original roadmap works: chords on the beat, the optional model engine, Roman-numeral analysis with highlights, slash chords and inversions, the Claude Code skill, and the viewer with playback and editing, including entering chords the analyzer missed. Known gaps, none scheduled:
 
 - Some slash chords still come out in root position: in one chart check, a C♯7/E♯ read as C♯7 under both engines.
 - The DSP engine does not call sus2 or 7sus4; they come from the model engine or a manual edit.

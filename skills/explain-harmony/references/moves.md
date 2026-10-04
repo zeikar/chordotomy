@@ -98,7 +98,7 @@ Common ones:
 
 These also have `role: secondary_dominant`. The chord is vii°, vii°7 or viiø7 of the chord named in `target`: its root sits a half step below the target's root and leads up into it, the way the leading tone leads to the tonic. Like a dominant seventh it holds a tritone, which resolves onto the target.
 
-The analyzer gives this label only when the next chord is diatonic on the target's root, so a `vii°/x`, `vii°7/x` or `viiø7/x` is always resolved, in the terms above. A diminished chord that swerves, or hangs over `N`, gets no target: it keeps its plain numeral (`#ivø7`, `#i°7`, `#i°`, `#iv°`) and is chromatic or borrowed. Judge where it goes as you would for a dominant. An `ø7` sets up the chord a half step above its root. A `°7` is spelled by the next chord only when one of its notes is a half step below that chord's root; otherwise its root is one of four spellings, so call it a passing or common-tone diminished chord and name no target.
+The analyzer gives this label only when the next chord is diatonic on the target's root, so a `vii°/x`, `vii°7/x` or `viiø7/x` is always resolved, in the terms above. A diminished chord that swerves, or hangs over `N`, gets no target: it keeps its plain numeral (`#ivø7`, `#i°7`, `#i°`, `#iv°`) and is chromatic or borrowed. Judge where it goes as you would for a dominant. An `ø7` sets up the chord a half step above its root. A `°7` is spelled by the next chord only when one of its notes is a half step below that chord's root, or when the next chord is a `°7` on the same notes; otherwise its root is one of four spellings, so call it a passing or common-tone diminished chord and name no target.
 
 Common in J-pop, as passing chords in major:
 

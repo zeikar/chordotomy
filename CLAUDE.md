@@ -20,7 +20,7 @@ Project-specific instructions for chordotomy. The global ~/.claude/CLAUDE.md sti
 The reasons are in [docs/decisions.md](docs/decisions.md).
 
 - **Stay an analyzer.** Staff notation, melody → MIDI, section detection, and model training are out. Changing that takes an explicit decision from the user, not a drive-by feature.
-- Chord correction and manual entry are core features. Don't treat them as polish.
+- Chord correction and manual entry (chords the analyzer missed, on an analyzed beat grid) are core features. Don't treat them as polish.
 - **No GPL/AGPL dependencies.** Essentia and Chordino are out. Check the license before adding a dependency, including the terms on any pretrained weights.
 - **The `model` extra is optional.** The default install, `chordotomy --version` and the DSP path never import torch or lv_chordia. The default suite runs without them, model tests skip without the extra, and the engine runs on the CPU.
 - Show chord candidates as a ranked list. Don't show percentages unless a calibrated model produced them.

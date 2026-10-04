@@ -4,7 +4,7 @@
 
 Chord timelines (Chordify, Moises) and audio → score (Klangio) are already commercial products. Automatic harmonic analysis with an explanation, the "why does this progression work" part, is the gap. So chordotomy stops at chords and their function. Staff notation, melody → MIDI, and section detection are out. The first two need note-level rhythm, meaning quantization and triplets, which is the hardest and least distinctive part of the problem. Section detection is a research problem of its own. Model training is out as well: DSP and pretrained models only.
 
-Chord extraction will sometimes be wrong, and the analysis is only as good as the chords. That's why correcting chords and entering a progression by hand are core features rather than extras.
+Chord extraction will sometimes be wrong, and the analysis is only as good as the chords. That's why correcting chords and entering chords by hand on an analyzed beat grid are core features rather than extras.
 
 ## Key from chords, not audio
 
@@ -213,7 +213,7 @@ Inference is pinned to the CPU. The package moves the nets to CUDA whenever torc
 
 The heads are softmaxes, but nothing calibrated them, so the scores folded from them only rank the labels. They are not written out, and the candidates stay a ranking (see "Confidence is a rank, not a percentage").
 
-The dictionary has no `maj6`, `add9` or `min6`, so the model never emits them, and they stay out of the vocabulary ("Chord vocabulary v5"). It does have `aug`, `dim` and `sus2`, which the engine first approximated with `maj`, `dim7` and the `sus4` a fifth up; v5 took all three as they are. It also has `sus4(b7)`, which v5 folded to `sus4`; v6 takes it as it is.
+The dictionary has no `maj6`, `add9` or `min6`, so the model never emits them. `maj6` and `add9` stay out of the vocabulary ("Chord vocabulary v5"); `min6` is in the shared vocabulary, and only the DSP recognizer calls it; the viewer can also write it through an edit. It does have `aug`, `dim` and `sus2`, which the engine first approximated with `maj`, `dim7` and the `sus4` a fifth up; v5 took all three as they are. It also has `sus4(b7)`, which v5 folded to `sus4`; v6 takes it as it is.
 
 ## A weak non-chord bass stays at root position
 

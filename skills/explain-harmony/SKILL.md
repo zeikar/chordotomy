@@ -13,11 +13,11 @@ Audio never leaves the machine. Run the analyzer locally, and never upload or se
 
 The input is an audio file, an existing `*.chords.json`, or a URL.
 
-- **Given a `.chords.json`:** go to Step 2.
-- **Given audio:** first look for `<audio stem>.edited.chords.json` next to it (the viewer saves corrections under that name), then `<audio stem>.chords.json`. If either exists, use the first one found and do not re-run.
+- **Given a `.chords.json`:** go to Step 2. If the user also states a key, follow "Analyzing in a stated key"; with no audio next to the timeline, the viewer is the only way to rekey it.
+- **Given audio:** first look for `<audio stem>.edited.chords.json` next to it (the viewer saves corrections under that name), then `<audio stem>.chords.json`. If either exists, use the first one found and do not re-run, unless the user states a key (see "Analyzing in a stated key").
 - **Given a URL:** follow "From a URL" below.
 - **Re-extracting:** never pass `--force` on an existing timeline without asking the user first. `--force` extracts the chords from the audio again and discards any corrections.
-- **Analyzing in a stated key:** if the user states a key, or asks to re-analyze in another key, write to a new file next to the audio that names the key, rather than overwriting, e.g. `--key A:min -o "<audio dir>/<stem>.A-minor.chords.json"`. If that keyed file already exists, use it instead of re-running. `--key` takes `<root>:maj` or `<root>:min`, and flat roots such as `Bb:maj` are accepted.
+- **Analyzing in a stated key:** this takes precedence over reusing an existing timeline. If the user states a key, or asks to re-analyze in another key, and a timeline already exists, check whether the viewer saved it (`<audio stem>.edited.chords.json`) or any segment has `edited: true`. A split or a merge can leave `edited` false, and only the saved name shows it; a copy renamed after only splits or merges looks untouched, and the new file then holds the chords as first extracted, while the copy itself is left as it is. If either holds, do not re-run `--key`, which extracts the chords again and drops the corrections: tell the user to set the key in the viewer's key select and save a copy, which keeps their corrections, then explain from that saved copy, and stop until it exists. If neither does, write to a new file next to the audio that names the key, rather than overwriting, e.g. `--key A:min -o "<audio dir>/<stem>.A-minor.chords.json"`. If that keyed file already exists, use it instead of re-running. `--key` takes `<root>:maj` or `<root>:min`, and flat roots such as `Bb:maj` are accepted.
 
 Choose the command by what is installed, and run it once. An analysis error is not a reason to try another command.
 
@@ -29,7 +29,7 @@ When working inside a chordotomy checkout, `uv run chordotomy analyze "<audio>"`
 
 The analyzer writes `<audio stem>.chords.json` next to the audio (or to `-o`) and prints `Wrote <path>`. If it fails:
 
-- **`error: <audio>: no beats detected`** (exit 1): the file is silent or shorter than one beat. Say so and stop.
+- **`error: <audio>: no beats detected`** (exit 1): no usable beat was detected (the file may be silent or shorter than one beat, among other causes). Say so and stop.
 - **`error: <audio>: Error opening … Format not recognised`** (exit 1): the decoder reads wav, flac, ogg and mp3, but not m4a or aac. Suggest converting locally, e.g. `ffmpeg -i song.m4a song.wav`, which keeps the audio on the machine.
 - **`error: cannot fetch the Beat This! weights …`** (exit 1): the model engine downloads its beat tracker's weights (81 MB) on its first run and found no network. Show the message, which names the fix (`chordotomy fetch-weights` once online, or `--engine dsp`), and stop.
 - **Exit 2:** a usage error, such as a missing file, a bad `--key`, or a `--source-url` that isn't `http(s)`. Show its message.
@@ -43,7 +43,7 @@ yt-dlp runs through `uvx`, from uv's cache, so nothing is installed on `PATH`, a
 1. **Check the tools,** before downloading anything: `command -v uv` and `command -v ffmpeg`. Without uv, tell the user to install it (https://docs.astral.sh/uv/) and stop; the download needs `uvx`. Without ffmpeg, which yt-dlp needs to convert the audio, tell the user to install it (`brew install ffmpeg` on macOS, https://ffmpeg.org/download.html elsewhere) and stop. Install nothing yourself.
 2. **Download.** In the current working directory, run `uvx --from 'yt-dlp[default,deno]@latest' yt-dlp --no-playlist -I 1 -x --audio-format mp3 --print after_move:webpage_url --print after_move:filepath '<url>'` with a timeout of up to 10 minutes. `@latest` takes the newest yt-dlp on every run, since an old one stops working when YouTube changes, and the `deno` extra brings the JavaScript runtime yt-dlp needs for YouTube. The first run fetches them, about 40 MB, into uv's cache; later runs reuse it. It fetches one video's audio as mp3, since the decoder reads wav, flac, ogg and mp3 but not m4a or webm; for a playlist or channel link with no video in it, that is the first video, so tell the user which. It prints two lines: the video's canonical page URL (`<webpage_url>`), then the file's absolute path, named `<title> [<id>].mp3`. The file is in the current directory, so use its basename as `<audio>` from here on: an absolute path would put the user's home directory in `source.path` of a timeline that may be shared.
 3. **If yt-dlp fails,** show its message and stop. Report a private, removed or restricted video to the user as such; don't work around it.
-4. **Use or make the timeline.** Apply the "Given audio" rules to `<audio>`: an existing `<stem>.edited.chords.json`, else `<stem>.chords.json`, is used without re-running. With none, run the analyze command chosen above with `--source-url '<webpage_url>'` appended: the printed page URL, not the pasted one, which may carry `list=`, `t=` or `si=` parameters. Append it to every analyze run on this file, a keyed or `--force` one too. For an existing timeline, check `schema_version` and `source.url`, which the first line of Step 2's compact view shows:
+4. **Use or make the timeline.** Apply Step 1's "Given audio" and "Analyzing in a stated key" rules to `<audio>`. With no timeline to use, run the analyze command chosen above with `--source-url '<webpage_url>'` appended: the printed page URL, not the pasted one, which may carry `list=`, `t=` or `si=` parameters. Append it to every analyze run on this file, a keyed or `--force` one too. For an existing timeline, check `schema_version` and `source.url`, which the first line of Step 2's compact view shows:
    - **9 or 10, with `source.url` `null`:** first write `<webpage_url>` into it with the snippet below, `<timeline>` being its path. It changes that one field and keeps every edit.
    - **`source.url` set:** leave it. If it differs from `<webpage_url>`, tell the user both.
    - **Any other schema:** leave it as it is. Below 9, tell the user that this timeline carries no link to the video.
@@ -105,7 +105,7 @@ The fields:
   - `start_time`, `end_time`
   - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on thirteen qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7`, `sus4`, `aug`, `dim`, `sus2` and `sus4(b7)`.
   - `bass`, `inversion`
-  - `edited` (`true` when the user corrected `chord` and `bass` in the viewer; `candidates` is then only what the analyzer heard, so `candidates[0]` may differ from `chord`)
+  - `edited` (`true` when the user corrected `chord` or `bass` in the viewer, or merged a segment over a neighbour with a different one; `candidates` is then only what the analyzer heard, so `candidates[0]` may differ from `chord`)
   - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`, all relative to the key region that contains the segment. `secondary_dominant` also covers secondary leading-tone chords: numeral `vii°/x`, `vii°7/x` or `viiø7/x`, with `target` set.
 - **`N`:** a segment with no chord: silence, or a passage with no clear harmony, such as a drum break.
 
