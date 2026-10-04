@@ -20,7 +20,7 @@ Everything runs locally. Your audio never leaves your machine.
 
 - **Chords on the beat.** Major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th, sus4, 7sus4, augmented, diminished triad, sus2 and minor 6th, with `N` for no chord. The model calls all of them but minor 6th; the DSP all but sus2 and 7sus4.
 - **Two engines.** The lv-chordia model (Jiang, Chen, Li and Xia, ISMIR 2019) when its optional extra is installed, chordotomy's DSP front end otherwise. The model engine's beats come from Beat This!, the DSP's from librosa, and both share the same harmonic analysis.
-- **Key and Roman numerals.** Secondary dominants, secondary leading-tone chords and borrowed chords are labeled and highlighted; the viewer adds figured bass for inversions.
+- **Key and Roman numerals.** Key changes are found from the chords, and each passage is analyzed in its own key. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled and highlighted; the viewer adds figured bass for inversions.
 - **The bass note and inversion** of every chord, so slash chords (C/E, D/F♯) come out as such. A weak bass outside the chord is shown at root position instead of as a doubtful slash chord.
 - **A viewer** that plays the recording with its chords, plays the chords themselves to check them by ear, and lets you correct and enter chords.
 - **Explanations in Claude Code** of the highlighted moves, through the `explain-harmony` skill.
@@ -39,13 +39,13 @@ chordotomy analyze song.mp3           # writes song.chords.json
 ```sh
 chordotomy analyze song.mp3                 # writes song.chords.json
 chordotomy analyze song.mp3 -o out.json
-chordotomy analyze song.mp3 --key A:min     # analyze in A minor instead of the estimated key
+chordotomy analyze song.mp3 --key A:min     # analyze the whole song in A minor, with no key changes
 chordotomy analyze song.mp3 --engine dsp    # the DSP front end, even with the model installed
 chordotomy analyze song.mp3 --source-url https://www.youtube.com/watch?v=…   # record where the recording came from
 chordotomy fetch-weights                    # model extra: download and verify Beat This!'s weights once
 ```
 
-`--key` takes `<root>:maj` or `<root>:min`, flats accepted; the JSON still lists the estimator's ranked candidates. `--source-url` records an `http(s)` page the recording came from in the JSON; nothing is downloaded.
+`--key` takes `<root>:maj` or `<root>:min`, flats accepted, and fixes that one key over the whole song; the JSON still lists the estimator's ranked candidates. `--source-url` records an `http(s)` page the recording came from in the JSON; nothing is downloaded.
 
 `--engine` picks the chord recognizer: `auto`, the default, takes the lv-chordia model when it is installed and the DSP front end otherwise; `model` and `dsp` force one. The model engine's beats come from Beat This! and the DSP's from librosa, so the two engines' beats can differ for the same file. A missing or broken model install is an error that names the fix; it never falls back to the DSP silently. The JSON records which engine heard the chords.
 
@@ -53,7 +53,7 @@ chordotomy fetch-weights                    # model extra: download and verify B
 
 ### The output
 
-`song.chords.json` (schema 9) lists every beat, the estimated key, and the chord segments. One segment of the screenshot's timeline:
+`song.chords.json` (schema 10) lists every beat, the estimated key, the key regions and the chord segments, each analyzed in its region's key. One segment of the screenshot's timeline:
 
 ```json
 {
@@ -109,7 +109,7 @@ chordotomy's model engine is lv-chordia's chords snapped to Beat This!'s beats, 
 
 ## Viewer
 
-The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. Chords are colored by role, so secondary dominants and borrowed chords stand out. Every beat gets the same width, so a chord's width is its length in beats; where the beats come faster or slower, the seconds on the ruler bunch up or spread out instead. The header names the engine that heard the chords (lv-chordia or the DSP).
+The viewer plays a recording along with its chord timeline. It shows the current chord, its Roman numeral with figured bass, its role and bass note, and the other chords the analyzer heard, ranked. The key shown is the one at the playhead, and when the song changes key, the key panel lists each key with the time it starts. Chords are colored by role, so secondary dominants and borrowed chords stand out. Every beat gets the same width, so a chord's width is its length in beats; where the beats come faster or slower, the seconds on the ruler bunch up or spread out instead. The header names the engine that heard the chords (lv-chordia or the DSP).
 
 Open it at <https://zeikar.dev/chordotomy/>, or open `viewer/index.html` from a checkout. Drop the recording and its `.chords.json` on the page, or pick them with **Open files**. The files stay in your browser. The page reads them locally and makes no network requests. Opened without its recording, a timeline still plays, with only the chords sounding. One analyzed with `--source-url` also shows a link to that page, so someone who received only the JSON can find the recording; following the link is a click, not a request the page makes.
 
@@ -119,7 +119,7 @@ Space plays and pauses. → goes to the next chord. ← goes back to the start o
 
 ### Editing
 
-The editor acts on the current chord. While you pick, it stays on that chord, even if playback moves on. **Root**, **Quality** and **Bass** set the chord and its bass note, and a pick applies at once. The chords the analyzer also heard are buttons: one click makes one of them the chord. **Split at beat** cuts the chord at the beat under the playhead. **Merge ←** and **Merge →** join it with the chord before or after, keeping its own chord and bass. **Delete** removes it, and a neighbour takes its beats. **Undo** and **Redo** step through the edits. The select under **Key** fixes the key, and **Estimated** goes back to the estimate. After every edit the page works out the key, numerals and roles again, as `chordotomy analyze` does, and marks the chords you changed.
+The editor acts on the current chord. While you pick, it stays on that chord, even if playback moves on. **Root**, **Quality** and **Bass** set the chord and its bass note, and a pick applies at once. The chords the analyzer also heard are buttons: one click makes one of them the chord. **Split at beat** cuts the chord at the beat under the playhead. **Merge ←** and **Merge →** join it with the chord before or after, keeping its own chord and bass. **Delete** removes it, and a neighbour takes its beats. **Undo** and **Redo** step through the edits. The select under **Key** fixes one key for the whole song, and **Estimated** goes back to the estimate and its key changes. After every edit the page works out the key regions, numerals and roles again, as `chordotomy analyze` does, and marks the chords you changed.
 
 Chords start and end on the analyzer's beats. To enter a chord it missed, split where the chord starts and pick it; over silence, one pick enters a chord. There is no entering a progression from scratch: the beat grid comes from `chordotomy analyze`, so a timeline needs a recording's analysis first.
 
@@ -144,7 +144,7 @@ Working in this repo, `.claude/settings.json` registers the checkout itself as a
 
 - **Staff notation.** It doesn't produce MusicXML and doesn't work out note-level rhythm.
 - **Melody transcription.** It doesn't produce melody → MIDI.
-- **Song sections.** It doesn't label intro, verse, or chorus.
+- **Song sections.** It doesn't label intro, verse, or chorus. Key changes are marked from the chords, without section names.
 
 It stops at the chords and what they're doing. [docs/ARCHITECTURE.md](https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md#design-decisions) explains why.
 
