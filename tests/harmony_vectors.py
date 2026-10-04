@@ -78,6 +78,10 @@ VERSE = _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 4
 E_SECTION = _two_beats("E:maj", "B:maj", "A:maj", "B:maj") * 8
 F_CYCLE = _two_beats("F:maj", "C:maj", "A#:maj", "C:maj")
 A_MINOR_CHORUS = [("A:min", 4), ("D:min", 2), ("E:7", 2)]
+E_CYCLE = _two_beats("E:maj", "B:maj", "A:maj", "B:maj")
+G_CHORUS = _two_beats("G:maj", "D:maj", "E:min", "G:maj", "C:maj", "B:min", "E:min", "A:min") + [
+    ("D:maj", 4)
+]
 # Key regions at the shipped penalty: the cases tests/test_harmony.py pins, and an edit that takes
 # a region away, the boundary 8 beats before the edited chord with it. A change that gains only the
 # penalty (8 beats of a tonic) splits nowhere.
@@ -105,6 +109,19 @@ REGIONS = {
     "8 beats of B after C": [*VERSE, ("B:maj", 8)],
     "a half step up, before an edit": E_SECTION + F_CYCLE + [("F:maj", 4)],
     "a half step up, its last F edited to E": E_SECTION + F_CYCLE + [("E:maj", 4)],
+    "six regions, E G E G E F": (
+        E_CYCLE * 4
+        + _two_beats("C#:min", "G#:min", "A:maj", "B:maj") * 2
+        + [("F#:min", 4), *_two_beats("A:maj", "B:maj")]
+        + _two_beats("C:maj", "D:maj")
+        + [("G:maj", 4), *G_CHORUS * 2]
+        + E_CYCLE * 4
+        + _two_beats("C:maj", "D:maj")
+        + [("G:maj", 4), *G_CHORUS * 4]
+        + E_CYCLE * 2
+        + F_CYCLE * 2
+        + [("F:maj", 4)]
+    ),
 }
 # Segments as (chord, start_beat, end_beat).
 RUNS = {

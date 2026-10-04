@@ -497,6 +497,59 @@ def test_a_half_step_ending_is_its_own_region() -> None:
     assert _spans(key_regions(HALF_STEP_UP, penalty=48)) == [(0, 84, "E:maj")]
 
 
+E_CYCLE = _two_beats("E:maj", "B:maj", "A:maj", "B:maj")
+G_CHORUS = _two_beats("G:maj", "D:maj", "E:min", "G:maj", "C:maj", "B:min", "E:min", "A:min") + [
+    ("D:maj", 4)
+]
+# The issue's song, adrenaline!!!, shortened: E → G → E → G → E → F, on its chords. Each change
+# lands where the next key's chords start: on the C–D into the first G (bVI–bVII in E, IV–V in G),
+# on the E after a G-major D, and on the F after a B.
+ADRENALINE = (
+    E_CYCLE * 4
+    + _two_beats("C#:min", "G#:min", "A:maj", "B:maj") * 2
+    + [("F#:min", 4), *_two_beats("A:maj", "B:maj")]
+    + _two_beats("C:maj", "D:maj")
+    + [("G:maj", 4), *G_CHORUS * 2]
+    + E_CYCLE * 4
+    + _two_beats("C:maj", "D:maj")
+    + [("G:maj", 4), *G_CHORUS * 4]
+    + E_CYCLE * 2
+    + _two_beats("F:maj", "C:maj", "A#:maj", "C:maj") * 2
+    + [("F:maj", 4)]
+)
+
+
+def test_a_song_through_six_key_regions() -> None:
+    _, keys, analyses = analyze(ADRENALINE)
+    assert _spans(keys) == [
+        (0, 56, "E:maj"),
+        (56, 104, "G:maj"),
+        (104, 136, "E:maj"),
+        (136, 224, "G:maj"),
+        (224, 240, "E:maj"),
+        (240, 260, "F:maj"),
+    ]
+    # Every chord is diatonic in its region's key.
+    numerals: dict[str, dict[str, str | None]] = {}
+    beat = 0
+    for (chord, beats), analysis in zip(ADRENALINE, analyses, strict=True):
+        region = next(r["label"] for r in keys if r["start_beat"] <= beat < r["end_beat"])
+        numerals.setdefault(region, {})[chord] = analysis["numeral"]
+        assert analysis["role"] == "diatonic"
+        beat += beats
+    assert numerals == {
+        "E:maj": {
+            "E:maj": "I", "B:maj": "V", "A:maj": "IV",
+            "C#:min": "vi", "G#:min": "iii", "F#:min": "ii",
+        },
+        "G:maj": {
+            "C:maj": "IV", "D:maj": "V", "G:maj": "I",
+            "E:min": "vi", "B:min": "iii", "A:min": "ii",
+        },
+        "F:maj": {"F:maj": "I", "C:maj": "V", "A#:maj": "IV"},
+    }  # fmt: skip
+
+
 def test_a_change_that_gains_only_the_penalty_never_splits() -> None:
     # 8 beats of a tonic read 24 in its key and 0 in the section's, the penalty exactly. The path
     # with fewer changes wins the tie, at either end and whichever key comes first in KEYS.
