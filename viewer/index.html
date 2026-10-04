@@ -258,12 +258,12 @@
       <section class="transport" aria-label="Playback">
         <audio id="audio" controls preload="auto" hidden></audio>
         <p class="no-audio" id="no-audio">
-          Open the recording too, to play along and hear the chords.
+          Only the chords play. Open the recording too, to play along.
         </p>
         <p class="no-audio" id="source" hidden>
-          No recording is open. It is at
+          Only the chords play. The recording is at
           <a id="source-link" target="_blank" rel="noopener noreferrer"></a>; open it here too, to
-          play along and hear the chords.
+          play along.
         </p>
         <div class="listen" id="listen" hidden>
           <button
@@ -295,8 +295,8 @@
           <span><kbd>Space</kbd> play or pause</span>
           <span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> back or forward a chord</span>
           <span><kbd>Shift</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> back or forward a beat</span>
-          <span class="needs-recording" hidden><kbd>C</kbd> play chords</span>
-          <span class="needs-recording" hidden><kbd>M</kbd> mute recording</span>
+          <span id="chords-key" hidden><kbd>C</kbd> play chords</span>
+          <span id="mute-key" hidden><kbd>M</kbd> mute recording</span>
           <span>click a chord to jump to it</span>
           <span><kbd>S</kbd> split at the beat</span>
           <span><kbd>Delete</kbd> delete the chord</span>

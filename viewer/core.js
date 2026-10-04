@@ -552,6 +552,35 @@ const Core = ((Harmony) => {
     return { due, next };
   }
 
+  // A silent WAV `seconds` long, which the player plays in place of a recording that isn't open,
+  // so the playhead, seeking and the chord sound keep one clock. 8-bit mono at 8 kHz, a PCM every
+  // browser plays, is about half a megabyte a minute. The sample count is rounded up to even,
+  // since RIFF pads an odd-sized chunk.
+  function silentWav(seconds) {
+    const rate = 8000;
+    const length = Math.max(0, 2 * Math.ceil((seconds * rate) / 2));
+    const bytes = new Uint8Array(44 + length);
+    const view = new DataView(bytes.buffer);
+    const tag = (at, text) => {
+      for (let i = 0; i < text.length; i++) bytes[at + i] = text.charCodeAt(i);
+    };
+    tag(0, "RIFF");
+    view.setUint32(4, 36 + length, true);
+    tag(8, "WAVE");
+    tag(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate, true); // bytes a second: one a sample
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true);
+    tag(36, "data");
+    view.setUint32(40, length, true);
+    bytes.fill(128, 44); // 8-bit PCM is unsigned, so silence is the midpoint
+    return bytes;
+  }
+
   function formatTime(seconds) {
     const s = Math.max(0, Math.floor(seconds));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -574,6 +603,7 @@ const Core = ((Harmony) => {
     pitchClasses,
     sameNotes,
     segmentIndexAt,
+    silentWav,
     stepIndex,
     strikeIndexAt,
     strikes,

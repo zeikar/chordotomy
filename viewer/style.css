@@ -852,6 +852,12 @@ body:has(#empty:not([hidden])) .status {
   border-left: 1px solid var(--rule);
 }
 
+/* Without a recording there is no Mute for the divider to set the chord group apart from. */
+#mute-recording[hidden] + .listen-chords {
+  padding-left: 0;
+  border-left: 0;
+}
+
 /* A toggle shows its state with a dot, hollow when off and filled when on. On also takes the
    ink underline that marks the current chord in the timeline: a mode that may stay on for
    minutes shouldn't outweigh the chords it is there to check. Save takes the same face and

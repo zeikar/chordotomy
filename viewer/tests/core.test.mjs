@@ -680,3 +680,27 @@ test("sameNotes tells respelled twins from different pitch sets", () => {
   assert.equal(Core.sameNotes("A:min", "A:min6"), false);
   assert.equal(Core.sameNotes("N", "A:min"), false);
 });
+
+test("the silent stand-in is a PCM WAV as long as the timeline", () => {
+  const wav = Core.silentWav(2.5);
+  const view = new DataView(wav.buffer);
+  const text = (at) => String.fromCharCode(...wav.subarray(at, at + 4));
+  assert.equal(text(0), "RIFF");
+  assert.equal(view.getUint32(4, true), wav.length - 8);
+  assert.equal(text(8), "WAVE");
+  assert.equal(text(12), "fmt ");
+  assert.equal(view.getUint16(20, true), 1); // PCM
+  assert.equal(view.getUint16(22, true), 1); // mono
+  const rate = view.getUint32(24, true);
+  assert.equal(view.getUint32(28, true), rate * view.getUint16(32, true));
+  assert.equal(view.getUint16(34, true), 8);
+  assert.equal(text(36), "data");
+  const length = view.getUint32(40, true);
+  assert.equal(wav.length, 44 + length);
+  assert.equal(length / rate, 2.5);
+  assert.ok(wav.subarray(44).every((sample) => sample === 128));
+  // A duration that isn't a whole number of samples rounds up, so the track never ends early,
+  // and to an even count, since RIFF would pad an odd-sized chunk.
+  assert.equal(new DataView(Core.silentWav(1 / 3).buffer).getUint32(40, true) % 2, 0);
+  assert.ok(new DataView(Core.silentWav(1 / 3).buffer).getUint32(40, true) / rate >= 1 / 3);
+});

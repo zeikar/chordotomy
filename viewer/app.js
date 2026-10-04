@@ -63,7 +63,7 @@
   let current = null;
   let tabStop = null;
   let audioUrl = null;
-  let idleTime = 0; // the position when there is no recording to play
+  let standIn = false; // the player holds a silent track, not a recording (see loadTrack)
   let looping = false;
   let turnTarget = 0;
   let turnUntil = 0;
@@ -173,22 +173,51 @@
     $("files").hidden = false;
   }
 
-  function loadAudio(file) {
+  // Once a timeline is open the player always has something to play: the recording or, until one
+  // is opened, a silent track as long as the timeline (Core.silentWav). The playhead, seeking, the
+  // rate and the chord sound then run on the player's clock either way.
+  function loadTrack(blob, silent) {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
-    audioUrl = URL.createObjectURL(file);
+    audioUrl = URL.createObjectURL(blob);
     audio.src = audioUrl;
+    standIn = silent;
     audio.hidden = false;
+    $("listen").hidden = false;
+    $("chords-key").hidden = false;
+    // Muting a silent track would do nothing.
+    $("mute-recording").hidden = silent;
+    $("mute-key").hidden = silent;
+  }
+
+  // The chords the stand-in turned on go off with it, so a recording starts as it does when it is
+  // opened first: on its own.
+  function loadAudio(file) {
+    if (standIn && playChords) setPlayChords(false);
+    loadTrack(file, false);
     $("no-audio").hidden = true;
     $("source").hidden = true;
-    $("listen").hidden = false;
-    for (const hint of document.querySelectorAll(".needs-recording")) hint.hidden = false;
     showName("audio-name", file.name);
+  }
+
+  // The first stand-in turns the chords on, since a silent track without them plays nothing; one
+  // remade for the next timeline keeps the user's choice. They sound from the first play, not
+  // now: opening a file shouldn't make a noise.
+  function loadStandIn(duration) {
+    const first = !audioUrl;
+    loadTrack(new Blob([Core.silentWav(duration)], { type: "audio/wav" }), true);
+    if (first) {
+      playChords = true;
+      $("play-chords").setAttribute("aria-pressed", "true");
+    }
   }
 
   // A timeline from readTimeline, shown with a fresh history and nothing unsaved.
   function installTimeline(opened, name) {
     // A new timeline ends a pick in progress: the picker's pinned segment belongs to the old one.
     if ($("editor").contains(document.activeElement)) document.activeElement.blur();
+    // A recording that is open stays; a stand-in is remade, as long as the new timeline. First,
+    // so a duration too long to build one changes nothing.
+    if (!audioUrl || standIn) loadStandIn(opened.source.duration);
     history = Edit.history(opened);
     saved = opened;
     timelineName = name;
@@ -355,7 +384,8 @@
   function renderSource() {
     const url = timeline.source && timeline.source.url;
     const link = $("source-link");
-    const shown = Core.isHttpUrl(url) && !audioUrl;
+    const recording = audioUrl !== null && !standIn;
+    const shown = Core.isHttpUrl(url) && !recording;
     if (shown) {
       link.href = url;
       link.textContent = url;
@@ -364,7 +394,7 @@
       link.textContent = "";
     }
     $("source").hidden = !shown;
-    $("no-audio").hidden = shown || audioUrl !== null;
+    $("no-audio").hidden = shown || recording;
   }
 
   // Files are paired by the user, so a length mismatch is the one hint that they don't belong
@@ -644,7 +674,7 @@
   }
 
   function now() {
-    return audioUrl ? audio.currentTime : idleTime;
+    return audio.currentTime;
   }
 
   function currentIndex(t = now()) {
@@ -726,8 +756,7 @@
   }
 
   function seekTime(t) {
-    if (audioUrl) audio.currentTime = t + SEEK_NUDGE;
-    else idleTime = t;
+    audio.currentTime = t + SEEK_NUDGE;
     update();
   }
 
@@ -749,7 +778,8 @@
   function togglePlay() {
     if (!audioUrl) return;
     if (audio.paused) {
-      audio.play().catch((error) => say(`Couldn't play the recording: ${error.message}`));
+      const what = standIn ? "the chords" : "the recording";
+      audio.play().catch((error) => say(`Couldn't play ${what}: ${error.message}`));
     } else {
       audio.pause();
     }
@@ -762,7 +792,8 @@
     return (Number($("chord-volume").value) / 100) ** 2;
   }
 
-  // First called from the toggle, a user gesture, so the autoplay policy lets the context run.
+  // Created or resumed in a user gesture, the toggle or any press while the chords are on (the
+  // listeners after the toggle's), so the autoplay policy lets the context run.
   function ensureContext() {
     if (!context) {
       context = new AudioContext();
@@ -883,7 +914,7 @@
       audition = null;
       // Idle, the context would keep the audio device busy. Suspend once the fade is done.
       setTimeout(() => {
-        if (!playChords) context.suspend();
+        if (!playChords && context) context.suspend();
       }, 200);
     }
   }
@@ -1009,6 +1040,19 @@
     releaseFocus(event);
     setPlayChords(!playChords);
   });
+  // A stand-in turns the chords on without the toggle, and Safari starts an AudioContext only in
+  // a user gesture, not in the playing event that comes after one. So any press while the chords
+  // are on gets the context ready before playback asks for it. pointerup too: on iOS a tap's
+  // pointerdown comes from touchstart, which WebKit doesn't count as a gesture.
+  for (const type of ["pointerdown", "pointerup", "keydown"]) {
+    addEventListener(
+      type,
+      () => {
+        if (playChords) ensureContext();
+      },
+      true,
+    );
+  }
   $("mute-recording").addEventListener("click", (event) => {
     releaseFocus(event);
     toggleMute();
@@ -1077,7 +1121,7 @@
       if (!event.repeat) deleteAt(current);
       return;
     }
-    if ((letter === "c" || letter === "m") && audioUrl) {
+    if ((letter === "c" && audioUrl) || (letter === "m" && audioUrl && !standIn)) {
       event.preventDefault();
       if (event.repeat) return;
       // The button that changed doesn't have focus, so say what happened for screen readers.
@@ -1126,7 +1170,11 @@
     checkDurations();
   });
   audio.addEventListener("error", () => {
-    say(`This browser can't play ${$("audio-name").textContent}.`);
+    say(
+      standIn
+        ? "This browser can't play the chords without the recording. Open the recording too."
+        : `This browser can't play ${$("audio-name").textContent}.`,
+    );
   });
 
   // Drops anywhere on the page. The counter is there because dragleave also fires when the
