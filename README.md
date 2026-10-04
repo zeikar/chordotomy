@@ -18,7 +18,7 @@ Everything runs locally. Your audio never leaves your machine.
 
 ## What it does
 
-- **Chords on the beat.** Major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th, sus4, 7sus4, augmented, diminished triad, sus2 and minor 6th, with `N` for no chord. The model calls all of them but minor 6th; the DSP all but sus2 and 7sus4.
+- **Chords on the beat.** Major, minor, dominant 7th, major 7th, minor 7th, half-diminished 7th, diminished 7th, sus4, 7sus4, augmented, diminished triad, sus2 and minor 6th, with `N` for no chord. The model calls all of them but minor 6th; the DSP all but sus2 and 7sus4. Corrections can also enter add9 and minor add9, which neither engine calls.
 - **Two engines.** The lv-chordia model (Jiang, Chen, Li and Xia, ISMIR 2019) when its optional extra is installed, chordotomy's DSP front end otherwise. The model engine's beats come from Beat This!, the DSP's from librosa, and both share the same harmonic analysis.
 - **Key and Roman numerals.** Key changes are found from the chords, and each passage is analyzed in its own key. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled and highlighted; the viewer adds figured bass for inversions.
 - **The bass note and inversion** of every chord, so slash chords (C/E, D/F♯) come out as such. A weak bass outside the chord is shown at root position instead of as a doubtful slash chord.
@@ -53,7 +53,7 @@ chordotomy fetch-weights                    # model extra: download and verify B
 
 ### The output
 
-`song.chords.json` (schema 10) lists every beat, the estimated key, the key regions and the chord segments, each analyzed in its region's key. One segment of the screenshot's timeline:
+`song.chords.json` (schema 11) lists every beat, the estimated key, the key regions and the chord segments, each analyzed in its region's key. One segment of the screenshot's timeline:
 
 ```json
 {
@@ -153,7 +153,7 @@ It stops at the chords and what they're doing. [docs/decisions.md](https://githu
 Everything on the original roadmap works: chords on the beat, the optional model engine, Roman-numeral analysis with highlights, slash chords and inversions, the Claude Code skill, and the viewer with playback and editing, including entering chords the analyzer missed. Known gaps, none scheduled:
 
 - Some slash chords still come out in root position: in one chart check, a C♯7/E♯ read as C♯7 under both engines.
-- The DSP engine does not call sus2 or 7sus4; they come from the model engine or a manual edit.
+- The DSP engine does not call sus2 or 7sus4; they come from the model engine or a manual edit. Neither engine calls add9 or minor add9, which only a manual edit enters.
 - A chart may name a different chord over the same bass (D/A where the analyzer hears Bm/A); the bass is right, the chord is the recognizer's call.
 
 ## Development

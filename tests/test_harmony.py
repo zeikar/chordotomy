@@ -552,7 +552,11 @@ ADRENALINE = (
 
 
 def test_a_song_through_six_key_regions() -> None:
-    _, keys, analyses = analyze(ADRENALINE)
+    key, keys, analyses = analyze(ADRENALINE)
+    # The whole song reads best in E minor, a key none of its regions has: E major's B is E minor's
+    # harmonic V, and the G-major chords are its relative's.
+    assert key is not None
+    assert key["label"] == "E:min"
     assert _spans(keys) == [
         (0, 56, "E:maj"),
         (56, 104, "G:maj"),
