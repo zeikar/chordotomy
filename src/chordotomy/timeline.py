@@ -1,4 +1,4 @@
-"""Assemble the chord-timeline JSON, the project's public seam (schema v9)."""
+"""Assemble the chord-timeline JSON, the project's public seam (schema v10)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .chords import (
 )
 from .features import SR, beat_features, load_audio
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def chord_runs(segments: list[dict]) -> list[list[dict]]:
@@ -81,7 +81,7 @@ def analyze(
     segments = resolve_twins(segment(states, scores, basses, inferred))
 
     runs = chord_runs(segments)
-    key_info, _, run_analyses = harmony.analyze(progression(runs), key)
+    key_info, keys, run_analyses = harmony.analyze(progression(runs), key)
     analyses = [a for run, a in zip(runs, run_analyses, strict=True) for _ in run]
 
     duration = round(len(y) / SR, 3)
@@ -92,6 +92,7 @@ def analyze(
         "generator": {"name": "chordotomy", "version": __version__, "engine": recognizer},
         "source": {"path": str(path), "duration": duration, "url": source_url},
         "key": key_info,
+        "keys": keys,
         "beats": beat_times,
         "segments": [
             {

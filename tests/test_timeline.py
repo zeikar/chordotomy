@@ -47,7 +47,16 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     result = analyze(path)
 
     json.dumps(result)
-    assert result["schema_version"] == 9
+    assert list(result) == [
+        "schema_version",
+        "generator",
+        "source",
+        "key",
+        "keys",
+        "beats",
+        "segments",
+    ]
+    assert result["schema_version"] == 10
     assert result["generator"] == {
         "name": "chordotomy",
         "version": __version__,
@@ -61,6 +70,9 @@ def test_analyze_builds_the_schema(synth, chord_at, tmp_path) -> None:
     beats = result["beats"]
     assert len(beats) >= 10
     assert abs(np.median(np.diff(beats)) - 0.5) <= 0.025
+    assert result["keys"] == [
+        {"start_beat": 0, "end_beat": len(beats), "label": result["key"]["label"]}
+    ]
 
     segments = result["segments"]
     assert segments[0]["start_beat"] == 0
@@ -116,6 +128,32 @@ def test_analyze_labels_the_progression(synth, tmp_path) -> None:
     assert segments[2]["role"] == "secondary_dominant"
     assert segments[2]["target"] == "V"
     assert segments[3]["function"] == "dominant"
+
+
+def test_a_key_change_is_written_as_two_regions(synth, tmp_path) -> None:
+    # The issue's half-step ending. The E section reads 36 in E and 0 in F, the F section 48 in F
+    # and 0 in E: two regions score 36 + 48 - 24 = 60 against 48 all in F. So the whole song is F
+    # major, and the E section's numerals come from its region, not from `key`.
+    e_section = [(label, 2) for label in ("E:maj", "B:maj", "A:maj", "B:maj") * 2]
+    f_section = [(label, 2) for label in ("F:maj", "C:maj", "A#:maj", "C:maj") * 2]
+    progression = [*e_section, *f_section, ("F:maj", 4)]
+
+    result = analyze(_write(tmp_path, synth(progression)))
+
+    json.dumps(result)
+    key, segments = result["key"], result["segments"]
+    assert [s["chord"] for s in segments] == [label for label, _ in progression]
+    assert key["source"] == "estimated"
+    assert key["label"] == key["candidates"][0] == "F:maj"
+    # The E section has no F, so its first F starts the F section.
+    change = next(s["start_beat"] for s in segments if s["chord"] == "F:maj")
+    assert result["keys"] == [
+        {"start_beat": 0, "end_beat": change, "label": "E:maj"},
+        {"start_beat": change, "end_beat": len(result["beats"]), "label": "F:maj"},
+    ]
+    assert [s["numeral"] for s in segments[:8]] == ["I", "V", "IV", "V"] * 2
+    assert [s["numeral"] for s in segments[8:]] == ["I", "V", "IV", "V"] * 2 + ["I"]
+    assert {s["role"] for s in segments[8:]} == {"diatonic"}
 
 
 def test_bass_and_inversion_follow_the_bass_line(synth, tmp_path) -> None:
