@@ -516,6 +516,13 @@ body:has(#empty:not([hidden])) .status {
   list-style-position: inside;
 }
 
+/* A timeline, not a ranking: no ordinals. */
+.key-regions {
+  margin: 4px 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
 /* Editing the current chord */
 
 .editor {

@@ -57,7 +57,6 @@
   // segment that was current when that began; null otherwise. Playback moving on then neither
   // rewrites the picker nor moves its edits to the next chord.
   let pinned = null;
-  let keyLabel = null;
   let xAt = null; // a time's x on the strip, set by renderTimeline
   let buttons = [];
   let current = null;
@@ -258,7 +257,6 @@
   // chord keeps the focus, and the chord sound picks up from where the recording is.
   function refreshView(announcement = "") {
     timeline = history.present;
-    keyLabel = timeline.key ? timeline.key.label : null;
     chordStrikes = Core.strikes(timeline);
     chordVoicings = Core.voicings(timeline.segments);
     // Mid-play, the strike under way starts again at once with what is left of it, so an edit to
@@ -303,9 +301,16 @@
     auditionChord(current);
   }
 
+  // The key in force at a segment of `tl`: its region's. A given key, or a timeline with no
+  // regions, has only `tl.key`.
+  function segmentKey(segment, tl = timeline) {
+    return Core.keyAt(tl.keys, segment.start_beat) ?? tl.key?.label ?? null;
+  }
+
   // A segment's chord as the strip names it, in the key in force.
-  function nameOf(segment) {
-    return Core.chordName(segment.chord, keyLabel, segment.bass, segment.inversion);
+  function nameOf(segment, tl = timeline) {
+    const key = segmentKey(segment, tl);
+    return Core.chordName(segment.chord, key, segment.bass, segment.inversion);
   }
 
   // The beat under the playhead at time `t`, when it lies strictly inside the chord there: the
@@ -353,10 +358,7 @@
   function setChord(index, chord, bass) {
     const next = Edit.setChord(timeline, index, chord, bass);
     if (next === timeline) return; // a timeline with no segments: nothing to set
-    const segment = next.segments[index];
-    const key = next.key ? next.key.label : null;
-    const name = Core.chordName(segment.chord, key, segment.bass, segment.inversion);
-    commitEdit(next, `Chord set to ${name}`);
+    commitEdit(next, `Chord set to ${nameOf(next.segments[index], next)}`);
   }
 
   // The bass the Bass select reads for a chord on `root`: Root follows the chord's root, so a
@@ -416,6 +418,8 @@
     const key = timeline.key;
     const candidates = key ? key.candidates : [];
     const given = key?.source === "given";
+    // The whole-song key. renderNow replaces it with the playhead's region, but never runs for a
+    // timeline with no segments.
     $("key-name").textContent = key ? Core.keyName(key.label) : "None";
     const select = $("key-select");
     const estimate = candidates.length ? Core.keyName(candidates[0]) : "no chords";
@@ -423,17 +427,37 @@
     select.value = given ? key.label : "";
     // Given, the candidates' heading says so; the line above them is for the other cases.
     $("key-source").hidden = given && candidates.length > 0;
+    const changes = timeline.keys.length - 1;
+    const changed = changes === 1 ? "once" : `${changes} times`;
+    const change = changes > 0 ? `; the key changes ${changed}` : "";
     $("key-source").textContent = candidates.length
-      ? "Estimated from the chords."
+      ? `Estimated from the chords${change}.`
       : "The timeline has no chords.";
     $("key-candidates-label").textContent = given
       ? "Given; the chords suggest:"
       : "Ranked candidates";
     $("key-candidates-label").hidden = candidates.length === 0;
-    $("key-candidates").replaceChildren(
-      ...candidates.map((label) => {
+    fillList($("key-candidates"), candidates.map(Core.keyName));
+    // Regions are listed only when the estimate found more than one; a given key has one.
+    const showRegions = !given && timeline.keys.length > 1;
+    $("key-regions-label").hidden = !showRegions;
+    $("key-regions").hidden = !showRegions;
+    fillList(
+      $("key-regions"),
+      showRegions
+        ? timeline.keys.map(
+            (region) =>
+              `${Core.formatTime(timeline.beats[region.start_beat])} ${Core.keyName(region.label)}`,
+          )
+        : [],
+    );
+  }
+
+  function fillList(list, texts) {
+    list.replaceChildren(
+      ...texts.map((text) => {
         const item = document.createElement("li");
-        item.textContent = Core.keyName(label);
+        item.textContent = text;
         return item;
       }),
     );
@@ -492,7 +516,7 @@
       button.dataset.role = segment.role || "none";
       if (segment.edited) button.dataset.edited = "";
       place(button, segment.start_time, segment.end_time);
-      const name = Core.chordName(segment.chord, keyLabel, segment.bass, segment.inversion);
+      const name = nameOf(segment);
       const chord = document.createElement("span");
       chord.className = "segment-chord";
       // A slash chord too long for its cell breaks before the slash, and only there. The longest
@@ -551,12 +575,14 @@
       // down.
       const quality = segment.chord.split(":")[1];
       const leadingTone = quality === "dim7" || quality === "hdim7" || quality === "dim";
-      const target = Core.targetName(segment.chord, segment.target, keyLabel, leadingTone);
+      const key = segmentKey(segment);
+      const target = Core.targetName(segment.chord, segment.target, key, leadingTone);
       const kind = leadingTone ? "Leading-tone chord" : "Secondary dominant";
       return `${kind} of ${segment.target} (${target})`;
     }
     if (segment.role === "borrowed") {
-      return `Borrowed from the parallel ${keyLabel.endsWith(":maj") ? "minor" : "major"}`;
+      const parallel = segmentKey(segment).endsWith(":maj") ? "minor" : "major";
+      return `Borrowed from the parallel ${parallel}`;
     }
     // Every diatonic chord has a function, and only diatonic chords do.
     if (segment.function) return `Diatonic, ${segment.function} function`;
@@ -566,17 +592,15 @@
   function renderNow(segment) {
     const isChord = segment.chord !== "N";
     document.querySelector(".now").dataset.role = segment.role || "none";
-    $("now-chord").textContent = Core.chordName(
-      segment.chord,
-      keyLabel,
-      segment.bass,
-      segment.inversion,
-    );
+    const key = segmentKey(segment);
+    // Wins over renderKey's whole-song key: the big key follows the playhead's region.
+    $("key-name").textContent = key ? Core.keyName(key) : "None";
+    $("now-chord").textContent = nameOf(segment);
     fitBigChord();
     renderNumeral($("now-numeral"), segment);
     // Every row always shows, so the panel doesn't jump on chord changes.
     $("now-role").textContent = isChord ? roleText(segment) : "No chord";
-    const bass = Core.bassName(segment.chord, keyLabel, segment.bass);
+    const bass = Core.bassName(segment.chord, key, segment.bass);
     $("now-bass").textContent = bass ? `${bass}, ${INVERSION_TEXT[segment.inversion]}` : "None heard";
     $("now-edited").hidden = !segment.edited;
     $("now-alt-label").textContent = segment.edited ? "Analyzer heard" : "Also heard as";
@@ -588,9 +612,10 @@
   // quality picked there makes a chord on it.
   function renderPicker(segment) {
     const isChord = segment.chord !== "N";
+    const key = segmentKey(segment);
     const [root, quality] = isChord
       ? segment.chord.split(":")
-      : [keyLabel ? keyLabel.split(":")[0] : "C", "N"];
+      : [key ? key.split(":")[0] : "C", "N"];
     $("edit-root").value = root;
     $("edit-quality").value = quality;
     // The root's own note is what Root reads, so it is not offered twice. Arrowing through the
@@ -607,6 +632,7 @@
   // user's, everything it heard is on offer, its first reading included, bar the chord itself.
   function renderCandidates(segment) {
     const list = $("now-alt");
+    const key = segmentKey(segment);
     const labels = segment.edited
       ? segment.candidates.filter((label) => label !== segment.chord)
       : segment.candidates.slice(1);
@@ -617,7 +643,7 @@
       ...labels.map((label) => {
         const item = document.createElement("span");
         const button = document.createElement("button");
-        const name = Core.alternativeName(label, segment.chord, keyLabel);
+        const name = Core.alternativeName(label, segment.chord, key);
         const sameNotes = Core.sameNotes(label, segment.chord);
         const action = `Set chord to ${name}${sameNotes ? ", same notes" : ""}`;
         button.type = "button";
