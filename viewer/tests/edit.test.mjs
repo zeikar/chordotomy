@@ -104,12 +104,19 @@ const FIELDS = [
 const assertFieldOrder = (timeline) => {
   for (const segment of timeline.segments) assert.deepEqual(Object.keys(segment), FIELDS);
 };
+// And the file's: the 4's, with the key regions after the key.
+const TIMELINE_FIELDS = ["schema_version", "generator", "source", "key", "keys", "beats", "segments"];
 const spans = (timeline) => timeline.segments.map((s) => [s.start_beat, s.end_beat]);
+const numerals = (timeline) => timeline.segments.map((s) => s.numeral);
 
-test("upgrade turns a schema-4 timeline into a 9 by the DSP with nothing edited", () => {
-  assert.equal(base.schema_version, 9);
+test("upgrade turns a schema-4 timeline into a 10 by the DSP with nothing edited", () => {
+  assert.equal(base.schema_version, 10);
   assert.deepEqual(base.source, { path: "song.mp3", duration: 5.0, url: null });
-  assert.deepEqual(Object.keys(base), Object.keys(v4));
+  assert.deepEqual(Object.keys(base), TIMELINE_FIELDS);
+  // A 4 was analyzed in its one key, so that is its one region.
+  assert.deepEqual(base.keys, [{ start_beat: 0, end_beat: 10, label: "C:maj" }]);
+  assert.deepEqual(Object.keys(base.keys[0]), ["start_beat", "end_beat", "label"]);
+  assert.deepEqual(Edit.upgrade({ ...v4, key: null }).keys, []);
   // In the CLI's order: the engine follows the chordotomy version, which is the DSP's.
   assert.deepEqual(Object.entries(base.generator), [
     ["name", "chordotomy"],
@@ -125,33 +132,33 @@ test("upgrade turns a schema-4 timeline into a 9 by the DSP with nothing edited"
   assert.equal(Edit.upgrade(base), base);
 });
 
-test("upgrade turns a schema-5 timeline into a 9 by the DSP, keeping its edits", () => {
+test("upgrade turns a schema-5 timeline into a 10 by the DSP, keeping its edits", () => {
   const v5 = deepFreeze({
     ...setChord(base, 2, "D:7", "F#"),
     schema_version: 5,
     generator: { name: "chordotomy", version: "0.1.0" },
   });
   const upgraded = Edit.upgrade(v5);
-  assert.equal(upgraded.schema_version, 9);
+  assert.equal(upgraded.schema_version, 10);
   assert.deepEqual(upgraded.generator, {
     name: "chordotomy",
     version: "0.1.0",
     engine: { name: "dsp", version: "0.1.0" },
   });
   assert.equal(upgraded.segments, v5.segments);
-  assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
+  assert.deepEqual(Object.keys(upgraded), TIMELINE_FIELDS);
 });
 
-test("upgrade turns a schema-6 timeline into a 9 that keeps its generator and segments", () => {
+test("upgrade turns a schema-6 timeline into a 10 that keeps its generator and segments", () => {
   const v6 = deepFreeze({ ...setChord(base, 2, "D:7", "F#"), schema_version: 6 });
   const upgraded = Edit.upgrade(v6);
-  assert.equal(upgraded.schema_version, 9);
+  assert.equal(upgraded.schema_version, 10);
   assert.equal(upgraded.generator, v6.generator);
   assert.equal(upgraded.segments, v6.segments);
-  assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
+  assert.deepEqual(Object.keys(upgraded), TIMELINE_FIELDS);
 });
 
-test("upgrade turns a schema-7 timeline into a 9 that keeps its generator and segments", () => {
+test("upgrade turns a schema-7 timeline into a 10 that keeps its generator and segments", () => {
   const generator = {
     name: "chordotomy",
     version: "0.0.0",
@@ -159,10 +166,10 @@ test("upgrade turns a schema-7 timeline into a 9 that keeps its generator and se
   };
   const v7 = deepFreeze({ ...setChord(base, 2, "D:7", "F#"), schema_version: 7, generator });
   const upgraded = Edit.upgrade(v7);
-  assert.equal(upgraded.schema_version, 9);
+  assert.equal(upgraded.schema_version, 10);
   assert.equal(upgraded.generator, generator);
   assert.equal(upgraded.segments, v7.segments);
-  assert.deepEqual(Object.keys(upgraded), Object.keys(v4));
+  assert.deepEqual(Object.keys(upgraded), TIMELINE_FIELDS);
   assert.equal(Edit.upgrade(upgraded), upgraded);
 });
 
@@ -400,6 +407,7 @@ test("a timeline with no chord left has no key, and still takes every edit", () 
     base,
   );
   assert.equal(silent.key, null);
+  assert.deepEqual(silent.keys, []);
   assert.ok(silent.segments.every((segment) => segment.numeral === null));
 
   const halves = split(silent, 0, 1);
@@ -418,6 +426,87 @@ test("a timeline with no chord left has no key, and still takes every edit", () 
   assert.deepEqual(given.key, { label: "C:maj", source: "given", candidates: [] });
   assert.equal(setKey(given, null).key, null);
   assert.equal(setKey(silent, null), silent); // no key, and none given: nothing to change
+});
+
+// A timeline of `chords`, [label, beats] pairs with no two alike in a row, one segment each on
+// half-second beats, analyzed as `chordotomy analyze` analyzes them.
+function analyzed(chords) {
+  const { key, keys, analyses } = Harmony.analyze(chords);
+  const total = chords.reduce((sum, [, n]) => sum + n, 0);
+  const beats = Array.from({ length: total }, (_, beat) => beat / 2);
+  let start = 0;
+  const segments = chords.map(([chord, n], index) => {
+    const end = start + n;
+    const segment = {
+      start_beat: start,
+      end_beat: end,
+      start_time: beats[start],
+      end_time: end / 2,
+      chord,
+      candidates: [chord],
+      bass: chord.split(":")[0],
+      inversion: "root",
+      ...analyses[index],
+      edited: false,
+    };
+    start = end;
+    return segment;
+  });
+  return deepFreeze({
+    schema_version: 10,
+    generator: base.generator,
+    source: { path: "song.mp3", duration: total / 2, url: null },
+    key,
+    keys,
+    beats,
+    segments,
+  });
+}
+
+// The golden vectors' half step up: E major's I–V–IV–V for 64 beats, then F–C–Bb–C in two-beat
+// chords and F for 4, which is a region of F major only with that last F.
+const E_SECTION = [["E:maj", 2], ["B:maj", 2], ["A:maj", 2], ["B:maj", 2]];
+const modulating = analyzed([
+  ...Array.from({ length: 8 }, () => E_SECTION).flat(),
+  ["F:maj", 2],
+  ["C:maj", 2],
+  ["A#:maj", 2],
+  ["C:maj", 2],
+  ["F:maj", 4],
+]);
+const savedProblem = (timeline) => Core.timelineProblem(JSON.parse(Edit.serialize(timeline)));
+
+test("an edit recomputes the key regions, moving a boundary that lies before the edited chord", () => {
+  assert.deepEqual(modulating.keys, [
+    { start_beat: 0, end_beat: 64, label: "E:maj" },
+    { start_beat: 64, end_beat: 76, label: "F:maj" },
+  ]);
+  assert.deepEqual(numerals(modulating).slice(-5), ["I", "V", "IV", "V", "I"]);
+
+  // The last F to E takes the F region away, its boundary at 64, 8 beats before the edited chord.
+  const edited = setChord(modulating, modulating.segments.length - 1, "E:maj", "E");
+  assert.deepEqual(edited.key, modulating.key);
+  assert.deepEqual(edited.keys, [{ start_beat: 0, end_beat: 76, label: "E:maj" }]);
+  assert.deepEqual(numerals(edited).slice(-5), ["bII", "bVI", "#IV", "bVI", "I"]);
+  // The key is estimated already, and the chords now estimate the one region: nothing to change.
+  assert.equal(setKey(edited, null), edited);
+  for (const timeline of [modulating, edited]) assert.equal(savedProblem(timeline), null);
+});
+
+test("a given key is one region over every beat, and estimating again brings the regions back", () => {
+  const given = setKey(modulating, "E:maj");
+  const { candidates } = modulating.key;
+  assert.deepEqual(given.key, { label: "E:maj", source: "given", candidates });
+  assert.deepEqual(given.keys, [{ start_beat: 0, end_beat: 76, label: "E:maj" }]);
+  // Every chord in E: the E section as it was, the F section with its last F as bII too.
+  given.segments.slice(0, 32).forEach((segment, i) => assert.equal(segment, modulating.segments[i]));
+  assert.deepEqual(numerals(given).slice(-5), ["bII", "bVI", "#IV", "bVI", "bII"]);
+
+  const estimated = setKey(given, null);
+  assert.deepEqual(estimated.key, modulating.key);
+  assert.deepEqual(estimated.keys, modulating.keys);
+  assert.deepEqual(estimated.segments, modulating.segments);
+  for (const timeline of [given, estimated]) assert.equal(savedProblem(timeline), null);
 });
 
 test("undo returns the very timeline before the edit, and redo the edit", () => {
@@ -440,9 +529,13 @@ test("serialize writes the file as the CLI does", () => {
   const timeline = setChord(base, 1, "F#:hdim7", "F#");
   const text = Edit.serialize(timeline);
   assert.deepEqual(JSON.parse(text), timeline);
-  assert.ok(text.startsWith('{\n  "schema_version": 9,\n'));
+  assert.ok(text.startsWith('{\n  "schema_version": 10,\n'));
   assert.ok(text.endsWith("}\n"));
   assert.ok(text.includes('"numeral": "viiø7/V"'));
+  // The key regions follow the key, as the CLI writes them, each in its own field order.
+  const saved = JSON.parse(text);
+  assert.deepEqual(Object.keys(saved), TIMELINE_FIELDS);
+  assert.deepEqual(Object.keys(saved.keys[0]), ["start_beat", "end_beat", "label"]);
 });
 
 test("a 6 keeps the engine it was read with, through the upgrade and an edit to the saved file", () => {
@@ -454,17 +547,18 @@ test("a 6 keeps the engine it was read with, through the upgrade and an edit to 
   const model = deepFreeze({ ...base, schema_version: 6, generator });
   const upgraded = Edit.upgrade(model);
   assert.equal(upgraded.generator, generator);
-  assert.equal(Edit.upgrade(upgraded), upgraded); // a 9 as it is
+  assert.equal(Edit.upgrade(upgraded), upgraded); // a 10 as it is
   const saved = JSON.parse(Edit.serialize(setChord(upgraded, 1, "F#:hdim7", "F#")));
-  assert.equal(saved.schema_version, 9);
+  assert.equal(saved.schema_version, 10);
   assert.deepEqual(Object.entries(saved.generator), Object.entries(generator));
 });
 
-test("a 9 keeps its source url through an edit to the saved file", () => {
+test("a 9 keeps its source url through the upgrade and an edit to the saved file", () => {
   const url = "https://www.youtube.com/watch?v=abc";
-  const nine = deepFreeze({ ...base, source: { ...base.source, url } });
-  assert.equal(Edit.upgrade(nine), nine);
-  const saved = JSON.parse(Edit.serialize(setChord(nine, 1, "F#:hdim7", "F#")));
+  const nine = deepFreeze({ ...base, schema_version: 9, source: { ...base.source, url } });
+  const upgraded = Edit.upgrade(nine);
+  assert.equal(upgraded.source, nine.source);
+  const saved = JSON.parse(Edit.serialize(setChord(upgraded, 1, "F#:hdim7", "F#")));
   assert.equal(saved.source.url, url);
   assert.equal(Core.timelineProblem(saved), null);
   const stray = deepFreeze({ ...v4, schema_version: 8, source: { ...v4.source, url: "javascript:alert(1)" } });

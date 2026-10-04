@@ -9,9 +9,9 @@
 "use strict";
 
 const Core = ((Harmony) => {
-  // The viewer reads 4 to 9 and writes 9; an older file is upgraded in memory (see Edit.upgrade).
+  // The viewer reads 4 to 10 and writes 10; an older file is upgraded in memory (see Edit.upgrade).
   const MIN_SCHEMA_VERSION = 4;
-  const SCHEMA_VERSION = 9;
+  const SCHEMA_VERSION = 10;
   // The chord vocabulary lives in harmony.js, beside the analysis ported from Python, so it has
   // no copy here. A new quality still takes an entry in QUALITY_SUFFIX and MEMBER_STEPS below,
   // and, if its numeral suffix is new, in NUMERAL_SUFFIX, numeralParts' pattern and app.js's
@@ -282,6 +282,13 @@ const Core = ((Harmony) => {
     return lastAtOrBefore(beats.length, (i) => beats[i], t);
   }
 
+  // The label of the key region holding beat `beat`, or null outside them all (and so whenever
+  // the timeline has no key). Regions tile the beats in order, as segments do.
+  function keyAt(keys, beat) {
+    const index = lastAtOrBefore(keys.length, (i) => keys[i].start_beat, beat);
+    return index >= 0 && beat < keys[index].end_beat ? keys[index].label : null;
+  }
+
   // The fractional beat index of time `t`: the beat it falls in plus how far through that beat it
   // is, so every beat spans one unit whatever its length. Before the first beat and after the
   // last, the nearest gap carries on (negative before the first). The strip is scaled per beat so
@@ -337,6 +344,12 @@ const Core = ((Harmony) => {
     target: nullOr(isText),
   };
   const SEGMENT_FIELDS_5 = { ...SEGMENT_FIELDS, edited: (value) => typeof value === "boolean" };
+  // What a key region (schema 10) holds.
+  const REGION_FIELDS = {
+    start_beat: Number.isInteger,
+    end_beat: Number.isInteger,
+    label: (value) => Harmony.KEYS.includes(value),
+  };
 
   // A reason the parsed JSON can't be shown, or null if it can. Whatever passes is safe to draw and
   // edit: every field the viewer reads is there and holds what chordotomy writes.
@@ -407,20 +420,64 @@ const Core = ((Harmony) => {
       const field = Object.keys(fields).find((name) => !fields[name](segment[name]));
       if (field) return `This timeline's ${where} has a missing or invalid ${field}.`;
       // Beats outside the list would be read as undefined times, and a huge span would hang the
-      // chord sound, which strikes every beat of it.
+      // chord sound, which strikes every beat of it. Beat lookup, split and merge rely on
+      // segments that tile the beats and carry their times.
+      const tiling = tilingProblem(segments, index, beats.length, where);
+      if (tiling) return tiling;
       const { start_beat: start, end_beat: end } = segment;
-      if (start < 0 || end <= start || end > data.beats.length) {
-        return `This timeline's ${where} lies outside its beats.`;
-      }
-      // Beat lookup, split and merge rely on segments that tile the beats and carry their times.
-      if (start !== (index ? segments[index - 1].end_beat : 0)) {
-        return `This timeline's ${where} doesn't start where the one before it ends.`;
-      }
       const last = index === segments.length - 1;
-      if (last && end !== beats.length) return `This timeline's ${where} stops short of the last beat.`;
       if (segment.start_time !== beats[start] || segment.end_time !== (last ? data.source.duration : beats[end])) {
         return `This timeline's ${where} has times that don't match its beats.`;
       }
+    }
+    return version >= 10 ? keysProblem(data) : null;
+  }
+
+  // Why the span at `index` of `spans` (segments or key regions) doesn't take its place in a
+  // tiling of `total` beats, in order and with no gap, or null when it does.
+  function tilingProblem(spans, index, total, where) {
+    const { start_beat: start, end_beat: end } = spans[index];
+    if (start < 0 || end <= start || end > total) {
+      return `This timeline's ${where} lies outside its beats.`;
+    }
+    if (start !== (index ? spans[index - 1].end_beat : 0)) {
+      return `This timeline's ${where} doesn't start where the one before it ends.`;
+    }
+    if (index === spans.length - 1 && end !== total) {
+      return `This timeline's ${where} stops short of the last beat.`;
+    }
+    return null;
+  }
+
+  // A reason a 10's key regions can't be shown, or null if they can. The segments are known to
+  // tile the beats by now.
+  function keysProblem({ key, keys, beats, segments }) {
+    if (!Array.isArray(keys)) return "This timeline has no keys list.";
+    // The key is null, and the regions none, only when there is no chord to estimate from.
+    if (key == null) return keys.length ? "This timeline has key regions but no key." : null;
+    if (!keys.length) return "This timeline has a key but no key regions.";
+    const segmentStarts = new Set(segments.map((segment) => segment.start_beat));
+    for (const [index, region] of keys.entries()) {
+      const where = `key region ${index + 1}`;
+      if (!region || typeof region !== "object") return `This timeline's ${where} isn't an object.`;
+      const field = Object.keys(REGION_FIELDS).find((name) => !REGION_FIELDS[name](region[name]));
+      if (field) return `This timeline's ${where} has a missing or invalid ${field}.`;
+      // keyAt looks a beat's key up in them, so they tile the beats as the segments do.
+      const tiling = tilingProblem(keys, index, beats.length, where);
+      if (tiling) return tiling;
+      // Playback reads a segment's key at its start_beat, so a change inside one would be missed.
+      // The first region starts at beat 0 by the tiling check, as the first segment does.
+      if (index && !segmentStarts.has(region.start_beat)) {
+        return `This timeline's ${where} starts inside a segment.`;
+      }
+    }
+    // As the analyzer writes them: a given key is the one region, and a lone estimated region is
+    // the key the whole song estimates, so the key shown never hides a change the playback makes.
+    if (key.source === "given" && keys.length !== 1) {
+      return `This timeline's given key must be one region, not ${keys.length}.`;
+    }
+    if (keys.length === 1 && keys[0].label !== key.label) {
+      return `This timeline's key region is labelled ${keys[0].label}, but its key is ${key.label}.`;
     }
     return null;
   }
@@ -597,6 +654,7 @@ const Core = ((Harmony) => {
     engineText,
     formatTime,
     isHttpUrl,
+    keyAt,
     keyName,
     numeralParts,
     numeralText,

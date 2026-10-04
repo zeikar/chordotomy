@@ -16,30 +16,30 @@ const Edit = ((Harmony) => {
     Harmony.ROOTS.flatMap((root) => Harmony.QUALITY_NAMES.map((quality) => `${root}:${quality}`)),
   );
 
-  // A schema-4 to 8 timeline as a 9. A 9 adds `source.url`, which no earlier file had: it is null
-  // whatever an older file carried, so a stray string never survives into a 9. A 6, 7 or 8 changes
-  // its version and url alone, keeping its generator and segments. Only the DSP wrote files before
-  // 6, so it is the engine, at the chordotomy version that wrote the file; `engine` follows that
-  // version, where timeline.py writes it. A 4 also had no edits: `edited: false` goes last on every
-  // segment, where timeline.py writes it. A 9 is returned as it is. The analyzer's fields stand
-  // until the first edit.
+  // A schema-4 to 9 timeline as a 10, fields in timeline.py's order. A 10 adds `keys`: an older
+  // file was analyzed in its one key, so that is its one region over the beats (none when it has
+  // no key). Before 9 there was no `source.url`, so it is null whatever an older file carried,
+  // and a stray string never survives. Before 6 only the DSP wrote files, so the engine is the
+  // DSP at the chordotomy version that wrote the file. A 4 had no edits, so every segment gets
+  // `edited: false`, last. A 10 is returned as is.
   function upgrade(data) {
     const version = data.schema_version;
-    if (version === 9) return data;
-    const { generator } = data;
-    const segments =
-      version === 4
-        ? data.segments.map((segment) => ({ ...segment, edited: false }))
-        : data.segments;
+    if (version === 10) return data;
+    const { generator, key, beats } = data;
     return {
-      ...data,
-      schema_version: 9,
-      source: { ...data.source, url: null },
+      schema_version: 10,
       generator:
         version < 6
           ? { ...generator, engine: { name: "dsp", version: generator.version } }
           : generator,
-      segments,
+      source: version < 9 ? { ...data.source, url: null } : data.source,
+      key,
+      keys: key == null ? [] : [{ start_beat: 0, end_beat: beats.length, label: key.label }],
+      beats,
+      segments:
+        version === 4
+          ? data.segments.map((segment) => ({ ...segment, edited: false }))
+          : data.segments,
     };
   }
 
@@ -62,18 +62,21 @@ const Edit = ((Harmony) => {
     };
   }
 
-  // The key and every segment's numeral, role, function and target, recomputed from the chords as
-  // `chordotomy analyze` computes them: on chord runs, so equal neighbours (the analyzer writes
-  // them when the bass changes, a split leaves them) are one chord without being merged. A given
-  // key stays given; an estimated one is estimated again. A segment whose analysis is unchanged
-  // stays the same object.
+  // The key, the key regions and every segment's numeral, role, function and target, recomputed
+  // from the chords as `chordotomy analyze` computes them: on chord runs, so equal neighbours (the
+  // analyzer writes them when the bass changes, a split leaves them) are one chord without being
+  // merged. A given key stays given, the one region; an estimated one is estimated again, and the
+  // regions with it. A segment whose analysis is unchanged stays the same object.
   function reanalyze(timeline) {
     const runs = Harmony.chordRuns(timeline.segments);
-    const { key, analyses } = Harmony.analyze(Harmony.progression(runs), givenKey(timeline));
+    const { key, keys, analyses } = Harmony.analyze(
+      Harmony.progression(runs),
+      givenKey(timeline),
+    );
     const segments = runs.flatMap((run, index) =>
       run.map((segment) => withAnalysis(segment, analyses[index])),
     );
-    return { ...timeline, key, segments };
+    return { ...timeline, key, keys, segments };
   }
 
   // The key the user or --key fixed, or null when it is estimated or there is none.
