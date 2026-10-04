@@ -44,7 +44,7 @@ yt-dlp runs through `uvx`, from uv's cache, so nothing is installed on `PATH`, a
 2. **Download.** In the current working directory, run `uvx --from 'yt-dlp[default,deno]@latest' yt-dlp --no-playlist -I 1 -x --audio-format mp3 --print after_move:webpage_url --print after_move:filepath '<url>'` with a timeout of up to 10 minutes. `@latest` takes the newest yt-dlp on every run, since an old one stops working when YouTube changes, and the `deno` extra brings the JavaScript runtime yt-dlp needs for YouTube. The first run fetches them, about 40 MB, into uv's cache; later runs reuse it. It fetches one video's audio as mp3, since the decoder reads wav, flac, ogg and mp3 but not m4a or webm; for a playlist or channel link with no video in it, that is the first video, so tell the user which. It prints two lines: the video's canonical page URL (`<webpage_url>`), then the file's absolute path, named `<title> [<id>].mp3`. The file is in the current directory, so use its basename as `<audio>` from here on: an absolute path would put the user's home directory in `source.path` of a timeline that may be shared.
 3. **If yt-dlp fails,** show its message and stop. Report a private, removed or restricted video to the user as such; don't work around it.
 4. **Use or make the timeline.** Apply Step 1's "Given audio" and "Analyzing in a stated key" rules to `<audio>`. With no timeline to use, run the analyze command chosen above with `--source-url '<webpage_url>'` appended: the printed page URL, not the pasted one, which may carry `list=`, `t=` or `si=` parameters. Append it to every analyze run on this file, a keyed or `--force` one too. For an existing timeline, check `schema_version` and `source.url`, which the first line of Step 2's compact view shows:
-   - **9 or 10, with `source.url` `null`:** first write `<webpage_url>` into it with the snippet below, `<timeline>` being its path. It changes that one field and keeps every edit.
+   - **9 to 11, with `source.url` `null`:** first write `<webpage_url>` into it with the snippet below, `<timeline>` being its path. It changes that one field and keeps every edit.
    - **`source.url` set:** leave it. If it differs from `<webpage_url>`, tell the user both.
    - **Any other schema:** leave it as it is. Below 9, tell the user that this timeline carries no link to the video.
 
@@ -54,8 +54,8 @@ import json, os, shutil, sys, tempfile
 path, url = sys.argv[1], sys.argv[2]
 with open(path, encoding="utf-8") as f:
     d = json.load(f)
-if d.get("schema_version") not in (9, 10) or d["source"]["url"] is not None:
-    sys.exit("left as it is: not schema 9 or 10 with source.url null")
+if d.get("schema_version") not in (9, 10, 11) or d["source"]["url"] is not None:
+    sys.exit("left as it is: not schema 9 to 11 with source.url null")
 d["source"]["url"] = url
 data = (json.dumps(d, indent=2, ensure_ascii=False) + "\n").encode("utf-8", "backslashreplace")
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), suffix=".tmp")
@@ -77,12 +77,13 @@ EOF
 The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines. Read a compact view instead of the raw file:
 
 ```bash
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| source", json.dumps(d.get("source"), ensure_ascii=False), "| key", json.dumps(d.get("key"), ensure_ascii=False), "| keys", json.dumps([[d["beats"][r["start_beat"]], r["label"]] for r in d.get("keys") or []], ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| source", json.dumps(d.get("source"), ensure_ascii=False), "| global_key", json.dumps(d.get("global_key", d.get("key")), ensure_ascii=False), "| key_regions", json.dumps([[d["beats"][r["start_beat"]], r["label"]] for r in d.get("key_regions", d.get("keys")) or []], ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 10:
+Check `schema_version`. This skill is written for version 11:
 
-- **Below 10:** there is no `keys`; every numeral is relative to the one `key`.
+- **Below 11:** `global_key` is called `key` and `key_regions` is called `keys` (the compact view reads either name), and there is no `maj(9)` or `min(9)` and no `add9` numeral.
+- **Below 10:** there are no key regions; every numeral is relative to the one key.
 - **Below 9:** there is no `source.url`.
 - **Below 8:** there is no `sus4(b7)` and no `7sus4` numeral; an lv-chordia timeline below 8 wrote a 7sus4 as `sus4`.
 - **Below 7:** there is no `aug`, `dim` (the triad) or `sus2`, and no `+`, bare `°` or `sus2` numerals; an lv-chordia timeline below 7 wrote a diminished triad as `dim7`, an augmented chord as `maj` and a sus2 as the sus4 a fifth up.
@@ -91,19 +92,19 @@ Check `schema_version`. This skill is written for version 10:
 - **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
 - **Below 3:** there is no `bass` and no `inversion`.
 - **Below 2:** there is no key and there are no numerals either.
-- **Above 10:** this skill may be out of date. Explain only the fields listed here.
+- **Above 11:** this skill may be out of date. Explain only the fields listed here.
 
-In every case other than 10, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/timeline-json.md`.
+In every case other than 11, tell the user that the timeline comes from a different chordotomy version. The field definitions are in `${CLAUDE_PLUGIN_ROOT}/docs/timeline-json.md`.
 
 The fields:
 
 - **`generator.engine`:** the chord recognizer that produced `chord` and `candidates`: `name` (`dsp`, chordotomy's own DSP front end, or `lv-chordia`, a pretrained model) and `version` (chordotomy's version for `dsp`, the lv-chordia package version for `lv-chordia`).
 - **`source.url`:** the web page the recording came from, `null` for a local file.
-- **`key`:** the whole-song estimate: `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). `key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
-- **`keys`:** the key regions, contiguous over the beats: `start_beat`, `end_beat`, `label`. The compact view prints each as `[start_time, label]`. One region when `key.source` is `given`; `[]` when `key` is `null`.
+- **`global_key`:** the whole-song estimate: `label` (`C:maj`, `A:min`), `source` (`estimated` or `given`), and `candidates` (the estimator's ranking, with no scores). In a song with several key regions it is the key that reads best over all of it, which can differ from every region's. `global_key: null` means the timeline has no chord to estimate a key from; say so. The `edited` flags don't show whether the analyzer found no chords or the user cleared them, so don't say which. With `source: given`, mention when `candidates[0]` differs from the given key.
+- **`key_regions`:** the key regions, contiguous over the beats: `start_beat`, `end_beat`, `label`. The compact view prints each as `[start_time, label]`. One region when `global_key.source` is `given`; `[]` when `global_key` is `null`.
 - **Per segment:**
   - `start_time`, `end_time`
-  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on thirteen qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7`, `sus4`, `aug`, `dim`, `sus2` and `sus4(b7)`.
+  - `chord` (a Harte label, always root position), `candidates` (this segment's ranking, `candidates[0] == chord` unless `edited`). Both draw on fifteen qualities: `maj`, `min`, `7`, `maj7`, `min7`, `min6`, `hdim7`, `dim7`, `sus4`, `aug`, `dim`, `sus2`, `sus4(b7)`, `maj(9)` and `min(9)`. The last two, the added ninths, come only from a correction in the viewer: no recognizer writes them.
   - `bass`, `inversion`
   - `edited` (`true` when the user corrected `chord` or `bass` in the viewer, or merged a segment over a neighbour with a different one; `candidates` is then only what the analyzer heard, so `candidates[0]` may differ from `chord`)
   - `numeral`, `role` (`diatonic`, `secondary_dominant`, `borrowed` or `chromatic`), `function`, `target`, all relative to the key region that contains the segment. `secondary_dominant` also covers secondary leading-tone chords: numeral `vii°/x`, `vii°7/x` or `viiø7/x`, with `target` set.
@@ -115,7 +116,7 @@ Consecutive segments can repeat a `chord` when the bass changes under it. Treat 
 
 Highlight, in time order:
 
-1. **Every key change,** when `keys` has more than one region: the time, the two keys, and the last chords before and the first after.
+1. **Every key change,** when `key_regions` has more than one region: the time, the two keys, and the last chords before and the first after.
 2. **Every secondary dominant or leading-tone run (`role: secondary_dominant`), with its next chord.** An `N` next means the chord did not resolve.
 3. **Every `borrowed` run.**
 4. **Every `chromatic` run.**
@@ -136,7 +137,7 @@ Rules:
 - **Ground every claim in the JSON:** the numeral, role, target, next chord and bass. Music theory explains why those facts work. It never adds facts the JSON does not contain. The analyzer knows nothing about melody, lyrics, instrumentation or phrase boundaries, so claim none of them.
 - **Be brief:** one to three sentences per move.
 - **Flag shaky labels.** The chords are extracted automatically and can be wrong. When a highlight hinges on one label, and its segment is not `edited`, name that segment's `candidates[1]` (and `[2]`) as the alternative reading, e.g. a borrowed `iv` that could be a misheard `IV`. A candidate on the same notes as `chord` (`A:min6` beside `F#:hdim7`) is a spelling, not an alternative; see `references/moves.md`. Never state percentages or confidence numbers. The candidates are the recognizer's own ranking (the DSP's template scores or the model's), never probabilities.
-- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, `F:maj7` → Fmaj7, `D:min7` → Dm7, `G:min6` → Gm6, `F#:hdim7` → F♯m7♭5, `C#:dim7` → C♯dim7, `G:sus4` → Gsus4, `C:aug` → Caug, `B:dim` → Bdim, `C:sus2` → Csus2, `A:sus4(b7)` → A7sus4, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
+- **Write chords the way musicians do:** `C:maj` → C, `A:min` → Am, `G:7` → G7, `F:maj7` → Fmaj7, `D:min7` → Dm7, `G:min6` → Gm6, `F#:hdim7` → F♯m7♭5, `C#:dim7` → C♯dim7, `G:sus4` → Gsus4, `C:aug` → Caug, `B:dim` → Bdim, `C:sus2` → Csus2, `A:sus4(b7)` → A7sus4, `C:maj(9)` → Cadd9, `A:min(9)` → Amadd9, and `C:maj` over bass `E` → C/E. Respell sharps as the key and numeral require. `A#:maj` is B♭ major, and a `bVII` in C is B♭, not A♯. The spelling rules are in `references/moves.md`.
 - **Write times as m:ss** from `start_time`.
 - **Answer in the user's language.**
 
@@ -156,7 +157,7 @@ Moves worth noticing
 (The labels were extracted automatically by <engine>, except the segments the user corrected; <any caveat worth making>.)
 ```
 
-- **Key line:** the whole-song `key`, as in the shape above. When `keys` has several regions, add a line "Regions: E major → G major (0:47) → …"; `key` need not be the first region's key.
+- **Key line:** the whole-song `global_key`, as in the shape above. When `key_regions` has several regions, add a line "Regions: E major → G major (0:47) → …"; `global_key` need not be any region's key.
 - **Progression line:** the numerals of the chord runs in order, with each segment's inversion figure. Collapse immediate repeats. Mark each key change with the new key and its time in brackets: "… – V7 – I [G major, 0:47] vi – …". Numerals after a mark are relative to the new key. For a long song, show the first 16 and say that it continues.
 - **Highlights:** list them in time order.
 - **Caveat line:** `<engine>` comes from `generator.engine`: its name and `version` for `lv-chordia` ("extracted automatically by lv-chordia 1.1.0"), and "chordotomy's DSP front end" for `dsp` and for a file below schema 6.

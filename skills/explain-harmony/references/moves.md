@@ -38,6 +38,8 @@ Keep the rest as written: F♯ major, C♯ minor, G♯ minor, F♯ minor.
 | `C:dim` | Cdim |
 | `C:sus2` | Csus2 |
 | `C:sus4(b7)` | C7sus4 |
+| `C:maj(9)` | Cadd9 |
+| `C:min(9)` | Cmadd9 |
 
 The numerals keep `+`, `ø7`, `°7` and `°`; the chord symbols use aug, m7♭5, dim7 and dim.
 
@@ -50,7 +52,7 @@ The numerals keep `+`, `ø7`, `°7` and `°`; the chord symbols use aug, m7♭5,
 - A diminished chord's root is spelled raised, as its numeral is: `#i°7` in C is C♯dim7, `#i°` is C♯dim, and `#v°7` is G♯dim7. Where that would take a double sharp, use the plain letter (`#i°7` in F♯ is Gdim7, `#i°` is Gdim). Every other chromatic root keeps the key's degree spelling: `bII` in C is D♭.
 - A plain numeral takes the key's own spelling: `IV` in F is B♭.
 
-**The bass.** Spell it as the chord member that `inversion` names. The first-inversion bass of B♭ is D. A diminished fifth stays a fifth: the second-inversion bass of F♯m7♭5 is C, not B♯. For `min6`, `third` is the added sixth (E under Gm6); for `sus4`, `first` is the fourth (C under Gsus4); for `sus2`, `first` is the second (D under Csus2); for `sus4(b7)`, `first` is the fourth and `third` the seventh (D and G under A7sus4).
+**The bass.** Spell it as the chord member that `inversion` names. The first-inversion bass of B♭ is D. A diminished fifth stays a fifth: the second-inversion bass of F♯m7♭5 is C, not B♯. For `min6`, `third` is the added sixth (E under Gm6); for `sus4`, `first` is the fourth (C under Gsus4); for `sus2`, `first` is the second (D under Csus2); for `sus4(b7)`, `first` is the fourth and `third` the seventh (D and G under A7sus4); for `maj(9)` and `min(9)`, `third` is the added ninth (D under Cadd9).
 
 ## Figured-bass numerals
 
@@ -67,14 +69,14 @@ Build the progression line from `numeral` and `inversion`:
 | diminished triad (`vii°`, `ii°`, `#i°`, …) | vii° | vii°6 | vii°64 | none |
 | augmented triad (`III+`, `V+`, …) | III+ | III+6 | III+64 | none |
 
-- **`add6`, `sus4`, `sus2` and `7sus4`** take no figure in any inversion: their inversions are not stacks of thirds. Write the numeral and name the bass, e.g. "ivadd6 (bass A♭)".
+- **`add6`, `add9`, `sus4`, `sus2` and `7sus4`** take no figure in any inversion: their inversions are not stacks of thirds. Write the numeral and name the bass, e.g. "ivadd6 (bass A♭)".
 - **Secondary dominant or leading-tone chord:** put the figure before the slash. `V7/V` in first inversion is V65/V, `V/vi` in first inversion is V6/vi, `vii°7/ii` in first inversion is vii°65/ii, and `vii°/ii` is vii°6/ii.
 - **`non_chord`:** keep the numeral and name the bass, e.g. "I (bass D)".
 - **`null`:** use the numeral alone.
 
-## Secondary dominants (`role: secondary_dominant`, `V/x` or `V7/x`)
+## Secondary dominants (`role: secondary_dominant`, `V/x`, `V7/x` or `Vadd9/x`)
 
-The chord is V (or V7) of the chord named in `target`. It lends that chord a leading tone: its third sits a half step below the target's root. In C, D7 carries F♯, which pulls up to G. The seventh adds a tritone that wants to resolve toward the target.
+The chord is V (or V7, or V with an added ninth) of the chord named in `target`. It lends that chord a leading tone: its third sits a half step below the target's root. In C, D7 carries F♯, which pulls up to G. The seventh adds a tritone that wants to resolve toward the target.
 
 Judge the resolution by roots, not by numeral strings. The "next chord" is defined in SKILL.md.
 
@@ -112,7 +114,7 @@ The analyzer spells a dim7 or a m6 by where it leads. A dim7's four notes are th
 
 This is modal mixture: a chord taken from the parallel key, which shares the tonic but has the other mode. Name the borrowed tones.
 
-The analyzer tries the roles in order: diatonic, secondary dominant or leading-tone chord, borrowed, chromatic. A chord that reaches the borrowed test is borrowed when it is a chord of the parallel key (harmonic minor's V7 and vii°7 included), or when it is a seventh chord or an add6 whose triad is a chord of the parallel key and whose seventh or sixth belongs to either key. So `IV7` in major and `VIImaj7` in minor stay chromatic: their triads are not chords of the parallel key.
+The analyzer tries the roles in order: diatonic, secondary dominant or leading-tone chord, borrowed, chromatic. A chord that reaches the borrowed test is borrowed when it is a chord of the parallel key (harmonic minor's V7 and vii°7 included), or when it is a seventh chord, an add6 or an add9 whose triad is a chord of the parallel key and whose seventh, sixth or ninth belongs to either key. So `IV7` in major and `VIImaj7` in minor stay chromatic: their triads are not chords of the parallel key.
 
 In C major:
 
@@ -171,9 +173,9 @@ The chord is neither diatonic, nor a secondary dominant, nor borrowed. Describe 
 
 Chromatic labels are the likeliest extraction errors, unless the segment is `edited`, in which case the chord is the user's. Otherwise, when a segment's `candidates` include a diatonic chord, mention it as the alternative reading.
 
-## Key changes (`keys`)
+## Key changes (`key_regions`)
 
-Each region is one key; every numeral, role, function and target in it is relative to that region's key. A key change is a region boundary in the JSON, and `key` is only the whole-song estimate. Whether the music modulates is a reading the JSON doesn't make: say "key change" for the boundary and "modulation" only for your reading of the music. Name the relation between the two labels, from the root motion:
+Each region is one key; every numeral, role, function and target in it is relative to that region's key. A key change is a region boundary in the JSON, and `global_key` is only the whole-song estimate. Whether the music modulates is a reading the JSON doesn't make: say "key change" for the boundary and "modulation" only for your reading of the music. Name the relation between the two labels, from the root motion:
 
 - **A half-step lift:** the new tonic is a half step up (E → F).
 - **Up a minor third:** the new tonic is three half steps up (E → G).
@@ -202,7 +204,7 @@ A section centred on vi inside one region: no key change was detected. The relat
 
 ## A `non_chord` bass
 
-A bass that is not a chord tone usually means a chord outside the vocabulary (add9, 6/9, an eleventh chord) that the analyzer had to name by its upper part, or a passing note in the bass:
+A bass that is not a chord tone usually means a chord the recognizers don't write (an add9, which only a correction enters, a 6/9, an eleventh chord) that the analyzer had to name by its upper part, or a passing note in the bass:
 
 | label + bass | likely chord |
 | --- | --- |
@@ -216,6 +218,8 @@ A pedal point is different: the same `bass` held across segments whose `chord` c
 ## Colour tones
 
 `Imaj7`, `IVmaj7`, `ii7`, `iii7` and `vi7` are diatonic chords with their seventh added. The seventh is colour, not a new function: `IVmaj7` is still a predominant. Mention the sevenths once for the song, not chord by chord.
+
+`Iadd9`, `IVadd9`, `iiadd9` and the other `add9` numerals are triads with an added ninth (D over C–E–G), colour that keeps the triad's function. No recognizer writes one, so an `add9` is always the user's correction.
 
 `Vsus4` → `V` is a suspension: the fourth (C over G in C) resolves down to the third (B). It decorates V; it is not a substitute dominant.
 
