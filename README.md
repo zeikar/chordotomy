@@ -1,10 +1,11 @@
 # chordotomy
 
+[![PyPI](https://img.shields.io/pypi/v/chordotomy.svg)](https://pypi.org/project/chordotomy/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/zeikar/chordotomy/blob/main/LICENSE)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 [![Viewer](https://img.shields.io/badge/viewer-zeikar.dev%2Fchordotomy-5b4bb7.svg)](https://zeikar.dev/chordotomy/)
 
-Dissect a song's harmony. Give it a recording and it finds the chords on the beat, labels them with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord). In Claude Code, a skill adds a short note on why each one works.
+Dissect a song's harmony. Give it a recording (mp3, wav, flac or ogg) and it finds the chords on the beat and the key with its changes, labels the chords with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord). In Claude Code, a skill adds a short note on why each one works.
 
 It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 

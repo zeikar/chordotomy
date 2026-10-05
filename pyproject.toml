@@ -1,18 +1,23 @@
 [project]
 name = "chordotomy"
 version = "0.3.0"
-description = "Dissect a song's harmony: beat-aligned chords, Roman numerals, and the moves worth noticing."
+description = "Dissect a song's harmony from audio: chord recognition on the beat, key changes, Roman numerals, secondary dominants and borrowed chords."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "zeikar" }]
 keywords = [
   "chord-recognition",
+  "chord-detection",
+  "key-detection",
   "harmony",
   "roman-numeral-analysis",
   "music-analysis",
   "music-information-retrieval",
   "music-theory",
+  "audio-analysis",
+  "beat-tracking",
+  "lv-chordia",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -38,6 +43,7 @@ Homepage = "https://github.com/zeikar/chordotomy"
 Viewer = "https://zeikar.dev/chordotomy/"
 Repository = "https://github.com/zeikar/chordotomy"
 Issues = "https://github.com/zeikar/chordotomy/issues"
+Changelog = "https://github.com/zeikar/chordotomy/releases"
 Documentation = "https://github.com/zeikar/chordotomy/blob/main/docs/ARCHITECTURE.md"
 
 [project.scripts]
