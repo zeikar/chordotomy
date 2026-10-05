@@ -5,19 +5,22 @@ features and lv-chordia's frames. They are most of an analysis; what follows the
 segments, the twins, the harmony) and the scoring take under a second a song, so a change there
 rescores a dataset in seconds once the stages are cached.
 
-An entry is keyed by its stage, its input and the stage's fingerprint: the source of every function
-and class the stage reaches by name in the package or in the stage's own module, the values of the
-constants they read, and each package they call, by its version and the size and modification time
-of every file it installed (lv-chordia's weights and dictionary among them). The fingerprint is
-taken on every call, so an edited file, a reinstalled package and a constant a sweep reassigns all
-miss the cache. Not seen: code reached only through a string or a callback argument, and the source
-tree of a dependency installed as editable. Old entries stay behind; deleting the directory is
-always safe.
+An entry is keyed by its stage, its input, the stage's fingerprint and the dependencies. The
+fingerprint is the source of every function and class the stage reaches by name in the package or
+in the stage's own module, and the values of the constants they read; it is taken on every call, so
+an edited file and a constant a sweep reassigns both miss the cache. The dependencies are the
+libraries in PACKAGES, each by its version and the size and modification time of every file it
+installed (lv-chordia's weights and dictionary among them), read once when the cache is made: a
+dependency changed during a run is seen by the next, and the entries written after the change carry
+a key no later run makes unless its files return to their old size and time. Every stage keys on
+every dependency, since torch, lv-chordia and beat-this are imported inside the functions that use
+them, where the fingerprint cannot tell which stage reaches which; a model upgrade recomputes all
+three. Not seen: code reached only through a string or a callback argument, and the source tree of
+a dependency installed as editable. Old entries stay behind; deleting the directory is always safe.
 """
 
 from __future__ import annotations
 
-import functools
 import hashlib
 import importlib.metadata
 import inspect
@@ -37,12 +40,11 @@ import numpy as np
 PACKAGES = ("numpy", "scipy", "librosa", "soxr", "torch", "lv-chordia", "beat-this")
 
 
-@functools.cache
 def _package(name: str) -> str:
     """A package's version and the size and modification time of every file it installed.
 
     Stat, not content: torch alone installs thousands of files, and a reinstall or an edit changes
-    either. Taken once per process.
+    either.
     """
     try:
         distribution = importlib.metadata.distribution(name)
@@ -140,21 +142,23 @@ class _Hasher:
 
 
 def fingerprint(stage: Callable) -> str:
-    """The hex digest of what decides `stage`'s output besides its arguments."""
+    """The hex digest of the package code and constants that decide `stage`'s output."""
     hasher = _Hasher(stage.__module__)
-    hasher.digest.update(";".join(f"{name}={_package(name)}" for name in PACKAGES).encode())
     hasher.feed(stage)
     return hasher.digest.hexdigest()
 
 
 class StageCache:
-    """Stage results under `root`, one pickle per stage, input and fingerprint."""
+    """Stage results under `root`, one pickle per stage, input, fingerprint and dependencies."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
+        # Once per cache, as stat-ing torch's files takes half a second.
+        self.dependencies = ";".join(f"{name}={_package(name)}" for name in PACKAGES)
 
     def path(self, stage: Callable, *args: Any, **kwargs: Any) -> Path:
         hasher = _Hasher(stage.__module__)
+        hasher.digest.update(self.dependencies.encode())
         hasher.digest.update(fingerprint(stage).encode())
         hasher.feed(list(args))
         hasher.feed(kwargs)

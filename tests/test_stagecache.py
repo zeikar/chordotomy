@@ -1,6 +1,8 @@
+import os
 import sys
 
 import numpy as np
+import pytest
 import soundfile
 from conftest import librosa_activation
 
@@ -48,6 +50,36 @@ def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     head = np.full((n, 13), 0.03 / 12)
     head[:, 1] = 0.97
     return np.full(n, LABELS.index("C:maj")), scores, head
+
+
+REAL_PACKAGE = stagecache._package
+
+
+@pytest.fixture(autouse=True)
+def quick_packages(monkeypatch):
+    """Stat-ing every installed file of torch takes half a second per cache; the tests that need
+    the real reading restore it."""
+    monkeypatch.setattr(stagecache, "_package", lambda name: f"{name}=1.0")
+
+
+class _File:
+    """An entry of Distribution.files: a name, and the installed file it locates."""
+
+    def __init__(self, path) -> None:
+        self.path = path
+
+    def __str__(self) -> str:
+        return self.path.name
+
+    def locate(self):
+        return self.path
+
+
+class _Distribution:
+    version = "1.0"
+
+    def __init__(self, files: list[_File]) -> None:
+        self.files = files
 
 
 def _reinstalled(monkeypatch, changed: str) -> None:
@@ -121,14 +153,30 @@ def test_an_attribute_of_a_package_module_is_part_of_the_key(tmp_path, monkeypat
 
 
 def test_the_packages_are_part_of_the_key(tmp_path, monkeypatch) -> None:
-    cache = _cache(tmp_path)
     y = np.ones(2)
-    cache.run(doubled, y)
+    _cache(tmp_path).run(doubled, y)
 
     _reinstalled(monkeypatch, "librosa")
 
-    cache.run(doubled, y)
-    assert doubled.runs == 2
+    _cache(tmp_path).run(doubled, y)
+    assert doubled.runs == 1  # ran again, counted from _cache's reset
+
+
+def test_a_dependency_is_read_when_the_cache_is_made(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(stagecache, "_package", REAL_PACKAGE)
+    weights = tmp_path / "weights.sdict"
+    weights.write_bytes(b"weights")
+    distribution = _Distribution([_File(weights), _File(tmp_path / "gone.txt")])
+    monkeypatch.setattr(stagecache.importlib.metadata, "distribution", lambda name: distribution)
+    y = np.ones(2)
+    running = StageCache(tmp_path / "stages")
+    before = running.path(doubled, y)
+
+    # One of the dependency's files changes under its version during a run.
+    os.utime(weights, ns=(1, 1))
+
+    assert running.path(doubled, y) == before
+    assert StageCache(tmp_path / "stages").path(doubled, y) != before
 
 
 def test_what_the_stage_does_not_reach_is_not_part_of_the_key(monkeypatch) -> None:
@@ -189,8 +237,8 @@ def test_the_model_engine_reads_all_three_stages_back(synth, tmp_path, monkeypat
     assert len(list(stages.glob("*.pkl"))) == 3
     assert len(list(stages.glob("chordotomy.features.beat_features-*.pkl"))) == 1
 
-    # lv-chordia's files changed under the same version: every stage runs again.
+    # lv-chordia's files changed under the same version: the next run's cache misses every stage.
     _reinstalled(monkeypatch, "lv-chordia")
-    assert timeline.analyze(path, engine="model", cache=cache) == plain
+    assert timeline.analyze(path, engine="model", cache=StageCache(stages)) == plain
     assert (activation.runs, recognize.runs) == (3, 3)
     assert len(list(stages.glob("*.pkl"))) == 6
