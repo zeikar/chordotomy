@@ -279,3 +279,72 @@ def test_a_member_missing_from_the_archive_is_an_error(monkeypatch, cache) -> No
 
     with pytest.raises(evaluate.DatasetError, match="9999_beatinfo.arff"):
         evaluate.tiny_aam_tracks(None)
+
+
+@pytest.fixture
+def charted(synth, tmp_path):
+    """A folder with a recording of C Am F G7 and its chart."""
+    soundfile.write(
+        tmp_path / "clip.wav",
+        synth([("C:maj", 4), ("A:min", 4), ("F:maj", 4), ("G:7", 4)]),
+        SR,
+    )
+    (tmp_path / "clip.chart.txt").write_text("# a chart\n| C | Am | F | G7 |\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_local_scores_a_charted_recording_and_writes_the_aligned_chart(charted) -> None:
+    result = _run("local", str(charted))
+
+    assert result.exit_code == 0, result.output
+    assert any(line.startswith("clip ") for line in result.stdout.splitlines())
+    assert _overall(result.stdout.split("\nclip:")[0])["majmin"] >= 0.9
+    assert "clip: 0 of" in result.stdout and "unreviewed" in result.stdout
+    aligned = json.loads((charted / "clip.chart.chords.json").read_text(encoding="utf-8"))
+    assert aligned["schema_version"] == 11
+    assert [s["chord"] for s in aligned["segments"] if s["chord"] != "N"] == [
+        "C:maj", "A:min", "F:maj", "G:7"
+    ]  # fmt: skip
+
+
+def test_local_scores_the_reviewed_timeline_once_there_is_one(charted) -> None:
+    _run("local", str(charted))
+    reviewed = json.loads((charted / "clip.chart.chords.json").read_text(encoding="utf-8"))
+    # The user heard a D where the chart and the analyzer both have F.
+    for segment in reviewed["segments"]:
+        if segment["chord"] == "F:maj":
+            segment.update(chord="D:maj", bass="D", edited=True)
+    (charted / "clip.edited.chords.json").write_text(json.dumps(reviewed), encoding="utf-8")
+
+    result = _run("local", str(charted))
+
+    assert result.exit_code == 0, result.output
+    assert "scored against the reviewed clip.edited.chords.json" in result.stdout
+    assert _overall(result.stdout.split("\nclip:")[0])["root"] < 0.85
+
+
+def test_a_folder_is_for_local_and_only_local(charted) -> None:
+    for args in (["local"], ["tiny-aam", str(charted)]):
+        result = _run(*args)
+        assert result.exit_code == 2
+        assert "DIRECTORY" in usage_text(result.stderr)
+
+
+@pytest.mark.parametrize(
+    ("files", "message"),
+    [
+        ({"song.chart.txt": "C G"}, "song.chart.txt: no recording beside it"),
+        ({}, "no <name>.chart.txt beside a recording"),
+        ({"clip.chart.txt": "C Am\nVerse F G\n"}, "line 2: 'Verse' is not a chord"),
+    ],
+)
+def test_local_failures_are_one_error_line(charted, files, message) -> None:
+    (charted / "clip.chart.txt").unlink()
+    for name, text in files.items():
+        (charted / name).write_text(text, encoding="utf-8")
+
+    result = _run("local", str(charted))
+
+    assert result.exit_code == 1
+    assert message in result.stderr
+    assert "Traceback" not in result.output

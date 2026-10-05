@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import numpy as np
 
-from . import timeline
+from . import chart, timeline
 from .chords import ROOTS
 
 if TYPE_CHECKING:
@@ -414,6 +414,61 @@ def guitarset_tracks(limit: int | None) -> list[tuple[str, Path, Path]]:
     return [(stem, found[wav], j) for stem, wav, j in zip(stems, wavs, jams, strict=True)]
 
 
+# The recordings a local chart may sit beside: what the decoder reads.
+AUDIO_SUFFIXES = (".mp3", ".wav", ".flac", ".ogg")
+
+
+def local_tracks(directory: Path, limit: int | None) -> list[tuple[str, Path, Path]]:
+    """(stem, recording, chart) for each `<stem>.chart.txt` in `directory`, in name order."""
+    tracks = []
+    for path in sorted(directory.glob("*.chart.txt"))[:limit]:
+        stem = path.name.removesuffix(".chart.txt")
+        audio = [path.with_name(stem + suffix) for suffix in AUDIO_SUFFIXES]
+        found = [a for a in audio if a.is_file()]
+        if not found:
+            raise DatasetError(f"{path}: no recording beside it ({stem}.mp3, .wav, .flac or .ogg)")
+        tracks.append((stem, found[0], path))
+    if not tracks:
+        raise DatasetError(f"{directory}: no <name>.chart.txt beside a recording")
+    return tracks
+
+
+def local_reference(result: dict, path: Path) -> tuple[Reference, str]:
+    """A local track's reference and a line saying what it is.
+
+    The chart at `path` is aligned to the analysis and written beside it as
+    `<stem>.chart.chords.json`, where the viewer shows the places it differs as edits. Once the
+    user has checked those by ear and saved the viewer's `<stem>.edited.chords.json`, that file is
+    the reference; until then the aligned chart is. Either has no beats of its own to score the
+    grid against.
+    """
+    stem = path.name.removesuffix(".chart.txt")
+    try:
+        chords = chart.parse(path.read_text(encoding="utf-8"))
+        aligned, shift, differ = chart.align(result, chords)
+    except (OSError, UnicodeDecodeError, chart.ChartError) as exc:
+        raise DatasetError(f"{path}: {exc}") from exc
+    written = path.with_name(f"{stem}.chart.chords.json")
+    data = json.dumps(aligned, indent=2, ensure_ascii=False) + "\n"
+    written.write_bytes(data.encode("utf-8", "backslashreplace"))
+    moved = f", the chart moved up {shift} semitones" if shift else ""
+    note = (
+        f"{stem}: {differ} of {len(aligned['segments'])} segments differ in {written.name}{moved}"
+    )
+    reviewed = path.with_name(f"{stem}.edited.chords.json")
+    if reviewed.is_file():
+        try:
+            reference = json.loads(reviewed.read_text(encoding="utf-8"))
+            intervals, labels = timeline_to_intervals(reference)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise DatasetError(f"{reviewed}: {exc}") from exc
+        note += f"; scored against the reviewed {reviewed.name}"
+    else:
+        intervals, labels = timeline_to_intervals(aligned)
+        note += "; scored against it, unreviewed"
+    return Reference(intervals, labels, np.array([])), note
+
+
 def _read_reference(dataset: str, path: Path, duration: float) -> Reference:
     try:
         if dataset == "tiny-aam":
@@ -428,19 +483,33 @@ def run(
     limit: int | None,
     engine: Literal["dsp", "model"],
     cache: StageCache | None = None,
+    directory: Path | None = None,
 ) -> dict[str, dict]:
     """Analyze and score every track of `dataset`, print the table, and return the summary.
 
     cache keeps analyze's slow stages across runs (stagecache); the scores are the same without it.
+    directory holds the recordings and charts of the `local` dataset (local_tracks).
     """
-    tracks = tiny_aam_tracks(limit) if dataset == "tiny-aam" else guitarset_tracks(limit)
+    if dataset == "local":
+        if directory is None:
+            raise ValueError("the local dataset needs a directory")
+        tracks = local_tracks(directory, limit)
+    elif dataset == "tiny-aam":
+        tracks = tiny_aam_tracks(limit)
+    else:
+        tracks = guitarset_tracks(limit)
+    notes = []
     if cache is not None:
         # A sweep may pass one cache to many runs; a dependency changed between them is seen.
         cache.refresh()
     scored = {}
     for name, audio, annotation in tracks:
         result = timeline.analyze(audio, engine=engine, cache=cache)
-        reference = _read_reference(dataset, annotation, result["source"]["duration"])
+        if dataset == "local":
+            reference, note = local_reference(result, annotation)
+            notes.append(note)
+        else:
+            reference = _read_reference(dataset, annotation, result["source"]["duration"])
         est_intervals, est_labels = timeline_to_intervals(result)
         scored[name] = {
             **score(
@@ -467,4 +536,6 @@ def run(
     for name in (*scored, "overall"):
         cells = (f"{rows[name][c]:>{w}.3f}" for c, w in zip(columns, widths, strict=True))
         print(f"{name:<28}" + "".join(cells))
+    for note in notes:
+        print(note)
     return rows

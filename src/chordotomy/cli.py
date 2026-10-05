@@ -24,6 +24,7 @@ from .stagecache import StageCache
 class Dataset(StrEnum):
     TINY_AAM = "tiny-aam"
     GUITARSET = "guitarset"
+    LOCAL = "local"
 
 
 class Engine(StrEnum):
@@ -230,6 +231,14 @@ def analyze(
 @app.command()
 def evaluate(
     dataset: Annotated[Dataset, typer.Argument(help="Dataset to score against.")],
+    directory: Annotated[
+        Path | None,
+        typer.Argument(
+            help="For local: the folder of recordings, each with a <name>.chart.txt beside it.",
+            exists=True,
+            file_okay=False,
+        ),
+    ] = None,
     limit: Annotated[
         int | None, typer.Option("--limit", min=1, help="Score only the first N tracks.")
     ] = None,
@@ -245,7 +254,11 @@ def evaluate(
         ),
     ] = False,
 ) -> None:
-    """Score the chord front end on a public dataset (opt-in, downloads on first use)."""
+    """Score the analyzer on a public dataset (downloaded on first use) or on charted recordings."""
+    if (dataset is Dataset.LOCAL) != (directory is not None):
+        raise typer.BadParameter(
+            "give a folder for local, and only for local", param_hint="'DIRECTORY'"
+        )
     # Check the extra before anything can download.
     for name in ("mir_eval", "pooch"):
         try:
@@ -258,7 +271,7 @@ def evaluate(
     try:
         _announce(engine)
         stages = StageCache(evaluation.cache_dir() / "stages") if cache else None
-        evaluation.run(dataset.value, limit, engine.value, stages)
+        evaluation.run(dataset.value, limit, engine.value, stages, directory)
     except evaluation.DatasetError as exc:
         raise _fail(f"{dataset.value}: {exc}") from exc
     except model.EngineError as exc:
