@@ -36,7 +36,7 @@ The shipped path, with the relative rule and the tie-breaks, on the same two rec
 | 16–32 | E – G – E – G – E – F | E | E |
 | 48–64 | E – G – E – G (the last E and the F ending lost) | E | E |
 
-The relative rule removes the invented E minor at 1:07 and the cover's split, so at 24, the penalty first shipped, adrenaline!!! comes out as the song goes and the cover is one E-major region with either engine. The low end of the range is still set by the cover, which invents regions at 8.
+The relative rule removes the invented E minor at 1:07 and the cover's split, so at 24, the penalty first shipped, adrenaline!!! comes out as the song goes and the cover is one E-major region with either engine. The low end of the range was then set by the cover, which invents regions at 8; a third song has since raised it to 26 (below).
 
 Synthesized progressions bound the penalty from both sides. A ii–V7/ii vamp and a borrowed iv–bVII inside a C-major verse (Dm and A7 twice, then Fm and Bb, 4 beats each) read 36 better in D minor than in C, so they stay in C from 18 and become a D-minor region at 16, a tonicization taken for a modulation. A 20-beat half-step ending in adrenaline!!!'s shape, F–C–Bb–C twice in two-beat chords and F for 4, after 64 beats of E major's I–V–IV–V, reads 48 in F and 0 in E, so it is a region of its own through a penalty of 44 and not at 48, where the change only breaks even. The penalty first shipped at 24, in the middle of the two songs' range and clear of both bounds: above the 16 at which the vamp splits off as D minor, and below the 48 at which the half-step ending is lost.
 
