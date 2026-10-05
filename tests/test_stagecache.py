@@ -2,9 +2,11 @@ import sys
 
 import numpy as np
 import soundfile
+from conftest import librosa_activation
 
-from chordotomy import chords, features, stagecache, timeline
-from chordotomy.features import SR
+from chordotomy import beats, chords, features, model, stagecache, timeline
+from chordotomy.chords import LABELS
+from chordotomy.features import HOP, SR
 from chordotomy.stagecache import StageCache, fingerprint
 
 # The stages below read these, so a test can change what decides their output. Each counts its
@@ -30,6 +32,30 @@ def shifted(y: np.ndarray, by: float | None = None) -> np.ndarray:
 def scored(y: np.ndarray) -> np.ndarray:
     scored.runs += 1
     return y * chords.N_SCORE
+
+
+def activation(y: np.ndarray) -> np.ndarray:
+    activation.runs += 1
+    return librosa_activation(y)
+
+
+def recognize(y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A model that hears C major over a C bass throughout."""
+    recognize.runs += 1
+    n = 1 + len(y) // HOP
+    scores = np.full((len(LABELS), n), -5.0)
+    scores[LABELS.index("C:maj")] = 0.0
+    head = np.full((n, 13), 0.03 / 12)
+    head[:, 1] = 0.97
+    return np.full(n, LABELS.index("C:maj")), scores, head
+
+
+def _reinstalled(monkeypatch, changed: str) -> None:
+    """As if `changed` were reinstalled or edited under the same version: its files' stat moved."""
+    package = stagecache._package
+    monkeypatch.setattr(
+        stagecache, "_package", lambda name: package(name) + ("*" if name == changed else "")
+    )
 
 
 def _cache(tmp_path) -> StageCache:
@@ -94,12 +120,12 @@ def test_an_attribute_of_a_package_module_is_part_of_the_key(tmp_path, monkeypat
     np.testing.assert_array_equal(cache.run(scored, y), y * 0.5)
 
 
-def test_the_package_versions_are_part_of_the_key(tmp_path, monkeypatch) -> None:
+def test_the_packages_are_part_of_the_key(tmp_path, monkeypatch) -> None:
     cache = _cache(tmp_path)
     y = np.ones(2)
     cache.run(doubled, y)
 
-    monkeypatch.setattr(stagecache, "_version", lambda name: "9.9" if name == "librosa" else "1")
+    _reinstalled(monkeypatch, "librosa")
 
     cache.run(doubled, y)
     assert doubled.runs == 2
@@ -142,3 +168,29 @@ def test_analyze_is_the_same_with_the_cache(synth, tmp_path, monkeypatch) -> Non
     assert warm == plain
     assert [p.name.partition("-")[0] for p in entries] == ["chordotomy.features.beat_features"]
     assert sorted((tmp_path / "stages").glob("*.pkl")) == entries
+
+
+def test_the_model_engine_reads_all_three_stages_back(synth, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(beats, "activation", activation)
+    monkeypatch.setattr(model, "recognize", recognize)
+    monkeypatch.setattr(model, "version", lambda: "9.9")
+    activation.runs = recognize.runs = 0
+    path = tmp_path / "clip.wav"
+    soundfile.write(path, synth([("C:maj", 8)]), SR)
+    stages = tmp_path / "stages"
+    cache = StageCache(stages)
+    plain = timeline.analyze(path, engine="model")
+
+    cold = timeline.analyze(path, engine="model", cache=cache)
+    warm = timeline.analyze(path, engine="model", cache=cache)
+
+    assert cold == warm == plain
+    assert (activation.runs, recognize.runs) == (2, 2)
+    assert len(list(stages.glob("*.pkl"))) == 3
+    assert len(list(stages.glob("chordotomy.features.beat_features-*.pkl"))) == 1
+
+    # lv-chordia's files changed under the same version: every stage runs again.
+    _reinstalled(monkeypatch, "lv-chordia")
+    assert timeline.analyze(path, engine="model", cache=cache) == plain
+    assert (activation.runs, recognize.runs) == (3, 3)
+    assert len(list(stages.glob("*.pkl"))) == 6

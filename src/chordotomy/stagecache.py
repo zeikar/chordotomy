@@ -7,14 +7,17 @@ rescores a dataset in seconds once the stages are cached.
 
 An entry is keyed by its stage, its input and the stage's fingerprint: the source of every function
 and class the stage reaches by name in the package or in the stage's own module, the values of the
-constants they read, and the versions of the packages they call. The fingerprint is taken on every
-call, so an edited file and a constant a sweep reassigns both miss the cache, and a stale entry is
-never served. Code reached only another way, through a string or a callback argument, is not seen.
-Old entries stay behind, and deleting the directory is always safe.
+constants they read, and each package they call, by its version and the size and modification time
+of every file it installed (lv-chordia's weights and dictionary among them). The fingerprint is
+taken on every call, so an edited file, a reinstalled package and a constant a sweep reassigns all
+miss the cache. Not seen: code reached only through a string or a callback argument, and the source
+tree of a dependency installed as editable. Old entries stay behind; deleting the directory is
+always safe.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.metadata
 import inspect
@@ -27,17 +30,33 @@ from typing import Any
 
 import numpy as np
 
-# What a stage's output can depend on outside the package: the libraries it calls, and through
-# them their own native code and weights (lv-chordia's checkpoints ship in its wheel; Beat This!'s
-# are pinned by their SHA-256 in beats.CHECKPOINTS, a constant the fingerprint reads).
+# What a stage's output can depend on outside the package: the libraries it calls, with their
+# native code and data (lv-chordia's checkpoints and chord dictionary ship in its wheel). Beat
+# This!'s weights live outside it, pinned by their SHA-256 in beats.CHECKPOINTS, a constant the
+# fingerprint reads, and checked on every load.
 PACKAGES = ("numpy", "scipy", "librosa", "soxr", "torch", "lv-chordia", "beat-this")
 
 
-def _version(name: str) -> str:
+@functools.cache
+def _package(name: str) -> str:
+    """A package's version and the size and modification time of every file it installed.
+
+    Stat, not content: torch alone installs thousands of files, and a reinstall or an edit changes
+    either. Taken once per process.
+    """
     try:
-        return importlib.metadata.version(name)
+        distribution = importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
         return "absent"
+    digest = hashlib.sha256()
+    for file in sorted(distribution.files or [], key=str):
+        try:
+            stat = Path(file.locate()).stat()
+        except FileNotFoundError:
+            digest.update(f"{file}:missing;".encode())
+            continue
+        digest.update(f"{file}:{stat.st_size}:{stat.st_mtime_ns};".encode())
+    return f"{distribution.version}+{digest.hexdigest()}"
 
 
 def _names(code: Any) -> set[str]:
@@ -123,7 +142,7 @@ class _Hasher:
 def fingerprint(stage: Callable) -> str:
     """The hex digest of what decides `stage`'s output besides its arguments."""
     hasher = _Hasher(stage.__module__)
-    hasher.digest.update(";".join(f"{name}={_version(name)}" for name in PACKAGES).encode())
+    hasher.digest.update(";".join(f"{name}={_package(name)}" for name in PACKAGES).encode())
     hasher.feed(stage)
     return hasher.digest.hexdigest()
 
