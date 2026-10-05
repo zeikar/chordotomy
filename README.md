@@ -186,11 +186,11 @@ uv run python tests/harmony_vectors.py
 `uv sync --extra dev --extra eval` adds mir_eval and pooch, which also enables the evaluation tests (skipped without it). Then:
 
 ```sh
-uv run chordotomy evaluate tiny-aam [--limit N]
-uv run chordotomy evaluate guitarset [--limit N]
+uv run chordotomy evaluate tiny-aam [--limit N] [--cache]
+uv run chordotomy evaluate guitarset [--limit N] [--cache]
 ```
 
-Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. The model engine's GuitarSet beats then come from `final0`, which Beat This! trained on these takes; [docs/evaluation-history.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation-history.md#beat-tracking) has the held-out recipe behind the Accuracy row. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/evaluation.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation.md) explains each column. The scores are numbers for development only.
+Tiny AAM downloads 168 MB. GuitarSet downloads 39 MB of annotations plus 657 MB of audio, of which only the accompaniment takes being scored are extracted. `--engine` works as for `analyze`, so with the model installed the scores are the model's unless you pass `--engine dsp`. The model engine's GuitarSet beats then come from `final0`, which Beat This! trained on these takes; [docs/evaluation-history.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation-history.md#beat-tracking) has the held-out recipe behind the Accuracy row. Both datasets are CC BY 4.0. In a checkout they land in `datasets/`, which is gitignored; delete it to re-download. `--cache` keeps the slow stages of each analysis in `datasets/stages/` (479 MB for both datasets on the model engine) and reuses them while the recording and the code they run are unchanged, so a change to the bass, the segments, the harmony or the scoring rescores both datasets in seconds; the scores are the same with or without it. The default test run never touches the network. Besides the chord scores, the table scores the beat grid against the annotated beats, and the `N` calls against the reference's `N`, and the bass with four more columns (`bass_ref`, `inv_prec`, `inv_rec` and `nonchord`); [docs/evaluation.md](https://github.com/zeikar/chordotomy/blob/main/docs/evaluation.md) explains each column. The scores are numbers for development only.
 
 ## Acknowledgements
 
