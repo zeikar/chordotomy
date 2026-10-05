@@ -16,7 +16,7 @@ from typing import NamedTuple
 import numpy as np
 
 from . import harmony, timeline
-from .chords import QUALITIES, ROOTS, inversion
+from .chords import QUALITIES, ROOTS, _pitch_classes, inversion
 
 NOTE = re.compile(r"([A-G])([#b♯♭]?)")
 # Chart suffixes, after `△`, `Δ`, `ø`, `°`, `-5` and the accidentals are normalized, to the
@@ -111,7 +111,8 @@ def _quality(suffix: str) -> str:
 
 def parse_chord(token: str) -> tuple[str, str | None]:
     """A chart chord as (Harte label, bass or None), sharps only: `F#m7-5` is (`F#:hdim7`, None),
-    `D/F#` is (`D:maj`, `F#`), `N.C.` is (`N`, None). Raises ValueError on anything else."""
+    `D/F#` is (`D:maj`, `F#`), `Bb/C` is (`C:sus4(b7)`, `C`), `N.C.` is (`N`, None). Raises
+    ValueError on anything else."""
     if token in NO_CHORD:
         return "N", None
     head = token.replace("6/9", "69")
@@ -126,7 +127,15 @@ def parse_chord(token: str) -> tuple[str, str | None]:
     except (KeyError, ValueError) as exc:
         raise ValueError(token) from exc
     label = f"{ROOTS[root]}:{quality}"
-    return label, None if bass_pitch is None else ROOTS[bass_pitch]
+    if bass_pitch is None:
+        return label, None
+    # A chord over a bass it lacks, with a fourth and a minor seventh above that bass and no third
+    # (B♭/C, F/G, Dm7/G, C/D), is the suspended dominant on the bass, which the vocabulary writes as
+    # 7sus4, as the model engine does (the explain-harmony skill's moves.md, on a non-chord bass).
+    above = {(tone - bass_pitch) % 12 for tone in _pitch_classes(label)}
+    if 0 not in above and {5, 10} <= above and not above & {3, 4}:
+        return f"{ROOTS[bass_pitch]}:sus4(b7)", ROOTS[bass_pitch]
+    return label, ROOTS[bass_pitch]
 
 
 class Chart(NamedTuple):

@@ -29,6 +29,15 @@ from chordotomy.chords import inversion
         ("Db7", ("C#:7", None)),
         ("Cb", ("B:maj", None)),
         ("N.C.", ("N", None)),
+        # IV, IIm7 or bVII over V: the suspended dominant on the bass, the vocabulary's 7sus4.
+        ("Bb/C", ("C:sus4(b7)", "C")),
+        ("F/G", ("G:sus4(b7)", "G")),
+        ("Dm7/G", ("G:sus4(b7)", "G")),
+        ("C/D", ("D:sus4(b7)", "D")),
+        # Without the fourth, or with a third above the bass, a slash stays a slash.
+        ("Em/A", ("E:min", "A")),
+        ("Gm/C", ("G:min", "C")),
+        ("C/E", ("C:maj", "E")),
         # Past the vocabulary, as the model engine reduces: the tensions go, a sixth is its triad.
         ("E7(b9)", ("E:7", None)),
         ("AM7(9)", ("A:maj7", None)),
