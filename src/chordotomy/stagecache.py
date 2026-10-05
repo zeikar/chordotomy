@@ -10,9 +10,10 @@ fingerprint is the source of every function and class the stage reaches by name 
 in the stage's own module, and the values of the constants they read; it is taken on every call, so
 an edited file and a constant a sweep reassigns both miss the cache. The dependencies are the
 libraries in PACKAGES, each by its version and the size and modification time of every file it
-installed (lv-chordia's weights and dictionary among them), read once when the cache is made: a
-dependency changed during a run is seen by the next, and the entries written after the change carry
-a key no later run makes unless its files return to their old size and time. Every stage keys on
+installed (lv-chordia's weights and dictionary among them), read when the cache is made and again
+at the start of every evaluate run (refresh): a dependency changed during a run is seen by the next,
+and the entries written after the change carry a key no later run makes unless its files return to
+their old size and time. Every stage keys on
 every dependency, since torch, lv-chordia and beat-this are imported inside the functions that use
 them, where the fingerprint cannot tell which stage reaches which; a model upgrade recomputes all
 three. Not seen: code reached only through a string or a callback argument, and the source tree of
@@ -153,7 +154,10 @@ class StageCache:
 
     def __init__(self, root: Path) -> None:
         self.root = root
-        # Once per cache, as stat-ing torch's files takes half a second.
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Read the dependencies again: once per run, as stat-ing torch's files takes 0.5 s."""
         self.dependencies = ";".join(f"{name}={_package(name)}" for name in PACKAGES)
 
     def path(self, stage: Callable, *args: Any, **kwargs: Any) -> Path:

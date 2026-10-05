@@ -177,6 +177,9 @@ def test_a_dependency_is_read_when_the_cache_is_made(tmp_path, monkeypatch) -> N
 
     assert running.path(doubled, y) == before
     assert StageCache(tmp_path / "stages").path(doubled, y) != before
+    # A sweep that passes one cache to many runs: each run reads them again.
+    running.refresh()
+    assert running.path(doubled, y) != before
 
 
 def test_what_the_stage_does_not_reach_is_not_part_of_the_key(monkeypatch) -> None:

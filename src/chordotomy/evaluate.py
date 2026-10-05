@@ -434,6 +434,9 @@ def run(
     cache keeps analyze's slow stages across runs (stagecache); the scores are the same without it.
     """
     tracks = tiny_aam_tracks(limit) if dataset == "tiny-aam" else guitarset_tracks(limit)
+    if cache is not None:
+        # A sweep may pass one cache to many runs; a dependency changed between them is seen.
+        cache.refresh()
     scored = {}
     for name, audio, annotation in tracks:
         result = timeline.analyze(audio, engine=engine, cache=cache)
