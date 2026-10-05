@@ -9,7 +9,8 @@ Project-specific instructions for chordotomy. The global ~/.claude/CLAUDE.md sti
 - [docs/recognition.md](docs/recognition.md): how the audio becomes beats, chords and a bass, in both engines
 - [docs/harmony.md](docs/harmony.md): key, key regions, numerals, roles and functions from the chord runs
 - [docs/timeline-json.md](docs/timeline-json.md): the chord-timeline JSON, its fields and schema versions
-- [docs/viewer.md](docs/viewer.md): editing in the viewer
+- [docs/install.md](docs/install.md): installing, the model engine's size, speed, weights and training data
+- [docs/viewer.md](docs/viewer.md): using the viewer, and how its editing works
 - [docs/evaluation.md](docs/evaluation.md): scoring on real audio and on charted recordings, the current rows, other chord recognizers
 - [docs/evaluation-history.md](docs/evaluation-history.md): rows of every earlier stage, the sweeps behind the constants
 - [docs/decisions.md](docs/decisions.md): design decisions and their reasons
