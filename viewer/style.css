@@ -391,9 +391,13 @@ body:has(#empty:not([hidden])) .status {
   min-width: 0;
 }
 
+/* The ellipsis needs overflow hidden, which clips at the padding box, and at line-height 1 a
+   descender (the g of Ebaug, the j of Cmaj7) hangs about 0.11em below the line. The padding takes
+   it in and the negative margin gives the space back, so nothing below moves. */
 .big-chord {
   flex: 0 0 100%;
-  margin: 0;
+  margin: 0 0 -0.2em;
+  padding-bottom: 0.2em;
   font: 400 112px/1 var(--serif);
   letter-spacing: -0.02em;
   white-space: nowrap;
