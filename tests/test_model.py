@@ -184,6 +184,10 @@ def _head(weights: dict[str | None, float]) -> np.ndarray:
         ({"D": 0.6}, "D", "D"),  # a non-chord pick the head supports
         ({"C": 0.9, "D": 0.1}, "D", "C"),  # a pick it does not support gives way to the root
         ({None: 0.8, "D": 0.1}, "D", "C"),  # a candidate was considered: the root, not None
+        ({"E": 0.85}, "C", "E"),  # a sure inversion outranks a pick on the root
+        ({"E": 0.75}, "C", "C"),  # a less sure one does not
+        ({"E": 0.85}, "G", "G"),  # nor does it outrank a pick on another chord tone
+        ({"C": 0.85}, "C", "C"),  # the head on the root agrees with the pick
     ],
 )
 def test_beat_bass_under_c_major(monkeypatch, weights, pick, bass) -> None:

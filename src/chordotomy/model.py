@@ -75,6 +75,13 @@ QUALITY = {
 # chord's root. 0.7 is the middle of the plateau where the objectives stop moving and the floors
 # hold. "Bass reliability" in docs/evaluation-history.md has the sweep.
 BASS_SUPPORT = 0.7
+# A non-root chord tone the head hears with this posterior outranks a DSP pick on the root. The
+# head leans root, so it names an inversion only on evidence, while the pick is the lowest salient
+# note and can be a root sounding below the bass, as a piano's left hand under a bass on the
+# third. The datasets never meet the case (no beat changes at 0.8 on either), so 0.8 is the middle
+# of 0.7 to 0.85, where one recording's D/F# is kept. "The head's confident inversion" in
+# docs/evaluation-history.md has the sweep.
+INVERSION_SUPPORT = 0.8
 
 
 class EngineError(Exception):
@@ -153,8 +160,9 @@ def beat_bass(
     are the DSP's pick (absent when the register is silent) and the head's note (absent when "no
     bass" is its largest class). The first candidate that is a tone of the chord is the bass; else
     the first whose posterior is at least BASS_SUPPORT; else the chord's root, which is not a
-    measured note and is marked inferred, and None only when there was no candidate. An N beat has
-    None.
+    measured note and is marked inferred, and None only when there was no candidate. One exception
+    to the order: when the pick is the chord's root and the head's note is another chord tone with
+    a posterior of at least INVERSION_SUPPORT, the head's note is the bass. An N beat has None.
     """
     basses = []
     inferred = []
@@ -168,14 +176,23 @@ def beat_bass(
         note = None if column.argmax() == 0 else ROOTS[int(column[1:].argmax())]
         candidates = [name for name in (pick, note) if name is not None]
         tones = _pitch_classes(label)
-        chosen = next((c for c in candidates if ROOTS.index(c) in tones), None)
+        root = label.split(":")[0]
+        if (
+            pick == root
+            and note not in (None, root)
+            and ROOTS.index(note) in tones
+            and column[1 + ROOTS.index(note)] >= INVERSION_SUPPORT
+        ):
+            chosen = note
+        else:
+            chosen = next((c for c in candidates if ROOTS.index(c) in tones), None)
         if chosen is None:
             chosen = next(
                 (c for c in candidates if column[1 + ROOTS.index(c)] >= BASS_SUPPORT), None
             )
         fallback = chosen is None and bool(candidates)
         if fallback:
-            chosen = label.split(":")[0]
+            chosen = root
         basses.append(chosen)
         inferred.append(fallback)
     return basses, inferred
