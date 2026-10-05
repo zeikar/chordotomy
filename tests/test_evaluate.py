@@ -471,25 +471,32 @@ def test_a_checkout_downloads_into_its_gitignored_datasets_dir(monkeypatch) -> N
     assert path == Path(__file__).resolve().parents[1] / "datasets"
 
 
-def test_a_chart_reference_holds_chords_only_and_an_unwritten_silence_is_unknown() -> None:
-    def segment(start, end, chord, bass, edited):
-        return {
-            "start_time": start,
-            "end_time": end,
-            "chord": chord,
-            "bass": bass,
-            "edited": edited,
-        }
+def test_a_chart_reference_holds_chords_only_and_an_uncharted_silence_is_unknown() -> None:
+    def segment(start, end, chord, bass):
+        return {"start_time": start, "end_time": end, "chord": chord, "bass": bass}
 
-    reference = evaluate._chord_reference(
-        {
-            "segments": [
-                segment(0.0, 1.0, "N", None, False),  # the analyzer's, unaligned or agreed
-                segment(1.0, 2.0, "C:maj", "E", False),  # its bass is not a chart's word
-                segment(2.0, 3.0, "N", None, True),  # someone wrote this rest
-            ]
-        }
+    timeline = {
+        "segments": [
+            segment(0.0, 1.0, "N", None),  # the analyzer's silence, no chart chord on it
+            segment(1.0, 2.0, "C:maj", "E"),  # its bass is not a chart's word
+            segment(2.0, 3.0, "N", None),  # silence on the chart's N.C.
+        ]
+    }
+    aligned = evaluate._chord_reference(timeline, [False, True, True])
+    assert aligned.labels == ["X", "C:maj", "N"]
+    np.testing.assert_array_equal(aligned.intervals, [[0, 1], [1, 2], [2, 3]])
+    assert len(aligned.beats) == 0
+    # A reviewed timeline is the user's throughout, its rests included.
+    assert evaluate._chord_reference(timeline).labels == ["N", "C:maj", "N"]
+
+
+def test_an_unknown_span_is_left_out_of_the_n_shares() -> None:
+    track = evaluate.score(
+        np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 4.0]]),
+        ["X", "N", "C:maj"],
+        np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 4.0]]),
+        ["N", "N", "C:maj"],
     )
-    assert reference.labels == ["X", "C:maj", "N"]
-    np.testing.assert_array_equal(reference.intervals, [[0, 1], [1, 2], [2, 3]])
-    assert len(reference.beats) == 0
+    # Of the three known seconds, one is N in both; the estimate's N over the X is not counted.
+    assert track["n_duration"] == 3.0
+    assert track["n_est"] == track["n_ref"] == track["n_hit"] == 1 / 3

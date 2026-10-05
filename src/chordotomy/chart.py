@@ -249,12 +249,14 @@ def _shifted(chord: tuple[str, str | None], shift: int) -> tuple[str, str | None
 class Alignment(NamedTuple):
     """The aligned chart and what to say about it.
 
-    timeline: the analysis with the chart's chords on its runs; differ: its segments that differ
-    from the analysis; passed: the chart chords no run took; fits: the transposition, 0 to 11
-    semitones up, under which the chart fits the analysis best, to compare with the chart's capo.
+    timeline: the analysis with the chart's chords on its runs; charted: per segment, whether its
+    run took a chart chord (an N run left unaligned did not); differ: the segments that differ from
+    the analysis; passed: the chart chords no run took; fits: the transposition, 0 to 11 semitones
+    up, under which the chart fits the analysis best, to compare with the chart's capo.
     """
 
     timeline: dict
+    charted: list[bool]
     differ: int
     passed: int
     fits: int
@@ -283,6 +285,7 @@ def align(result: dict, chart: Chart) -> Alignment:
     path = fits[chart.capo][1]
 
     segments = []
+    charted = [i is not None for run, i in zip(runs, path, strict=True) for _ in run]
     for run, i in zip(runs, path, strict=True):
         for s in run:
             if i is None:
@@ -308,4 +311,5 @@ def align(result: dict, chart: Chart) -> Alignment:
     segments = [{**s, **a} for s, a in zip(segments, analyses, strict=True)]
     aligned = {**result, "global_key": key_info, "key_regions": regions, "segments": segments}
     taken = {i for i in path if i is not None}
-    return Alignment(aligned, sum(s["edited"] for s in segments), len(labels) - len(taken), best)
+    differ = sum(s["edited"] for s in segments)
+    return Alignment(aligned, charted, differ, len(labels) - len(taken), best)

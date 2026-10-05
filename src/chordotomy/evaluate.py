@@ -181,6 +181,7 @@ def score(
     """One track's per-interval comparisons and durations for each metric, plus the N shares.
 
     n_est and n_ref are the shares of the duration labeled N; n_hit is the share where both are.
+    A reference X (unknown) is left out of them, and n_duration is the duration they are shares of.
 
     est_bass_missing flags estimate segments whose chord has no detected bass. A bare `C:maj`
     reads as root position to mir_eval, which would award an inversion the estimate never
@@ -212,11 +213,13 @@ def score(
         # -1 is an interval mir_eval excluded; it stays excluded.
         if missing and inv[i] != -1:
             inv[i] = 0.0
-    est_n = np.array(est) == "N"
+    known = np.array(ref) != "X"
+    known_total = float(durations[known].sum())
+    est_n = (np.array(est) == "N") & known
     ref_n = np.array(ref) == "N"
-    track["n_est"] = float(durations[est_n].sum()) / total
-    track["n_ref"] = float(durations[ref_n].sum()) / total
-    track["n_hit"] = float(durations[est_n & ref_n].sum()) / total
+    for key, spans in (("n_est", est_n), ("n_ref", ref_n), ("n_hit", est_n & ref_n)):
+        track[key] = float(durations[spans].sum()) / known_total if known_total else float("nan")
+    track["n_duration"] = known_total
     track["duration"] = total
     return track
 
@@ -313,11 +316,11 @@ def summarise(tracks: dict[str, dict]) -> dict[str, dict]:
     def row(items: list[dict]) -> dict:
         total = sum(t["duration"] for t in items)
 
-        def weighted(key: str) -> float:
-            scored = [t for t in items if not np.isnan(t[key])]
+        def weighted(key: str, weight: str = "duration") -> float:
+            scored = [t for t in items if not np.isnan(t[key]) and t[weight] > 0]
             if not scored:
                 return float("nan")
-            return sum(t[key] * t["duration"] for t in scored) / sum(t["duration"] for t in scored)
+            return sum(t[key] * t[weight] for t in scored) / sum(t[weight] for t in scored)
 
         out = {
             metric: mir_eval.chord.weighted_accuracy(
@@ -326,14 +329,16 @@ def summarise(tracks: dict[str, dict]) -> dict[str, dict]:
             )
             for metric in METRICS
         }
-        for key in ("n_est", "n_ref", "beat_f", "cmlt", "amlt", "nonchord"):
+        for key in ("beat_f", "cmlt", "amlt", "nonchord"):
             out[key] = weighted(key)
+        for key in ("n_est", "n_ref"):
+            out[key] = weighted(key, "n_duration")
         # A ratio of sums, so a track weighs by what it adds to that metric, not by its length.
         for key in ("bass_ref", "inv_prec", "inv_rec"):
             hit = sum(t[key][0] for t in items)
             seen = sum(t[key][1] for t in items)
             out[key] = hit / seen if seen else float("nan")
-        hit = weighted("n_hit")
+        hit = weighted("n_hit", "n_duration")
         out["n_precision"] = hit / out["n_est"] if out["n_est"] else float("nan")
         out["n_recall"] = hit / out["n_ref"] if out["n_ref"] else float("nan")
         # np.nanmedian, without its RuntimeWarning when every ratio is nan.
@@ -438,14 +443,19 @@ def local_tracks(directory: Path, limit: int | None) -> list[tuple[str, Path, Pa
 BASS_COLUMNS = ("majmin_inv", "bass_ref", "inv_prec", "inv_rec")
 
 
-def _chord_reference(reference: dict) -> Reference:
+def _chord_reference(reference: dict, charted: list[bool] | None = None) -> Reference:
     """The chords of a reference timeline, without the bass, and no beats of its own to score the
-    grid against. An N nobody wrote (not `edited`: the analyzer's, unaligned or agreed) is X,
-    unknown, since a chart does not mark silence."""
-    intervals = [(s["start_time"], s["end_time"]) for s in reference["segments"]]
-    labels = [
-        "X" if s["chord"] == "N" and not s["edited"] else s["chord"] for s in reference["segments"]
-    ]
+    grid against. With `charted`, the aligned chart's flags of the segments a chart chord reached,
+    an N no chart chord reached is X, unknown: the analyzer's own silence, which the chart does not
+    mark. Without it, a reviewed timeline, every label is the user's."""
+    segments = reference["segments"]
+    intervals = [(s["start_time"], s["end_time"]) for s in segments]
+    labels = [s["chord"] for s in segments]
+    if charted is not None:
+        labels = [
+            "X" if label == "N" and not reached else label
+            for label, reached in zip(labels, charted, strict=True)
+        ]
     return Reference(np.array(intervals, dtype=float).reshape(-1, 2), labels, np.array([]))
 
 
@@ -478,7 +488,8 @@ def local_reference(result: dict, audio: Path, path: Path) -> tuple[Reference, s
         )
     reviewed = path.with_name(f"{stem}.edited.chords.json")
     if not reviewed.is_file():
-        return _chord_reference(aligned.timeline), note + "; scored against it, unreviewed"
+        reference = _chord_reference(aligned.timeline, aligned.charted)
+        return reference, note + "; scored against it, unreviewed"
     try:
         reference = json.loads(reviewed.read_text(encoding="utf-8"))
         source = reference["source"]

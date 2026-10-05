@@ -184,6 +184,8 @@ def test_silence_takes_a_charted_break_and_is_otherwise_left_unaligned() -> None
     aligned = align(heard, parse("C N.C. G"))
     assert _chords(aligned.timeline) == [("N", None), ("C:maj", "C"), ("N", None), ("G:maj", "G")]
     assert (aligned.differ, aligned.passed) == (0, 0)
+    # The leading silence is the analyzer's alone; the break is the chart's N.C. too.
+    assert aligned.charted == [False, True, True, True]
 
 
 def test_a_chord_in_a_charted_break_shows() -> None:
