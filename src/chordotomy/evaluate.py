@@ -433,40 +433,66 @@ def local_tracks(directory: Path, limit: int | None) -> list[tuple[str, Path, Pa
     return tracks
 
 
-def local_reference(result: dict, path: Path) -> tuple[Reference, str]:
-    """A local track's reference and a line saying what it is.
+# The columns a chart cannot score: it seldom writes the bass, so a reference bass would mostly be
+# the analyzer's own.
+BASS_COLUMNS = ("majmin_inv", "bass_ref", "inv_prec", "inv_rec")
+
+
+def _chord_reference(reference: dict) -> Reference:
+    """The chords of a reference timeline, without the bass, and no beats of its own to score the
+    grid against. An N nobody wrote (not `edited`: the analyzer's, unaligned or agreed) is X,
+    unknown, since a chart does not mark silence."""
+    intervals = [(s["start_time"], s["end_time"]) for s in reference["segments"]]
+    labels = [
+        "X" if s["chord"] == "N" and not s["edited"] else s["chord"] for s in reference["segments"]
+    ]
+    return Reference(np.array(intervals, dtype=float).reshape(-1, 2), labels, np.array([]))
+
+
+def local_reference(result: dict, audio: Path, path: Path) -> tuple[Reference, str]:
+    """A local track's reference, and a line saying what it is.
 
     The chart at `path` is aligned to the analysis and written beside it as
     `<stem>.chart.chords.json`, where the viewer shows the places it differs as edits. Once the
     user has checked those by ear and saved the viewer's `<stem>.edited.chords.json`, that file is
-    the reference; until then the aligned chart is. Either has no beats of its own to score the
-    grid against.
+    the reference; until then the aligned chart is. Its seconds hold whatever the analyzer later
+    does to its own grid, so a reviewed file stays the reference until the recording changes.
     """
     stem = path.name.removesuffix(".chart.txt")
     try:
         chords = chart.parse(path.read_text(encoding="utf-8"))
-        aligned, shift, differ = chart.align(result, chords)
+        aligned = chart.align(result, chords)
     except (OSError, UnicodeDecodeError, chart.ChartError) as exc:
         raise DatasetError(f"{path}: {exc}") from exc
     written = path.with_name(f"{stem}.chart.chords.json")
-    data = json.dumps(aligned, indent=2, ensure_ascii=False) + "\n"
+    data = json.dumps(aligned.timeline, indent=2, ensure_ascii=False) + "\n"
     written.write_bytes(data.encode("utf-8", "backslashreplace"))
-    moved = f", the chart moved up {shift} semitones" if shift else ""
-    note = (
-        f"{stem}: {differ} of {len(aligned['segments'])} segments differ in {written.name}{moved}"
-    )
+    total = len(aligned.timeline["segments"])
+    note = f"{stem}: {aligned.differ} of {total} segments differ in {written.name}"
+    if aligned.passed:
+        note += f", {aligned.passed} chart chords had no run"
+    if aligned.fits != chords.capo:
+        note += (
+            f"; the chart fits best {aligned.fits} semitones up, so if it is written for a capo,"
+            f" give it a 'capo {aligned.fits}' line"
+        )
     reviewed = path.with_name(f"{stem}.edited.chords.json")
-    if reviewed.is_file():
-        try:
-            reference = json.loads(reviewed.read_text(encoding="utf-8"))
-            intervals, labels = timeline_to_intervals(reference)
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            raise DatasetError(f"{reviewed}: {exc}") from exc
-        note += f"; scored against the reviewed {reviewed.name}"
-    else:
-        intervals, labels = timeline_to_intervals(aligned)
-        note += "; scored against it, unreviewed"
-    return Reference(intervals, labels, np.array([])), note
+    if not reviewed.is_file():
+        return _chord_reference(aligned.timeline), note + "; scored against it, unreviewed"
+    try:
+        reference = json.loads(reviewed.read_text(encoding="utf-8"))
+        source = reference["source"]
+        same = Path(source["path"]).name == audio.name and (
+            abs(source["duration"] - result["source"]["duration"]) < 0.01
+        )
+        if not same:
+            raise DatasetError(
+                f"{reviewed}: saved for {Path(source['path']).name} of {source['duration']} s, "
+                f"not this {audio.name}; delete it and review {written.name} again"
+            )
+        return _chord_reference(reference), note + f"; scored against the reviewed {reviewed.name}"
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise DatasetError(f"{reviewed}: {exc}") from exc
 
 
 def _read_reference(dataset: str, path: Path, duration: float) -> Reference:
@@ -506,7 +532,7 @@ def run(
     for name, audio, annotation in tracks:
         result = timeline.analyze(audio, engine=engine, cache=cache)
         if dataset == "local":
-            reference, note = local_reference(result, annotation)
+            reference, note = local_reference(result, audio, annotation)
             notes.append(note)
         else:
             reference = _read_reference(dataset, annotation, result["source"]["duration"])
@@ -524,6 +550,9 @@ def run(
             **bass_metrics(result, reference),
         }
     rows = summarise(scored)
+    if dataset == "local":
+        for row in rows.values():
+            row.update(dict.fromkeys(BASS_COLUMNS, float("nan")))
 
     columns = (*METRICS, "n_est", "n_ref", "n_precision", "n_recall")
     columns += ("beat_f", "cmlt", "amlt", "period_ratio")

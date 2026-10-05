@@ -469,3 +469,27 @@ def test_a_checkout_downloads_into_its_gitignored_datasets_dir(monkeypatch) -> N
     path = evaluate.cache_dir()
 
     assert path == Path(__file__).resolve().parents[1] / "datasets"
+
+
+def test_a_chart_reference_holds_chords_only_and_an_unwritten_silence_is_unknown() -> None:
+    def segment(start, end, chord, bass, edited):
+        return {
+            "start_time": start,
+            "end_time": end,
+            "chord": chord,
+            "bass": bass,
+            "edited": edited,
+        }
+
+    reference = evaluate._chord_reference(
+        {
+            "segments": [
+                segment(0.0, 1.0, "N", None, False),  # the analyzer's, unaligned or agreed
+                segment(1.0, 2.0, "C:maj", "E", False),  # its bass is not a chart's word
+                segment(2.0, 3.0, "N", None, True),  # someone wrote this rest
+            ]
+        }
+    )
+    assert reference.labels == ["X", "C:maj", "N"]
+    np.testing.assert_array_equal(reference.intervals, [[0, 1], [1, 2], [2, 3]])
+    assert len(reference.beats) == 0

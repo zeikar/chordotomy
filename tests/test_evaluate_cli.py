@@ -1,4 +1,5 @@
 import json
+import math
 import sys
 import zipfile
 
@@ -298,7 +299,10 @@ def test_local_scores_a_charted_recording_and_writes_the_aligned_chart(charted) 
 
     assert result.exit_code == 0, result.output
     assert any(line.startswith("clip ") for line in result.stdout.splitlines())
-    assert _overall(result.stdout.split("\nclip:")[0])["majmin"] >= 0.9
+    overall = _overall(result.stdout.split("\nclip:")[0])
+    assert overall["majmin"] >= 0.9
+    # A chart seldom writes the bass, so the bass columns are not scored.
+    assert all(math.isnan(overall[c]) for c in ("majmin_inv", "bass_ref", "inv_prec", "inv_rec"))
     assert "clip: 0 of" in result.stdout and "unreviewed" in result.stdout
     aligned = json.loads((charted / "clip.chart.chords.json").read_text(encoding="utf-8"))
     assert aligned["schema_version"] == 11
@@ -321,6 +325,19 @@ def test_local_scores_the_reviewed_timeline_once_there_is_one(charted) -> None:
     assert result.exit_code == 0, result.output
     assert "scored against the reviewed clip.edited.chords.json" in result.stdout
     assert _overall(result.stdout.split("\nclip:")[0])["root"] < 0.85
+
+
+def test_a_reviewed_timeline_of_another_recording_is_refused(charted) -> None:
+    _run("local", str(charted))
+    reviewed = json.loads((charted / "clip.chart.chords.json").read_text(encoding="utf-8"))
+    reviewed["source"]["path"] = "other.wav"
+    (charted / "clip.edited.chords.json").write_text(json.dumps(reviewed), encoding="utf-8")
+
+    result = _run("local", str(charted))
+
+    assert result.exit_code == 1
+    assert "saved for other.wav" in result.stderr
+    assert "review clip.chart.chords.json again" in result.stderr
 
 
 def test_a_folder_is_for_local_and_only_local(charted) -> None:
