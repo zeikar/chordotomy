@@ -41,6 +41,6 @@ viewer ←── chord-timeline JSON ←─────────────�
 - [harmony.md](harmony.md): the harmonic analysis, from the chord runs to the key, the key regions, numerals, roles and functions
 - [timeline-json.md](timeline-json.md): the chord-timeline JSON, its fields and schema versions
 - [viewer.md](viewer.md): editing in the viewer
-- [evaluation.md](evaluation.md): scoring on real audio, the current rows, and other chord recognizers
+- [evaluation.md](evaluation.md): scoring on real audio and on charted recordings, the current rows, and other chord recognizers
 - [evaluation-history.md](evaluation-history.md): the rows of every earlier stage and the sweeps that set the constants
 - [decisions.md](decisions.md): design decisions and their reasons

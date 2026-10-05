@@ -56,6 +56,14 @@ Schema 10 wrote the two as `key` and `keys`, and schema 11 renamed them `global_
 
 Left: a second reading for a pivot chord, and editing the regions. A chord at a boundary is analyzed in the one region that holds it (["Harmonic analysis"](harmony.md) says which), and the `explain-harmony` skill calls it a pivot in prose where it fits both keys. `--key` and the viewer's key select fix one key over the whole song, and Estimated returns to the regions the chords give; moving a boundary or setting a key per region is a larger change to the viewer, not made yet.
 
+## Charts as local references
+
+The datasets cannot score what users hear wrong in pop mixes: Tiny AAM is annotated in major and minor only, and GuitarSet is solo guitar. On both, a seventh is the runner-up of 86 to 87 % of correctly read triads, so no rule on the candidate ranking can be judged there, and every reference chord change sits within a quarter beat of a beat, so neither can judge a change between beats. The user's own recordings can, against chord charts.
+
+A chart comes from a chord site, typed in by hand. Hearing the chords by ear is what the user cannot do with confidence, and a chatbot's chart is written without the recording. A chart has no timing, so it is aligned to the analysis, and the places where the two differ become edits in the viewer: the user checks those by ear, a choice between two readings, not a transcription. The reference therefore takes the analyzer's boundaries, which is the price of using charts at all, and measures labels and bass only.
+
+The charts stay local, in the gitignored `work/`, as the recordings do. ChordWiki's terms leave each chart's copyright with its contributor and license the lyrics for viewing on the site only, without download, copy or print; chord names alone, typed by hand and kept for local analysis, take neither, and nothing scrapes the site. A chord progression of a few chords in the documents and the tests, as in "Key regions from the chord runs", is not a chart.
+
 ## Re-analysis in the browser, Python as the reference
 
 A corrected chord changes the key estimate, the key regions, the numerals and the roles around it, and the viewer shows that at once. So the viewer runs the harmonic analysis itself, in a JavaScript port. It has to work opened from `file://`, with no build step and a CSP that allows no network, and the alternatives don't fit that. Pyodide would run the Python itself, but it is a large runtime loaded over the network and needs `wasm-unsafe-eval`. A local server would be one more thing to install and run. Saving the edits unanalyzed for the CLI to finish would not show the analysis while editing.
