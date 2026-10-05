@@ -18,18 +18,20 @@ SCALE = {"maj": {0, 2, 4, 5, 7, 9, 11}, "min": {0, 2, 3, 5, 7, 8, 10}}
 # weighs 0), so time spent on I, IV and V decides between keys that share most of their triads.
 DEGREE_WEIGHT = {0: 3, 5: 2, 7: 2}
 # What a key change costs, in the unit of the weights (beats × degree weight): a stretch becomes a
-# region of its own only when it reads more than that much better in another key. Two real songs
-# put the working range at 16–32, and synthesized ones bound it: a ii–V7/ii vamp and Fm–Bb inside a
-# C-major verse (36 better in D minor) split at 16 and hold at 24; a 20-beat half-step ending,
-# F–C–Bb–C ×2, F (48 in F, 0 in the song's E major), is kept through 44 and lost at 48, where it
-# gains only what the change costs; and a C-major verse with an A-minor chorus, Am–Dm–E7 ×4, stays
-# one region at 24 only with the relative rule below.
-KEY_CHANGE_PENALTY = 24
+# region of its own only when it reads more than that much better in another key. Real songs put the
+# working range at 26–35: an A-major song ending D–E–F#sus4–F# (26 better in F# major) holds from
+# 26, and a song ending G, E for seven seconds, F loses that E at 36 and the F at 38. Synthesized
+# ones bound it too: a ii–V7/ii vamp and Fm–Bb inside a C-major verse (36 better in D minor) split
+# at 16 and hold from 18; a 20-beat half-step ending, F–C–Bb–C ×2, F (48 in F, 0 in the song's E
+# major), is kept through 44 and lost at 48, where it gains only what the change costs; and a
+# C-major verse with an A-minor chorus, Am–Dm–E7 ×5, stays one region at 30 only with the relative
+# rule below.
+KEY_CHANGE_PENALTY = 30
 # Relative keys share a scale, so only the degree weights tell them apart, and a switch between
 # them follows where the time goes inside a section rather than a modulation: a real song split
 # into C-sharp minor and E major over chords both keys share. So no region switches straight to its
-# relative. A third key can still bridge them: at a penalty of 12 to 15 the A-minor chorus above
-# goes C, D minor, C, as D minor reads it 32 better than C, and the estimator names that region A
+# relative. A third key can still bridge them: at a penalty of 15 to 19 the A-minor chorus above
+# goes C, D minor, C, as D minor reads it 40 better than C, and the estimator names that region A
 # minor.
 RELATIVE = {f"{root}:maj": f"{ROOTS[(i + 9) % 12]}:min" for i, root in enumerate(ROOTS)}
 RELATIVE |= {minor: major for major, minor in RELATIVE.items()}

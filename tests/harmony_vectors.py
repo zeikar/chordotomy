@@ -86,13 +86,15 @@ G_CHORUS = _two_beats("G:maj", "D:maj", "E:min", "G:maj", "C:maj", "B:min", "E:m
 ]
 # Key regions at the shipped penalty: the cases tests/test_harmony.py pins, and an edit that takes
 # a region away, the boundary 8 beats before the edited chord with it. A change that gains only the
-# penalty (8 beats of a tonic) splits nowhere.
+# penalty (10 beats of a tonic) splits nowhere.
 REGIONS = {
     "a ii–V7/ii vamp in C": (
         VERSE + [("D:min", 4), ("A:7", 4)] * 2 + [("F:min", 4), ("A#:maj", 4)] + VERSE
     ),
     "a half step up at the end": E_SECTION + F_CYCLE * 2 + [("F:maj", 4)],
-    "a relative minor chorus": VERSE + A_MINOR_CHORUS * 4 + VERSE,
+    "a relative minor chorus": VERSE + A_MINOR_CHORUS * 5 + VERSE,
+    "a IV–V–VI ending in A": _two_beats("A:maj", "D:maj", "E:maj", "A:maj") * 4
+    + [("D:maj", 4), ("E:sus4", 2), ("E:maj", 2), ("F#:sus4", 7), ("F#:maj", 4)],
     "N between C and D": (
         _two_beats("C:maj", "F:maj", "G:maj", "C:maj") * 6
         + [("N", 4)]
@@ -104,13 +106,13 @@ REGIONS = {
         + _two_beats("G:maj", "C:maj", "D:maj", "G:maj") * 6
     ),
     "leading and trailing N": [("N", 4), *E_SECTION, *F_CYCLE * 2, ("F:maj", 4), ("N", 4)],
-    "N alone between relative keys": VERSE * 2 + [("N", 4)] + A_MINOR_CHORUS * 5,
-    "8 beats of E before F": [("E:maj", 8), *F_CYCLE * 8],
-    "8 beats of F after E": [*E_SECTION, ("F:maj", 8)],
-    "8 beats of E after F": [*F_CYCLE * 8, ("E:maj", 8)],
-    "8 beats of B after C": [*VERSE, ("B:maj", 8)],
-    "a half step up, before an edit": E_SECTION + F_CYCLE + [("F:maj", 4)],
-    "a half step up, its last F edited to E": E_SECTION + F_CYCLE + [("E:maj", 4)],
+    "N alone between relative keys": VERSE * 2 + [("N", 4)] + A_MINOR_CHORUS * 6,
+    "10 beats of E before F": [("E:maj", 10), *F_CYCLE * 8],
+    "10 beats of F after E": [*E_SECTION, ("F:maj", 10)],
+    "10 beats of E after F": [*F_CYCLE * 8, ("E:maj", 10)],
+    "10 beats of B after C": [*VERSE, ("B:maj", 10)],
+    "a half step up, before an edit": E_SECTION + F_CYCLE + [("F:maj", 6)],
+    "a half step up, its last F edited to E": E_SECTION + F_CYCLE + [("E:maj", 6)],
     "six regions, E G E G E F": (
         E_CYCLE * 4
         + _two_beats("C#:min", "G#:min", "A:maj", "B:maj") * 2

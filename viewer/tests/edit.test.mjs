@@ -500,7 +500,7 @@ function analyzed(chords) {
 }
 
 // The golden vectors' half step up: E major's I–V–IV–V for 64 beats, then F–C–Bb–C in two-beat
-// chords and F for 4, which is a region of F major only with that last F.
+// chords and F for 6, which is a region of F major only with that last F.
 const E_SECTION = [["E:maj", 2], ["B:maj", 2], ["A:maj", 2], ["B:maj", 2]];
 const modulating = analyzed([
   ...Array.from({ length: 8 }, () => E_SECTION).flat(),
@@ -508,7 +508,7 @@ const modulating = analyzed([
   ["C:maj", 2],
   ["A#:maj", 2],
   ["C:maj", 2],
-  ["F:maj", 4],
+  ["F:maj", 6],
 ]);
 const savedProblem = (timeline) => Core.timelineProblem(JSON.parse(Edit.serialize(timeline)));
 
@@ -526,14 +526,14 @@ test("upgrade gives a 10's key and key regions schema 11's names, and keeps them
 test("an edit recomputes the key regions, moving a boundary that lies before the edited chord", () => {
   assert.deepEqual(modulating.key_regions, [
     { start_beat: 0, end_beat: 64, label: "E:maj" },
-    { start_beat: 64, end_beat: 76, label: "F:maj" },
+    { start_beat: 64, end_beat: 78, label: "F:maj" },
   ]);
   assert.deepEqual(numerals(modulating).slice(-5), ["I", "V", "IV", "V", "I"]);
 
   // The last F to E takes the F region away, its boundary at 64, 8 beats before the edited chord.
   const edited = setChord(modulating, modulating.segments.length - 1, "E:maj", "E");
   assert.deepEqual(edited.global_key, modulating.global_key);
-  assert.deepEqual(edited.key_regions, [{ start_beat: 0, end_beat: 76, label: "E:maj" }]);
+  assert.deepEqual(edited.key_regions, [{ start_beat: 0, end_beat: 78, label: "E:maj" }]);
   assert.deepEqual(numerals(edited).slice(-5), ["bII", "bVI", "#IV", "bVI", "I"]);
   // The key is estimated already, and the chords now estimate the one region: nothing to change.
   assert.equal(setKey(edited, null), edited);
@@ -544,7 +544,7 @@ test("a given key is one region over every beat, and estimating again brings the
   const given = setKey(modulating, "E:maj");
   const { candidates } = modulating.global_key;
   assert.deepEqual(given.global_key, { label: "E:maj", source: "given", candidates });
-  assert.deepEqual(given.key_regions, [{ start_beat: 0, end_beat: 76, label: "E:maj" }]);
+  assert.deepEqual(given.key_regions, [{ start_beat: 0, end_beat: 78, label: "E:maj" }]);
   // Every chord in E: the E section as it was, the F section with its last F as bII too.
   given.segments.slice(0, 32).forEach((segment, i) => assert.equal(segment, modulating.segments[i]));
   assert.deepEqual(numerals(given).slice(-5), ["bII", "bVI", "#IV", "bVI", "bII"]);

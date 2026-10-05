@@ -508,7 +508,7 @@ HALF_STEP_UP = (
 
 def test_a_short_tonicization_stays_in_the_key() -> None:
     # The ii–V7/ii vamp and Fm–Bb read 36 better in D minor than in C: less than the two changes
-    # cost at 24, more than at 16.
+    # cost at 30, more than at 16.
     progression = VERSE + [("D:min", 4), ("A:7", 4)] * 2 + [("F:min", 4), ("A#:maj", 4)] + VERSE
     assert _spans(key_regions(progression)) == [(0, 88, "C:maj")]
     assert _spans(key_regions(progression, penalty=16)) == [
@@ -521,12 +521,25 @@ def test_a_short_tonicization_stays_in_the_key() -> None:
 def test_a_half_step_ending_is_its_own_region() -> None:
     # The ending reads 48 in F and 0 in E: kept while the change costs less, and at 48, where it
     # gains only what it costs, not split.
-    for penalty in (24, 44):
+    for penalty in (30, 44):
         assert _spans(key_regions(HALF_STEP_UP, penalty=penalty)) == [
             (0, 64, "E:maj"),
             (64, 84, "F:maj"),
         ]
     assert _spans(key_regions(HALF_STEP_UP, penalty=48)) == [(0, 84, "E:maj")]
+
+
+def test_a_major_vi_ending_stays_in_the_key() -> None:
+    # A real song's ending, IV–V–VI in A major with the VI held as F#sus4 then F#: it reads 33 in
+    # F# major and 7 in A (F#sus4 is VIsus4 there, F# not diatonic), 26 better. Kept in A at the
+    # shipped penalty, its own region at 24.
+    progression = _two_beats("A:maj", "D:maj", "E:maj", "A:maj") * 4 + [
+        ("D:maj", 4), ("E:sus4", 2), ("E:maj", 2), ("F#:sus4", 7), ("F#:maj", 4)
+    ]  # fmt: skip
+    assert _spans(key_regions(progression)) == [(0, 51, "A:maj")]
+    assert _spans(key_regions(progression, penalty=24)) == [(0, 40, "A:maj"), (40, 51, "F#:maj")]
+    _, _, analyses = analyze(progression)
+    assert [a["numeral"] for a in analyses[-2:]] == ["VIsus4", "V/ii"]
 
 
 E_CYCLE = _two_beats("E:maj", "B:maj", "A:maj", "B:maj")
@@ -587,22 +600,22 @@ def test_a_song_through_six_key_regions() -> None:
 
 
 def test_a_change_that_gains_only_the_penalty_never_splits() -> None:
-    # 8 beats of a tonic read 24 in its key and 0 in the section's, the penalty exactly. The path
+    # 10 beats of a tonic read 30 in its key and 0 in the section's, the penalty exactly. The path
     # with fewer changes wins the tie, at either end and whichever key comes first in KEYS.
     e_section = _two_beats("E:maj", "B:maj", "A:maj", "B:maj") * 8
     f_section = _two_beats("F:maj", "C:maj", "A#:maj", "C:maj") * 8
-    assert _spans(key_regions([("E:maj", 8), *f_section])) == [(0, 72, "F:maj")]
-    assert _spans(key_regions([*e_section, ("F:maj", 8)])) == [(0, 72, "E:maj")]
-    assert _spans(key_regions([*f_section, ("E:maj", 8)])) == [(0, 72, "F:maj")]
-    assert _spans(key_regions([*VERSE, ("B:maj", 8)])) == [(0, 40, "C:maj")]
+    assert _spans(key_regions([("E:maj", 10), *f_section])) == [(0, 74, "F:maj")]
+    assert _spans(key_regions([*e_section, ("F:maj", 10)])) == [(0, 74, "E:maj")]
+    assert _spans(key_regions([*f_section, ("E:maj", 10)])) == [(0, 74, "F:maj")]
+    assert _spans(key_regions([*VERSE, ("B:maj", 10)])) == [(0, 42, "C:maj")]
 
 
 def test_a_relative_minor_chorus_stays_in_the_key() -> None:
-    # Am–Dm–E7 reads 56 better in A minor, more than two changes cost, but C major never switches
-    # straight to its relative, and D minor reads it only 32 better, less than the two changes there
-    # and back.
-    progression = VERSE + [("A:min", 4), ("D:min", 2), ("E:7", 2)] * 4 + VERSE
-    assert _spans(key_regions(progression)) == [(0, 96, "C:maj")]
+    # Am–Dm–E7 ×5 reads 70 better in A minor, more than two changes cost, but C major never
+    # switches straight to its relative, and D minor reads it only 40 better, less than the two
+    # changes there and back.
+    progression = VERSE + [("A:min", 4), ("D:min", 2), ("E:7", 2)] * 5 + VERSE
+    assert _spans(key_regions(progression)) == [(0, 104, "C:maj")]
 
 
 def test_an_n_at_a_change_stays_with_the_key_before_it() -> None:
@@ -632,12 +645,13 @@ def test_leading_and_trailing_n_join_the_first_and_last_regions() -> None:
 
 
 def test_an_n_alone_between_relative_keys_stays_with_the_key_before_it() -> None:
-    # An N lets the path reach the relative key for two changes (48) and no lost weight: C, the N in
-    # a third key, then A minor scores 212, against 210 through D minor, 190 all in C and 164 all in
-    # A minor. A G-major bridge over the verse's last G–C also scores 212 with two changes; the
-    # later change wins the tie. The estimator cannot name the N's key, so the N stays with C.
-    progression = VERSE * 2 + [("N", 4)] + [("A:min", 4), ("D:min", 2), ("E:7", 2)] * 5
-    assert _spans(key_regions(progression)) == [(0, 68, "C:maj"), (68, 108, "A:min")]
+    # An N lets the path reach the relative key for two changes (60) and no lost weight: C, the N in
+    # a third key, then A minor scores 220, against 214 through D minor from the chorus on, 196 all
+    # in C and 184 all in A minor. A G-major bridge over the verse's last G–C also scores 220 with
+    # two changes; the later change wins the tie. The estimator cannot name the N's key, so the N
+    # stays with C.
+    progression = VERSE * 2 + [("N", 4)] + [("A:min", 4), ("D:min", 2), ("E:7", 2)] * 6
+    assert _spans(key_regions(progression)) == [(0, 68, "C:maj"), (68, 116, "A:min")]
 
 
 def test_key_regions_without_a_chord() -> None:
