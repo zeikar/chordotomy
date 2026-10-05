@@ -34,7 +34,10 @@ from chordotomy.chords import inversion
         ("F/G", ("G:sus4(b7)", "G")),
         ("Dm7/G", ("G:sus4(b7)", "G")),
         ("C/D", ("D:sus4(b7)", "D")),
-        # Without the fourth, or with a third above the bass, a slash stays a slash.
+        ("Am7/D", ("D:sus4(b7)", "D")),
+        # Without the fourth, with a third above the bass, or with tones outside the 9sus4, a
+        # slash stays a slash.
+        ("Cmaj7/F#", ("C:maj7", "F#")),
         ("Em/A", ("E:min", "A")),
         ("Gm/C", ("G:min", "C")),
         ("C/E", ("C:maj", "E")),
