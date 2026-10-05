@@ -11,12 +11,15 @@ import json
 import re
 import zipfile
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import numpy as np
 
 from . import timeline
 from .chords import ROOTS
+
+if TYPE_CHECKING:
+    from .stagecache import StageCache
 
 METRICS = ("root", "majmin", "sevenths", "tetrads", "majmin_inv")
 
@@ -420,12 +423,20 @@ def _read_reference(dataset: str, path: Path, duration: float) -> Reference:
         raise DatasetError(f"{path}: {exc}") from exc
 
 
-def run(dataset: str, limit: int | None, engine: Literal["dsp", "model"]) -> dict[str, dict]:
-    """Analyze and score every track of `dataset`, print the table, and return the summary."""
+def run(
+    dataset: str,
+    limit: int | None,
+    engine: Literal["dsp", "model"],
+    cache: StageCache | None = None,
+) -> dict[str, dict]:
+    """Analyze and score every track of `dataset`, print the table, and return the summary.
+
+    cache keeps analyze's slow stages across runs (stagecache); the scores are the same without it.
+    """
     tracks = tiny_aam_tracks(limit) if dataset == "tiny-aam" else guitarset_tracks(limit)
     scored = {}
     for name, audio, annotation in tracks:
-        result = timeline.analyze(audio, engine=engine)
+        result = timeline.analyze(audio, engine=engine, cache=cache)
         reference = _read_reference(dataset, annotation, result["source"]["duration"])
         est_intervals, est_labels = timeline_to_intervals(result)
         scored[name] = {

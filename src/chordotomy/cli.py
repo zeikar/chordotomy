@@ -18,6 +18,7 @@ import typer
 from . import __version__, beats, harmony, model, timeline
 from . import evaluate as evaluation
 from .features import NoBeatsError
+from .stagecache import StageCache
 
 
 class Dataset(StrEnum):
@@ -233,6 +234,16 @@ def evaluate(
         int | None, typer.Option("--limit", min=1, help="Score only the first N tracks.")
     ] = None,
     engine: EngineOption = Engine.AUTO,
+    cache: Annotated[
+        bool,
+        typer.Option(
+            "--cache",
+            help=(
+                "Keep the slow stages (beat activation, beat features, model frames) next to the "
+                "datasets and reuse them while their code and inputs are unchanged."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Score the chord front end on a public dataset (opt-in, downloads on first use)."""
     # Check the extra before anything can download.
@@ -246,7 +257,8 @@ def evaluate(
 
     try:
         _announce(engine)
-        evaluation.run(dataset.value, limit, engine.value)
+        stages = StageCache(evaluation.cache_dir() / "stages") if cache else None
+        evaluation.run(dataset.value, limit, engine.value, stages)
     except evaluation.DatasetError as exc:
         raise _fail(f"{dataset.value}: {exc}") from exc
     except model.EngineError as exc:

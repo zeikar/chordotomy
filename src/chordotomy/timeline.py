@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import groupby
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -20,6 +20,9 @@ from .chords import (
     smooth,
 )
 from .features import SR, beat_features, load_audio
+
+if TYPE_CHECKING:
+    from .stagecache import StageCache
 
 SCHEMA_VERSION = 11
 
@@ -44,6 +47,7 @@ def analyze(
     engine: Literal["dsp", "model"] = "dsp",
     *,
     source_url: str | None = None,
+    cache: StageCache | None = None,
 ) -> dict:
     """Analyze an audio file into a chord-timeline dict of plain, JSON-serialisable types.
 
@@ -51,21 +55,27 @@ def analyze(
     templates on librosa's onset strength, or the lv-chordia model on Beat This!'s activation,
     whose weights are downloaded on first use. Raises NoBeatsError on audio without beats, and
     EngineError when the model engine cannot run. source_url is the web page the recording came
-    from; it is recorded in the timeline as given and never fetched.
+    from; it is recorded in the timeline as given and never fetched. cache, for evaluation, keeps
+    the slow stages (the activation, the beat features and the model's frames) across runs; the
+    result is the same with or without it.
     """
     if engine not in ("dsp", "model"):
         raise ValueError(f"unknown engine {engine!r}; expected 'dsp' or 'model'")
+
+    def stage(run, *args, **kwargs):
+        return run(*args, **kwargs) if cache is None else cache.run(run, *args, **kwargs)
+
     y = load_audio(path)
     # Before lv-chordia: audio without beats fails here, at Beat This!'s gate or in the tracker,
     # without loading its nets.
-    envelope = beats.activation(y) if engine == "model" else None
-    f = beat_features(y, onset_envelope=envelope)
+    envelope = stage(beats.activation, y) if engine == "model" else None
+    f = stage(beat_features, y, onset_envelope=envelope)
     if engine == "model":
         # The model replaces the per-beat chord states and scores and judges the bass. Its beats
         # come from Beat This!'s activation through the DSP's tracker and octave check; the cut
         # rule, the twin resolution and the harmony are the same rules as the DSP's. The DSP's N
         # gate is not applied: the model labels N itself.
-        frame_states, frame_scores, frame_bass = model.recognize(y)
+        frame_states, frame_scores, frame_bass = stage(model.recognize, y)
         boundaries = [*f.frames, len(frame_states)]
         states = model.beat_states(frame_states, boundaries)
         scores = model.beat_scores(frame_scores, boundaries)

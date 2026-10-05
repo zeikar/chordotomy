@@ -80,6 +80,24 @@ def test_tiny_aam_prints_a_row_per_track_and_overall(monkeypatch, track) -> None
     assert overall["period_ratio"] == pytest.approx(1.0, abs=0.05)
 
 
+def test_cache_keeps_the_stages_beside_the_datasets_and_scores_alike(
+    monkeypatch, tmp_path, track
+) -> None:
+    monkeypatch.setattr(evaluate, "tiny_aam_tracks", lambda limit: [track])
+    monkeypatch.setattr(evaluate, "CACHE_DIR", tmp_path / "datasets")
+
+    plain = _run("tiny-aam")
+    cold = _run("tiny-aam", "--cache")
+    entries = sorted((tmp_path / "datasets" / "stages").glob("*.pkl"))
+    warm = _run("tiny-aam", "--cache")
+
+    assert plain.exit_code == cold.exit_code == warm.exit_code == 0
+    # As printed: the beat columns are nan on a clip this short, and nan is not equal to itself.
+    assert cold.stdout == warm.stdout == plain.stdout
+    assert len(entries) == 1  # the DSP's beat features
+    assert sorted((tmp_path / "datasets" / "stages").glob("*.pkl")) == entries
+
+
 def test_guitarset_scores_the_performed_annotation(monkeypatch, tmp_path, track) -> None:
     _, audio, _ = track
     jams = tmp_path / "take_comp.jams"
@@ -188,7 +206,7 @@ def test_unreadable_annotation_names_the_path(monkeypatch, tmp_path, track) -> N
 
 
 def test_analysis_failures_keep_their_traceback(monkeypatch, track) -> None:
-    def boom(path, engine=None):
+    def boom(path, engine=None, cache=None):
         raise RuntimeError("analysis broke")
 
     monkeypatch.setattr(evaluate, "tiny_aam_tracks", lambda limit: [track])
@@ -204,7 +222,7 @@ def test_a_broken_model_is_one_error_line(monkeypatch, track) -> None:
     message = "lv_chordia cannot be imported; `uv sync --extra model`, or pass --engine dsp"
     engines = []
 
-    def broken(path, engine=None):
+    def broken(path, engine=None, cache=None):
         engines.append(engine)
         raise model.EngineError(message)
 
