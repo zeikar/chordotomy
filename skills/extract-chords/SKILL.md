@@ -34,21 +34,7 @@ The file lists every beat, so it is long. A 4-minute song runs past 2,000 lines.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("schema", d.get("schema_version"), "| generator", json.dumps(d.get("generator"), ensure_ascii=False), "| source", json.dumps(d.get("source"), ensure_ascii=False), "| global_key", json.dumps(d.get("global_key", d.get("key")), ensure_ascii=False), "| key_regions", json.dumps([[d["beats"][r["start_beat"]], r["label"]] for r in d.get("key_regions", d.get("keys")) or []], ensure_ascii=False)); [print(json.dumps([s.get(k) for k in ("start_time","end_time","chord","bass","inversion","numeral","role","function","target","edited","candidates")], ensure_ascii=False)) for s in d["segments"]]' "<file>.chords.json"
 ```
 
-Check `schema_version`. This skill is written for version 11:
-
-- **Below 11:** `global_key` is called `key` and `key_regions` is called `keys` (the compact view reads either name), and there is no `maj(9)` or `min(9)` and no `add9` numeral.
-- **Below 10:** there are no key regions; every numeral is relative to the one key.
-- **Below 9:** there is no `source.url`.
-- **Below 8:** there is no `sus4(b7)` and no `7sus4` numeral; an lv-chordia timeline below 8 wrote a 7sus4 as `sus4`.
-- **Below 7:** there is no `aug`, `dim` (the triad) or `sus2`, and no `+`, bare `°` or `sus2` numerals; an lv-chordia timeline below 7 wrote a diminished triad as `dim7`, an augmented chord as `maj` and a sus2 as the sus4 a fifth up.
-- **Below 6:** there is no `generator.engine`; the chords are the DSP recognizer's.
-- **Below 5:** there is no `edited`; every chord is the analyzer's.
-- **Below 4:** the chords are only `maj`, `min` and `7`, and the numerals carry no `maj7`, `ø7`, `°7`, `add6` or `sus4`.
-- **Below 3:** there is no `bass` and no `inversion`.
-- **Below 2:** there is no key and there are no numerals either; keep the JSON's sharps.
-- **Above 11:** this skill may be out of date. Use only the fields listed here.
-
-In every case other than 11, tell the user that the timeline comes from a different chordotomy version. The field definitions are in chordotomy's `docs/timeline-json.md`.
+Check `schema_version`. This skill is written for version 11. In any other, tell the user that the timeline comes from a different chordotomy version, and use only the fields it has: an older file lacks some of those below (the compact view prints them as `null`), and a newer one may have fields this skill doesn't know. The field definitions are in chordotomy's `docs/timeline-json.md`.
 
 The fields:
 
