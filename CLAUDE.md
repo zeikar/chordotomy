@@ -27,5 +27,5 @@ The reasons are in [docs/decisions.md](docs/decisions.md).
 - Show chord candidates as a ranked list. Don't show percentages unless a calibrated model produced them.
 - Audio never leaves the machine. No upload service.
 - Tests synthesize their audio. Never commit recordings, nor charts typed from chord sites; both stay in the gitignored `work/`.
-- The version lives only in `pyproject.toml`; code reads it through `importlib.metadata`. like-surgeon kept a second copy in `__init__.py`, and the two drifted.
-- Once the chord-timeline JSON has a schema, document it in docs/timeline-json.md and treat changes to it as breaking. The `explain-harmony` skill reads it too, so a schema change updates `skills/explain-harmony/` (its version check and field list).
+- The version lives only in `pyproject.toml`; code reads it through `importlib.metadata`. like-surgeon kept a second copy in `__init__.py`, and the two drifted. The one exception is the skill's `uvx` pin in `skills/extract-chords/references/get-timeline.md`, which `tests/test_skills.py` holds equal to it, so a release bumps both.
+- Once the chord-timeline JSON has a schema, document it in docs/timeline-json.md and treat changes to it as breaking. The `extract-chords` skill reads it too, so a schema change updates `skills/extract-chords/` (the version check and field list in its SKILL.md, and the schema check in `references/get-timeline.md`'s `source.url` snippet).

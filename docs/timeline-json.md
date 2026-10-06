@@ -11,7 +11,7 @@ This is the project's public seam. It carries beat positions, not just seconds, 
 | `generator.engine.version` | str | chordotomy's version for `dsp`, the lv-chordia package version otherwise |
 | `source.path` | str | the audio path as given on the command line |
 | `source.duration` | float, seconds, 3 decimals | |
-| `source.url` | str or null | an `http://` or `https://` page the recording came from, as given to `--source-url`, which refuses only another scheme, a missing host, whitespace or control characters and what `urlsplit` can't parse (the `explain-harmony` skill passes the canonical page URL of a video it downloaded); `null` when none was given; the analyzer never fetches it; the viewer shows it as a link when the browser can parse it as http(s) |
+| `source.url` | str or null | an `http://` or `https://` page the recording came from, as given to `--source-url`, which refuses only another scheme, a missing host, whitespace or control characters and what `urlsplit` can't parse (the `extract-chords` skill passes the canonical page URL of a video it downloaded); `null` when none was given; the analyzer never fetches it; the viewer shows it as a link when the browser can parse it as http(s) |
 | `beats` | list of float seconds, 3 decimals, ascending | beat index = list position |
 | `global_key` | object or `null` | the whole song's key, estimated over all its chords: in a song with several key regions, the key that reads best over all of it, which can be none of theirs; `null` only when the timeline has no chord and no `--key` was given |
 | `global_key.label` | str | `<root>:maj` or `<root>:min`, sharps only, e.g. `C:maj`, `A:min` |

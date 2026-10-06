@@ -4,11 +4,11 @@
     "name": "zeikar",
     "url": "https://github.com/zeikar"
   },
-  "description": "The chordotomy plugin: explain a song's harmony from the local chordotomy analyzer.",
+  "description": "The chordotomy plugin: a song's chords, and its harmony explained, from the local chordotomy analyzer.",
   "plugins": [
     {
       "name": "chordotomy",
-      "description": "Explain a song's harmony in Claude Code: runs the local chordotomy analyzer on a recording and explains its secondary dominants, borrowed chords, and inversions.",
+      "description": "Get a song's chords and have its harmony explained in Claude Code: runs the local chordotomy analyzer on a recording or a YouTube link, writes out the key and chords, and explains its secondary dominants, borrowed chords, and inversions.",
       "source": "./"
     }
   ]

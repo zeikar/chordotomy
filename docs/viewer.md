@@ -14,7 +14,7 @@ The editor acts on the current chord. While you pick, it stays on that chord, ev
 
 Chords start and end on the analyzer's beats. To enter a chord it missed, split where the chord starts and pick it; over silence, one pick enters a chord. There is no entering a progression from scratch: the beat grid comes from `chordotomy analyze`, so a timeline needs a recording's analysis first.
 
-**Save edited JSON** downloads the timeline with your edits, named after the recording it came from: `song.mp3`'s `song.chords.json` saves as `song.edited.chords.json`, wherever your browser puts downloads. The opened file is never changed. Put the saved file next to the recording, and the `explain-harmony` skill reads it in place of the analyzer's. Until you save, the page shows **Unsaved edits** and asks before it closes or opens another timeline.
+**Save edited JSON** downloads the timeline with your edits, named after the recording it came from: `song.mp3`'s `song.chords.json` saves as `song.edited.chords.json`, wherever your browser puts downloads. The opened file is never changed. Put the saved file next to the recording, and the `extract-chords` skill reads it in place of the analyzer's. Until you save, the page shows **Unsaved edits** and asks before it closes or opens another timeline.
 
 S splits at the beat under the playhead, and Shift+← and Shift+→ step back or forward a beat to get there. Delete or Backspace deletes the chord. Ctrl+Z (⌘Z on a Mac) undoes, and Ctrl+Shift+Z (⌘⇧Z) or Ctrl+Y redoes. Held down, these keys act once. While a select has focus, keys go to it, not to the shortcuts.
 
@@ -40,7 +40,7 @@ Every edit ends in a re-analysis. The segments are grouped into chord runs, and 
 
 Undo keeps whole timelines, not inverse edits. They are small, and each snapshot shares the segments its edit didn't change. Undoing back to the timeline as opened or last saved gives back that very object, which is how the page knows nothing is unsaved. An edit that changes nothing adds no step.
 
-`edited` keeps the provenance: it marks a segment whose chord and bass are the user's, not the analyzer's. The field's row in ["The chord-timeline JSON"](timeline-json.md) says what each operation does to it. The `explain-harmony` skill reads it, so it doesn't present an edited chord's candidates as alternative readings.
+`edited` keeps the provenance: it marks a segment whose chord and bass are the user's, not the analyzer's. The field's row in ["The chord-timeline JSON"](timeline-json.md) says what each operation does to it. The `extract-chords` skill reads it, so it doesn't present an edited chord's candidates as alternative readings.
 
 Saving downloads the timeline as `<stem>.edited.chords.json`, where `<stem>` is the basename of `source.path` without its extension, so `song.edited.mp3` saves as `song.edited.edited.chords.json`, the name the skill looks for next to the recording. Without a usable `source.path`, `<stem>` is the opened file's name without `.edited.chords.json`, `.chords.json` or `.json`. The file is a `Blob` downloaded through an `<a download>` link, because that works from `file://` in every browser and sends nothing anywhere. The timeline counts as saved once the download starts; if the user cancels a browser's save dialog, the page can't tell.
 

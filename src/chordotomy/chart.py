@@ -132,7 +132,7 @@ def parse_chord(token: str) -> tuple[str, str | None]:
     # A chord over a bass it lacks whose tones above that bass are a fourth and a minor seventh,
     # with at most a fifth and a ninth beside them (B♭/C, F/G, Dm7/G, C/D), is the suspended
     # dominant on the bass, 9sus4, which the vocabulary writes as 7sus4, as the model engine does
-    # (the explain-harmony skill's moves.md, on a non-chord bass). Other slashes stay as written.
+    # (the extract-chords skill's moves.md, on a non-chord bass). Other slashes stay as written.
     above = {(tone - bass_pitch) % 12 for tone in _pitch_classes(label)}
     if {5, 10} <= above <= {2, 5, 7, 10}:
         return f"{ROOTS[bass_pitch]}:sus4(b7)", ROOTS[bass_pitch]

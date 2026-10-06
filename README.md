@@ -5,7 +5,7 @@
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 [![Viewer](https://img.shields.io/badge/viewer-zeikar.dev%2Fchordotomy-5b4bb7.svg)](https://zeikar.dev/chordotomy/)
 
-Dissect a song's harmony. Give it a recording (mp3, wav, flac or ogg) and it recognizes the chords on the beat, finds the key and its changes, labels the chords with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord). In Claude Code, a skill adds a short note on why each one works.
+Dissect a song's harmony. Give it a recording (mp3, wav, flac or ogg) and it recognizes the chords on the beat, finds the key and its changes, labels the chords with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord). An agent skill writes the chords out for you and adds a short note on why each move works.
 
 It analyzes; it doesn't transcribe. There is no staff notation, on purpose.
 
@@ -24,7 +24,7 @@ Everything runs locally. Your audio never leaves your machine.
 - **Key and Roman numerals.** Key changes are found from the chords, and each passage is analyzed in its own key. Secondary dominants, secondary leading-tone chords and borrowed chords are labeled and highlighted; the viewer adds figured bass for inversions.
 - **The bass note and inversion** of each chord where a bass is heard, so slash chords (C/E, D/F♯) come out as such. A weak bass outside the chord is shown at root position instead of as a doubtful slash chord.
 - **A viewer** that plays the recording with its chords, plays the chords themselves to check them by ear, and lets you correct and enter chords.
-- **Explanations in Claude Code** of the highlighted moves, from a recording or a YouTube link, through the `explain-harmony` skill.
+- **An agent skill** for Claude Code, Codex, Cursor and other agents, `extract-chords`, that writes out the chords of a recording or a YouTube link and explains the highlighted moves.
 
 ## Quick start
 
@@ -94,16 +94,24 @@ Tiny AAM is 20 mixed tracks annotated in major and minor; GuitarSet is 180 solo-
 
 The [viewer](https://zeikar.dev/chordotomy/) plays a recording with its chord timeline: the current chord with its Roman numeral, bass and ranked alternatives, the key at the playhead, and a chord strip colored by role. **Play chords** sounds the detected chords to check them by ear. You can correct chords, enter ones the analyzer missed, and save the edited JSON, which the skill then reads. Drop the recording and its `.chords.json` on the page, or open `viewer/index.html` from a checkout. The files stay in your browser, and the page makes no network requests. [docs/viewer.md](https://github.com/zeikar/chordotomy/blob/main/docs/viewer.md) has the controls and keyboard shortcuts.
 
-## Explanations in Claude Code
+## Agent skill
 
-The repo is also a Claude Code plugin with one skill, `explain-harmony`. Install it once:
+The repo carries one skill, `extract-chords`. It writes out the key and the chords of a recording or a YouTube link on a timeline, and on request explains the key changes, secondary dominants, borrowed chords and bass lines. It runs `chordotomy analyze` locally (it needs uv and python3; a link also needs ffmpeg, and yt-dlp runs through `uvx`) and reads the JSON. The audio stays on your machine; the agent reads only the chord timeline.
+
+In Claude Code, install it as a plugin, which runs the plugin's own copy of chordotomy, on the DSP engine unless you run `uv sync --extra model` in the plugin's directory:
 
 ```text
 /plugin marketplace add zeikar/chordotomy
 /plugin install chordotomy@chordotomy
 ```
 
-Then ask something like "explain the harmony of song.mp3", or give it a YouTube link. The skill runs `chordotomy analyze` locally with the plugin's own copy (it needs uv; a link also needs ffmpeg, and yt-dlp runs through `uvx`), reads the JSON, and explains the key changes, secondary dominants, borrowed chords and bass lines. The audio stays on your machine; Claude reads only the chord timeline.
+For any agent [skills.sh](https://skills.sh/zeikar/chordotomy) supports, Claude Code included:
+
+```bash
+npx skills add zeikar/chordotomy
+```
+
+Installed that way, the skill runs the chordotomy release it was written for through `uvx`, with the model engine, which installs about 600 MB into uv's cache on its first run (on an Intel Mac, which torch no longer builds for, it falls back to the DSP engine). Then ask something like "get the chords of song.mp3" or "explain the harmony of <YouTube link>".
 
 ## What it won't do
 
