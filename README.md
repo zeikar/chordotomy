@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/zeikar/chordotomy/blob/main/LICENSE)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 [![Viewer](https://img.shields.io/badge/viewer-zeikar.dev%2Fchordotomy-5b4bb7.svg)](https://zeikar.dev/chordotomy/)
+[![skills.sh](https://skills.sh/b/zeikar/chordotomy)](https://skills.sh/zeikar/chordotomy)
 
 Dissect a song's harmony. Give it a recording (mp3, wav, flac or ogg) and it recognizes the chords on the beat, finds the key and its changes, labels the chords with Roman numerals, and points out the moves worth noticing (the secondary dominant, the borrowed chord). An agent skill writes the chords out for you and adds a short note on why each move works.
 
