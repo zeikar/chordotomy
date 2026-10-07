@@ -1,6 +1,6 @@
 [project]
 name = "chordotomy"
-version = "0.3.0"
+version = "0.3.1"
 description = "Dissect a song's harmony from audio: chord recognition on the beat, key changes, Roman numerals, secondary dominants and borrowed chords."
 readme = "README.md"
 requires-python = ">=3.12"
